@@ -50,7 +50,7 @@ Every event has the same envelope; type-specific fields live under `data`.
 | `task.dispatched` | orchestrator | A task is handed to an implementer | `tier`, `agent_type`, `model_requested`, `effort?`, `group?`, `isolation` |
 | `task.redispatched` | orchestrator | A task is rerun | `reason` (`merge_conflict`, `replan`, `eval_fail`), `tier` |
 | `subagent.started` | SubagentStart hook | Any Harness subagent starts | `model_requested?` |
-| `subagent.stopped` | SubagentStop hook | Any Harness subagent stops | `report` (`DONE`, `ESCALATE`, `PASS`, `FAIL`, `PLAN`, `none`), `duration_ms`, `partial`, `task_ids[]` parsed from the report header |
+| `subagent.stopped` | SubagentStop hook | Any Harness subagent stops | `report` (`DONE`, `ESCALATE`, `PASS`, `FAIL`, `PLAN`, `none`), `duration_ms`, `partial` (true when there was no usable report), `task_ids[]` parsed from the report header, plus `model` and `effort` from the agent's transcript and `model_requested` from its `meta.json` (C13) |
 | `escalation.triggered` | hook or orchestrator | A trigger fires | `trigger`, `count`, `threshold` |
 | `escalation.resolved` | orchestrator | The architect's re-plan is accepted | `new_task_ids[]`, `new_tiers[]` |
 | `eval.started` | `harness-eval` | The eval runner starts | `task_ids[]`, `diff_sha256`, `ci` |

@@ -1,0 +1,7 @@
+{
+  "name": "harness-local",
+  "owner": { "name": "Mikkel Sejersen" },
+  "plugins": [
+    { "name": "harness", "source": "./", "description": "The Harness, installed from this checkout." }
+  ]
+}

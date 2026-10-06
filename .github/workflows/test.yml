@@ -13,4 +13,6 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: bin/ matches src/
+        run: npm run check:bin
       - run: npm test

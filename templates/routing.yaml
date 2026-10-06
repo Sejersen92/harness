@@ -1,0 +1,15 @@
+# routing.yaml: owned by the repository, read by the harness plugin.
+# Its SHA-256 is config_sha256 on every metadata line (C16): don't edit it during a baseline.
+version: 1
+mode: observe            # off | observe | route   (observe = the baseline: scored, not routed)
+
+tiers:                   # thresholds and overrides come from the complexity-rubric skill
+  T1: { max_score: 2,  agent: impl-t1, model: sonnet, effort: low }
+  T2: { max_score: 6,  agent: impl-t2, model: sonnet, effort: medium }
+  T3: { max_score: 9,  agent: impl-t3, model: sonnet, effort: high }
+  T4: { max_score: 12, agent: impl-t4, model: opus,   effort: medium }
+
+metadata:
+  dir: .harness          # gitignored
+  retention_days: 30
+  include_justifications: true
