@@ -1,0 +1,276 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Sejersen92/harness/schema/harness.events.v1.json",
+  "title": "Harness Events v1",
+  "description": "One line of the append-only Harness event stream (.harness/events/YYYY-MM-DD.jsonl). Additive-only within v1: consumers must accept unknown event types and unknown fields, so unknown types are checked against the envelope only and every object allows extra properties. See docs/EVENTS.md.",
+  "type": "object",
+  "required": ["schema", "event_id", "ts", "type", "producer", "repo", "mode", "session_id", "config_sha256", "data"],
+  "properties": {
+    "schema": { "const": "harness.events/v1" },
+    "event_id": { "$ref": "#/$defs/ulid" },
+    "ts": { "$ref": "#/$defs/utc_timestamp" },
+    "type": { "type": "string", "pattern": "^[a-z]+(\\.[a-z_]+)+$" },
+    "producer": { "$ref": "#/$defs/producer" },
+    "repo": { "$ref": "#/$defs/repo" },
+    "mode": { "$ref": "#/$defs/mode" },
+    "session_id": { "type": "string", "minLength": 1 },
+    "prompt_id": { "type": "string", "minLength": 1 },
+    "config_sha256": { "$ref": "#/$defs/sha256" },
+    "agent_id": { "type": "string", "minLength": 1 },
+    "agent_type": { "type": "string", "minLength": 1 },
+    "plan_id": { "$ref": "#/$defs/plan_id" },
+    "task_id": { "$ref": "#/$defs/task_id" },
+    "data": { "type": "object" }
+  },
+  "allOf": [
+    { "if": { "$ref": "#/$defs/is/plan.created" }, "then": { "required": ["plan_id"], "properties": { "data": { "$ref": "#/$defs/data/plan.created" } } } },
+    { "if": { "$ref": "#/$defs/is/task.scored" }, "then": { "required": ["task_id"], "properties": { "data": { "$ref": "#/$defs/data/task.scored" } } } },
+    { "if": { "$ref": "#/$defs/is/task.dispatched" }, "then": { "required": ["task_id"], "properties": { "data": { "$ref": "#/$defs/data/task.dispatched" } } } },
+    { "if": { "$ref": "#/$defs/is/task.redispatched" }, "then": { "required": ["task_id"], "properties": { "data": { "$ref": "#/$defs/data/task.redispatched" } } } },
+    { "if": { "$ref": "#/$defs/is/subagent.started" }, "then": { "required": ["agent_id", "agent_type"], "properties": { "data": { "$ref": "#/$defs/data/subagent.started" } } } },
+    { "if": { "$ref": "#/$defs/is/subagent.stopped" }, "then": { "required": ["agent_id", "agent_type"], "properties": { "data": { "$ref": "#/$defs/data/subagent.stopped" } } } },
+    { "if": { "$ref": "#/$defs/is/escalation.triggered" }, "then": { "required": ["task_id"], "properties": { "data": { "$ref": "#/$defs/data/escalation.triggered" } } } },
+    { "if": { "$ref": "#/$defs/is/escalation.resolved" }, "then": { "required": ["task_id"], "properties": { "data": { "$ref": "#/$defs/data/escalation.resolved" } } } },
+    { "if": { "$ref": "#/$defs/is/eval.started" }, "then": { "properties": { "data": { "$ref": "#/$defs/data/eval.started" } } } },
+    { "if": { "$ref": "#/$defs/is/eval.completed" }, "then": { "properties": { "data": { "$ref": "#/$defs/data/eval.completed" } } } },
+    { "if": { "$ref": "#/$defs/is/gate.decision" }, "then": { "properties": { "data": { "$ref": "#/$defs/data/gate.decision" } } } },
+    { "if": { "$ref": "#/$defs/is/commit.created" }, "then": { "properties": { "data": { "$ref": "#/$defs/data/commit.created" } } } },
+    { "if": { "$ref": "#/$defs/is/task.completed" }, "then": { "required": ["task_id"], "properties": { "data": { "$ref": "#/$defs/data/task.completed" } } } },
+    { "if": { "$ref": "#/$defs/is/human.intervention" }, "then": { "properties": { "data": { "$ref": "#/$defs/data/human.intervention" } } } },
+    { "if": { "$ref": "#/$defs/is/release.failed" }, "then": { "properties": { "data": { "$ref": "#/$defs/data/release.failed" } } } },
+    { "if": { "$ref": "#/$defs/is/harness.doctor" }, "then": { "properties": { "data": { "$ref": "#/$defs/data/harness.doctor" } } } }
+  ],
+  "$defs": {
+    "ulid": { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+    "utc_timestamp": { "type": "string", "format": "date-time", "pattern": "Z$" },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "git_sha": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" },
+    "plan_id": { "type": "string", "pattern": "^PLAN-[0-9]+$" },
+    "task_id": { "type": "string", "pattern": "^PLAN-[0-9]+(\\.[0-9]+)+$" },
+    "ac_id": {
+      "description": "C8: an acceptance criterion is always fully qualified with its task.",
+      "type": "string", "pattern": "^PLAN-[0-9]+(\\.[0-9]+)+/AC-[0-9]+$"
+    },
+    "tier": { "enum": ["T1", "T2", "T3", "T4"] },
+    "mode": { "description": "mode: off writes no events at all, so it never appears here.", "enum": ["observe", "route"] },
+    "effort": { "enum": ["low", "medium", "high", "xhigh", "max"] },
+    "count": { "type": "integer", "minimum": 0 },
+    "task_ids": { "type": "array", "items": { "$ref": "#/$defs/task_id" }, "uniqueItems": true },
+    "producer": {
+      "type": "object",
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "const": "harness" },
+        "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$" }
+      }
+    },
+    "repo": {
+      "type": "object",
+      "required": ["name", "remote_sha256"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "remote_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "score": { "type": "integer", "minimum": 0, "maximum": 2 },
+    "scores": {
+      "description": "C6: one vocabulary, long names everywhere.",
+      "type": "object",
+      "required": ["ambiguity", "blast", "coupling", "novelty", "reversibility", "verification"],
+      "properties": {
+        "ambiguity": { "$ref": "#/$defs/score" },
+        "blast": { "$ref": "#/$defs/score" },
+        "coupling": { "$ref": "#/$defs/score" },
+        "novelty": { "$ref": "#/$defs/score" },
+        "reversibility": { "$ref": "#/$defs/score" },
+        "verification": { "$ref": "#/$defs/score" }
+      }
+    },
+    "stage_result": {
+      "type": "object",
+      "required": ["name", "status", "duration_ms"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["pass", "fail", "skipped"] },
+        "duration_ms": { "$ref": "#/$defs/count" }
+      }
+    },
+    "is": {
+      "plan.created": { "properties": { "type": { "const": "plan.created" } } },
+      "task.scored": { "properties": { "type": { "const": "task.scored" } } },
+      "task.dispatched": { "properties": { "type": { "const": "task.dispatched" } } },
+      "task.redispatched": { "properties": { "type": { "const": "task.redispatched" } } },
+      "subagent.started": { "properties": { "type": { "const": "subagent.started" } } },
+      "subagent.stopped": { "properties": { "type": { "const": "subagent.stopped" } } },
+      "escalation.triggered": { "properties": { "type": { "const": "escalation.triggered" } } },
+      "escalation.resolved": { "properties": { "type": { "const": "escalation.resolved" } } },
+      "eval.started": { "properties": { "type": { "const": "eval.started" } } },
+      "eval.completed": { "properties": { "type": { "const": "eval.completed" } } },
+      "gate.decision": { "properties": { "type": { "const": "gate.decision" } } },
+      "commit.created": { "properties": { "type": { "const": "commit.created" } } },
+      "task.completed": { "properties": { "type": { "const": "task.completed" } } },
+      "human.intervention": { "properties": { "type": { "const": "human.intervention" } } },
+      "release.failed": { "properties": { "type": { "const": "release.failed" } } },
+      "harness.doctor": { "properties": { "type": { "const": "harness.doctor" } } }
+    },
+    "data": {
+      "plan.created": {
+        "type": "object",
+        "required": ["task_count", "revision", "groups"],
+        "properties": {
+          "task_count": { "type": "integer", "minimum": 1 },
+          "revision": { "type": "integer", "minimum": 1 },
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["group", "task_ids"],
+              "properties": { "group": { "type": "string", "minLength": 1 }, "task_ids": { "$ref": "#/$defs/task_ids" } }
+            }
+          }
+        }
+      },
+      "task.scored": {
+        "type": "object",
+        "required": ["scores", "total", "score_band", "overrides", "tier_planned"],
+        "properties": {
+          "scores": { "$ref": "#/$defs/scores" },
+          "total": { "type": "integer", "minimum": 0, "maximum": 12 },
+          "score_band": { "description": "C7: the tier the raw total implies, before overrides.", "$ref": "#/$defs/tier" },
+          "overrides": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+          "tier_planned": { "description": "The tier actually chosen, after overrides.", "$ref": "#/$defs/tier" }
+        }
+      },
+      "task.dispatched": {
+        "type": "object",
+        "required": ["tier", "agent_type", "model_requested", "isolation"],
+        "properties": {
+          "tier": { "$ref": "#/$defs/tier" },
+          "agent_type": { "type": "string", "minLength": 1 },
+          "model_requested": { "description": "What routing asked for: an alias from routing.yaml, or \"inherit\" in observe mode. What actually ran comes from the transcript (C13).", "type": "string", "minLength": 1 },
+          "effort": { "$ref": "#/$defs/effort" },
+          "group": { "type": "string", "minLength": 1 },
+          "isolation": { "enum": ["none", "worktree"] }
+        }
+      },
+      "task.redispatched": {
+        "type": "object",
+        "required": ["reason", "tier"],
+        "properties": {
+          "reason": { "enum": ["merge_conflict", "replan", "eval_fail"] },
+          "tier": { "$ref": "#/$defs/tier" }
+        }
+      },
+      "subagent.started": {
+        "type": "object",
+        "properties": { "model_requested": { "type": "string", "minLength": 1 } }
+      },
+      "subagent.stopped": {
+        "type": "object",
+        "required": ["report", "duration_ms", "partial", "task_ids"],
+        "properties": {
+          "report": { "enum": ["DONE", "ESCALATE", "PASS", "FAIL", "PLAN", "none"] },
+          "duration_ms": { "$ref": "#/$defs/count" },
+          "partial": { "type": "boolean" },
+          "task_ids": { "description": "Parsed from the report header, e.g. \"DONE: PLAN-42.2\". Empty when report is none.", "$ref": "#/$defs/task_ids" }
+        }
+      },
+      "escalation.triggered": {
+        "type": "object",
+        "required": ["trigger", "count", "threshold"],
+        "properties": {
+          "trigger": { "enum": ["test_failures", "edits_per_file", "eval_rounds", "max_turns", "self_report"] },
+          "count": { "$ref": "#/$defs/count" },
+          "threshold": { "$ref": "#/$defs/count" }
+        }
+      },
+      "escalation.resolved": {
+        "type": "object",
+        "required": ["new_task_ids", "new_tiers"],
+        "properties": {
+          "new_task_ids": { "$ref": "#/$defs/task_ids" },
+          "new_tiers": { "type": "array", "items": { "$ref": "#/$defs/tier" } }
+        }
+      },
+      "eval.started": {
+        "type": "object",
+        "required": ["task_ids", "diff_sha256", "ci"],
+        "properties": {
+          "task_ids": { "$ref": "#/$defs/task_ids" },
+          "diff_sha256": { "$ref": "#/$defs/sha256" },
+          "ci": { "type": "boolean" }
+        }
+      },
+      "eval.completed": {
+        "type": "object",
+        "required": ["result", "stages", "failed_acs", "task_ids", "diff_sha256"],
+        "properties": {
+          "result": { "enum": ["pass", "fail"] },
+          "stages": { "type": "array", "items": { "$ref": "#/$defs/stage_result" } },
+          "failed_acs": { "type": "array", "items": { "$ref": "#/$defs/ac_id" }, "uniqueItems": true },
+          "task_ids": { "$ref": "#/$defs/task_ids" },
+          "diff_sha256": { "$ref": "#/$defs/sha256" },
+          "attribution": { "description": "C5: \"group\" when a failure carries no AC id and so fails every task in a parallel group.", "enum": ["task", "group"] }
+        }
+      },
+      "gate.decision": {
+        "type": "object",
+        "required": ["decision", "reason"],
+        "properties": {
+          "decision": { "enum": ["allow", "deny"] },
+          "reason": { "enum": ["pass", "no_marker", "diff_mismatch", "stale_marker", "mode_off"] }
+        }
+      },
+      "commit.created": {
+        "type": "object",
+        "required": ["commit_sha", "task_ids", "files_changed", "lines_added", "lines_removed"],
+        "properties": {
+          "commit_sha": { "$ref": "#/$defs/git_sha" },
+          "task_ids": { "$ref": "#/$defs/task_ids" },
+          "files_changed": { "$ref": "#/$defs/count" },
+          "lines_added": { "$ref": "#/$defs/count" },
+          "lines_removed": { "$ref": "#/$defs/count" }
+        }
+      },
+      "task.completed": {
+        "type": "object",
+        "required": ["outcome", "final_tier", "eval_rounds", "escalations"],
+        "properties": {
+          "outcome": { "enum": ["pass_first_try", "pass", "escalated_then_pass", "human", "abandoned"] },
+          "final_tier": { "$ref": "#/$defs/tier" },
+          "eval_rounds": { "$ref": "#/$defs/count" },
+          "escalations": { "$ref": "#/$defs/count" }
+        }
+      },
+      "human.intervention": {
+        "type": "object",
+        "required": ["reason"],
+        "properties": { "reason": { "type": "string", "minLength": 1, "maxLength": 200 } }
+      },
+      "release.failed": {
+        "type": "object",
+        "required": ["commit_sha", "environment", "failed_checks"],
+        "properties": {
+          "commit_sha": { "$ref": "#/$defs/git_sha" },
+          "environment": { "type": "string", "minLength": 1 },
+          "failed_checks": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+        }
+      },
+      "harness.doctor": {
+        "type": "object",
+        "required": ["checks", "emit_failures"],
+        "properties": {
+          "checks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name", "status"],
+              "properties": { "name": { "type": "string", "minLength": 1 }, "status": { "enum": ["pass", "warn", "fail"] } }
+            }
+          },
+          "emit_failures": { "description": "C12: the count from .harness/emit-failures since the last doctor run.", "$ref": "#/$defs/count" }
+        }
+      }
+    }
+  }
+}
