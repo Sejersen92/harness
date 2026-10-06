@@ -7450,9 +7450,25 @@ function loadConfig(dir = projectDir()) {
 }
 
 // src/lib/spool.mjs
-import { appendFileSync, existsSync as existsSync2, mkdirSync, readdirSync, readFileSync as readFileSync2, rmSync, writeFileSync } from "node:fs";
-import { join as join2 } from "node:path";
+import { appendFileSync, existsSync as existsSync2, mkdirSync, readdirSync, readFileSync as readFileSync2, renameSync, rmSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join as join2, resolve } from "node:path";
 var MAX_LINE_BYTES = 4096;
+var registryPath = () => join2(process.env.HARNESS_HOME || join2(homedir(), ".harness"), "spools.json");
+function registerSpool(config2, now = /* @__PURE__ */ new Date()) {
+  const path = registryPath();
+  const metadataDir = resolve(config2.metadataDir);
+  try {
+    const registry = existsSync2(path) ? JSON.parse(readFileSync2(path, "utf8")) : { version: 1, spools: [] };
+    if (registry.spools.some((s) => s.metadata_dir.toLowerCase() === metadataDir.toLowerCase())) return;
+    registry.spools.push({ repo_dir: resolve(config2.dir), metadata_dir: metadataDir, first_seen: utcNow(now) });
+    mkdirSync(join2(path, ".."), { recursive: true });
+    writeFileSync(`${path}.tmp`, JSON.stringify(registry, null, 2) + "\n");
+    renameSync(`${path}.tmp`, path);
+  } catch (error) {
+    recordFailure(config2, `spool registry: ${error.message}`);
+  }
+}
 function recordFailure(config2, why) {
   process.stderr.write(`harness: metadata not written: ${why}
 `);
@@ -7472,8 +7488,10 @@ function appendLine(config2, file, record) {
     return false;
   }
   try {
+    const firstLineInFile = !existsSync2(file);
     mkdirSync(join2(file, ".."), { recursive: true });
     appendFileSync(file, line + "\n", { flag: "a" });
+    if (firstLineInFile) registerSpool(config2);
     return true;
   } catch (error) {
     recordFailure(config2, error.message);

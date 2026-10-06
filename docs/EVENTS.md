@@ -140,6 +140,14 @@ The record for the example above:
 2. Readers **must ignore unknown types and fields**. The schema enforces this: an unknown `type` is checked against the envelope only, and every object accepts extra properties.
 3. Removing or renaming a field, changing its type or changing its meaning requires `harness.events/v2` (or `harness.routing-log/v2`), dual-written alongside v1 for at least one minor plugin release.
 
+## Finding the spools
+
+Every repository with a spool is listed in one file per machine, `~/.harness/spools.json` (or `$HARNESS_HOME/spools.json`). `harness-emit` adds a repository the first time it writes a file there. A reader walks this list instead of guessing which repositories might have a `.harness/` folder.
+
+```text
+{ "version": 1, "spools": [ { "repo_dir": "C:\\src\\PreviouslyUpcoming", "metadata_dir": "C:\\src\\PreviouslyUpcoming\\.harness", "first_seen": "2026-10-06T20:30:00Z" } ] }
+```
+
 ## How PU reads it
 
 PU reads both outputs the same way (K4):
