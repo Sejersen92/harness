@@ -1,11 +1,35 @@
 // The only code that writes metadata. Telemetry must never block development, so nothing here
 // throws: a failed write is logged to stderr and counted in <metadata dir>/emit-failures (C12).
-import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
 import { producer, repoIdentity } from "./config.mjs";
 import { ulid, utcNow } from "./ids.mjs";
 
 const MAX_LINE_BYTES = 4096;
+
+/**
+ * The machine's list of repositories with a spool, so a reader (PU's `pu sync`) finds every one
+ * without guessing from session transcripts. ~/.harness/spools.json, or $HARNESS_HOME/spools.json.
+ */
+export const registryPath = () => join(process.env.HARNESS_HOME || join(homedir(), ".harness"), "spools.json");
+
+/** Adds this repository's metadata folder to the registry if it isn't there. Cheap after the first time. */
+export function registerSpool(config, now = new Date()) {
+  const path = registryPath();
+  const metadataDir = resolve(config.metadataDir);
+  try {
+    const registry = existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : { version: 1, spools: [] };
+    if (registry.spools.some((s) => s.metadata_dir.toLowerCase() === metadataDir.toLowerCase())) return;
+    registry.spools.push({ repo_dir: resolve(config.dir), metadata_dir: metadataDir, first_seen: utcNow(now) });
+    mkdirSync(join(path, ".."), { recursive: true });
+    // Write then rename, so a reader never sees half a file.
+    writeFileSync(`${path}.tmp`, JSON.stringify(registry, null, 2) + "\n");
+    renameSync(`${path}.tmp`, path);
+  } catch (error) {
+    recordFailure(config, `spool registry: ${error.message}`);
+  }
+}
 
 export function recordFailure(config, why) {
   process.stderr.write(`harness: metadata not written: ${why}\n`);
@@ -27,8 +51,10 @@ function appendLine(config, file, record) {
     return false;
   }
   try {
+    const firstLineInFile = !existsSync(file);
     mkdirSync(join(file, ".."), { recursive: true });
     appendFileSync(file, line + "\n", { flag: "a" });
+    if (firstLineInFile) registerSpool(config);
     return true;
   } catch (error) {
     recordFailure(config, error.message);

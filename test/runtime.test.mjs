@@ -37,7 +37,8 @@ function makeRepo({ routing = true } = {}) {
   return dir;
 }
 
-const env = (dir) => ({ ...process.env, CLAUDE_CODE_SESSION_ID: SESSION, CLAUDE_PROJECT_DIR: dir, CLAUDE_PLUGIN_ROOT: root });
+// HARNESS_HOME keeps the spool registry inside the test repo: a test must never touch the real ~/.harness.
+const env = (dir) => ({ ...process.env, CLAUDE_CODE_SESSION_ID: SESSION, CLAUDE_PROJECT_DIR: dir, CLAUDE_PLUGIN_ROOT: root, HARNESS_HOME: join(dir, ".harness-home") });
 
 const emit = (dir, ...args) =>
   spawnSync("node", [join(root, "bin", "harness-emit.mjs"), ...args], { cwd: dir, env: env(dir), encoding: "utf8" });
@@ -109,6 +110,11 @@ test("one task end to end: every event and the routing-log record match the sche
   assert.equal(record.acceptance.criteria, 2);
   assert.deepEqual(Object.keys(record.rubric.justifications), ["blast", "coupling"]);
   assert.equal(record.outcome, "pass_first_try");
+
+  // The repo is in the machine's spool registry, once, however many lines were written.
+  const registry = JSON.parse(readFileSync(join(dir, ".harness-home", "spools.json"), "utf8"));
+  assert.equal(registry.spools.length, 1);
+  assert.equal(registry.spools[0].metadata_dir.toLowerCase(), join(dir, ".harness").toLowerCase());
 });
 
 test("a task completed without its dispatch is recorded, but marked incomplete", () => {
