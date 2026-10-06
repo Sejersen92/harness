@@ -3,26 +3,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
-import Ajv2020 from "ajv/dist/2020.js";
-import addFormats from "ajv-formats";
-
-const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const readJson = (path) => JSON.parse(readFileSync(join(root, path), "utf8"));
-
-// strict catches misspelt keywords; strictTypes is off because the small `is` matchers
-// deliberately omit "type": "object" (the envelope already requires it).
-const ajv = new Ajv2020({ allErrors: true, strict: true, strictTypes: false, strictRequired: false });
-addFormats(ajv);
-ajv.addSchema(readJson("schema/harness.events.v1.json"));
-ajv.addSchema(readJson("schema/routing-log.v1.json"));
-const validators = {
-  "harness.events/v1": ajv.getSchema("https://github.com/Sejersen92/harness/schema/harness.events.v1.json"),
-  "harness.routing-log/v1": ajv.getSchema("https://github.com/Sejersen92/harness/schema/routing-log.v1.json"),
-};
-
-const describe = (validate) => ajv.errorsText(validate.errors, { separator: "\n  " });
+import { join } from "node:path";
+import { describe, root, validators } from "./validators.mjs";
 
 /** Every fenced json/jsonl block in docs/*.md that claims one of our schemas, with where it came from. */
 function docExamples() {

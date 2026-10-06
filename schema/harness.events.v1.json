@@ -171,8 +171,11 @@
         "properties": {
           "report": { "enum": ["DONE", "ESCALATE", "PASS", "FAIL", "PLAN", "none"] },
           "duration_ms": { "$ref": "#/$defs/count" },
-          "partial": { "type": "boolean" },
-          "task_ids": { "description": "Parsed from the report header, e.g. \"DONE: PLAN-42.2\". Empty when report is none.", "$ref": "#/$defs/task_ids" }
+          "partial": { "description": "True when the agent stopped without a usable report header (report: none).", "type": "boolean" },
+          "task_ids": { "description": "Parsed from the report header, e.g. \"DONE: PLAN-42.2\". Empty when report is none.", "$ref": "#/$defs/task_ids" },
+          "model_requested": { "description": "What the dispatch asked for, from the agent's meta.json. Absent when nothing was requested (the agent inherits).", "type": "string", "minLength": 1 },
+          "model": { "description": "C13: the model id the agent's transcript says ran, e.g. claude-sonnet-5-5.", "type": "string", "minLength": 1 },
+          "effort": { "$ref": "#/$defs/effort" }
         }
       },
       "escalation.triggered": {

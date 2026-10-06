@@ -11,6 +11,24 @@ The contract is written; no plugin code exists yet. Read in this order:
 
 The original design documents are in [docs/sources/](docs/sources/).
 
+## Trying it in a repository
+
+1. Copy [templates/routing.yaml](templates/routing.yaml) to the repository root (`mode: observe`), and add `.harness/` to its `.gitignore`.
+2. Start Claude Code there with the plugin and the orchestrator:
+
+   ```sh
+   claude --plugin-dir c:/src/harness --agent harness:orchestrator
+   ```
+
+   Or install it once: run `/plugin marketplace add c:/src/harness`, then `/plugin install harness@harness-local`.
+3. Give it a task. Events land in `.harness/events/`, and one routing-log line per completed task lands in `.harness/routing-log/`.
+
+Without a `routing.yaml`, the plugin does nothing in that repository.
+
+## Building
+
+The scripts are written in `src/` and bundled into self-contained files in `bin/` by `npm run build`, so the plugin runs from a plain checkout with no `npm install`. `bin/` is committed, and CI fails if it is out of date (`npm run check:bin`).
+
 ## Tests
 
 ```sh

@@ -56,8 +56,9 @@
       }
     },
     "acceptance": {
+      "description": "tests_added and tests_failed_before come from the evaluator's WRITE-TESTS run (M2): absent until then, never guessed.",
       "type": "object",
-      "required": ["criteria", "tests_added", "tests_failed_before"],
+      "required": ["criteria"],
       "properties": {
         "criteria": { "$ref": "harness.events.v1.json#/$defs/count" },
         "tests_added": { "$ref": "harness.events.v1.json#/$defs/count" },
@@ -131,7 +132,7 @@
       }
     },
     "commit": {
-      "description": "null when the task ended without a commit (human, abandoned).",
+      "description": "null when no commit.created event was recorded for the task.",
       "oneOf": [
         { "type": "null" },
         {
