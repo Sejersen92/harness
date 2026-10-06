@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Sejersen92/harness/schema/routing-log.v1.json",
+  "title": "Routing log v1",
+  "description": "One line per completed task (.harness/routing-log/YYYY-MM.jsonl), assembled by harness-tasklog from the task's events, its PLAN.md section and git. Never written by a model. A reopened task gets a new line with revision + 1; consumers keep the highest revision per task_id. Shared definitions come from the event schema. See docs/EVENTS.md.",
+  "type": "object",
+  "required": [
+    "schema", "task_id", "revision", "plan_id", "repo", "producer", "config_sha256", "mode", "session_id",
+    "timestamps", "rubric", "scope", "acceptance", "runs", "eval_rounds", "escalations", "redispatches",
+    "gate", "commit", "human_interventions", "outcome", "final_tier", "wall_clock_s", "complete"
+  ],
+  "properties": {
+    "schema": { "const": "harness.routing-log/v1" },
+    "task_id": { "$ref": "harness.events.v1.json#/$defs/task_id" },
+    "revision": { "type": "integer", "minimum": 1 },
+    "plan_id": { "$ref": "harness.events.v1.json#/$defs/plan_id" },
+    "repo": { "$ref": "harness.events.v1.json#/$defs/repo" },
+    "producer": { "$ref": "harness.events.v1.json#/$defs/producer" },
+    "config_sha256": { "$ref": "harness.events.v1.json#/$defs/sha256" },
+    "mode": { "$ref": "harness.events.v1.json#/$defs/mode" },
+    "session_id": { "type": "string", "minLength": 1 },
+    "timestamps": {
+      "type": "object",
+      "required": ["scored", "completed"],
+      "properties": {
+        "scored": { "$ref": "harness.events.v1.json#/$defs/utc_timestamp" },
+        "first_dispatch": { "$ref": "harness.events.v1.json#/$defs/utc_timestamp" },
+        "completed": { "$ref": "harness.events.v1.json#/$defs/utc_timestamp" }
+      }
+    },
+    "rubric": {
+      "type": "object",
+      "required": ["scores", "total", "score_band", "overrides", "tier_planned"],
+      "properties": {
+        "scores": { "$ref": "harness.events.v1.json#/$defs/scores" },
+        "justifications": {
+          "description": "One-line reasons copied from PLAN.md. Omitted when routing.yaml sets metadata.include_justifications: false.",
+          "type": "object",
+          "propertyNames": { "enum": ["ambiguity", "blast", "coupling", "novelty", "reversibility", "verification"] },
+          "additionalProperties": { "type": "string", "maxLength": 200 }
+        },
+        "total": { "type": "integer", "minimum": 0, "maximum": 12 },
+        "score_band": { "$ref": "harness.events.v1.json#/$defs/tier" },
+        "overrides": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+        "tier_planned": { "$ref": "harness.events.v1.json#/$defs/tier" }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "required": ["declared_files", "isolation", "depends_on"],
+      "properties": {
+        "declared_files": { "$ref": "harness.events.v1.json#/$defs/count" },
+        "parallel_group": { "type": "string", "minLength": 1 },
+        "isolation": { "enum": ["none", "worktree"] },
+        "depends_on": { "$ref": "harness.events.v1.json#/$defs/task_ids" }
+      }
+    },
+    "acceptance": {
+      "type": "object",
+      "required": ["criteria", "tests_added", "tests_failed_before"],
+      "properties": {
+        "criteria": { "$ref": "harness.events.v1.json#/$defs/count" },
+        "tests_added": { "$ref": "harness.events.v1.json#/$defs/count" },
+        "tests_failed_before": { "$ref": "harness.events.v1.json#/$defs/count" }
+      }
+    },
+    "runs": {
+      "description": "Every model run for this task, in order. Cost is not here: consumers price each run from its transcript by agent_id.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["agent_type", "agent_id", "started", "ended", "report"],
+        "properties": {
+          "agent_type": { "type": "string", "minLength": 1 },
+          "agent_id": { "type": "string", "minLength": 1 },
+          "model_requested": { "type": "string", "minLength": 1 },
+          "model": { "description": "C13: the model id the transcript says ran (e.g. claude-sonnet-5-5), not what config asked for.", "type": "string", "minLength": 1 },
+          "effort": { "$ref": "harness.events.v1.json#/$defs/effort" },
+          "started": { "$ref": "harness.events.v1.json#/$defs/utc_timestamp" },
+          "ended": { "$ref": "harness.events.v1.json#/$defs/utc_timestamp" },
+          "report": { "enum": ["DONE", "ESCALATE", "PASS", "FAIL", "PLAN", "none"] },
+          "partial": { "type": "boolean" }
+        }
+      }
+    },
+    "eval_rounds": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["round", "result", "failed_acs", "stages"],
+        "properties": {
+          "round": { "type": "integer", "minimum": 1 },
+          "result": { "enum": ["pass", "fail"] },
+          "failed_acs": { "type": "array", "items": { "$ref": "harness.events.v1.json#/$defs/ac_id" }, "uniqueItems": true },
+          "stages": { "type": "array", "items": { "$ref": "harness.events.v1.json#/$defs/stage_result" } },
+          "attribution": { "enum": ["task", "group"] }
+        }
+      }
+    },
+    "escalations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["trigger", "at"],
+        "properties": {
+          "trigger": { "enum": ["test_failures", "edits_per_file", "eval_rounds", "max_turns", "self_report"] },
+          "at": { "$ref": "harness.events.v1.json#/$defs/utc_timestamp" },
+          "new_task_ids": { "$ref": "harness.events.v1.json#/$defs/task_ids" }
+        }
+      }
+    },
+    "redispatches": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["reason", "tier", "at"],
+        "properties": {
+          "reason": { "enum": ["merge_conflict", "replan", "eval_fail"] },
+          "tier": { "$ref": "harness.events.v1.json#/$defs/tier" },
+          "at": { "$ref": "harness.events.v1.json#/$defs/utc_timestamp" }
+        }
+      }
+    },
+    "gate": {
+      "type": "object",
+      "required": ["denials", "denial_reasons", "allowed"],
+      "properties": {
+        "denials": { "$ref": "harness.events.v1.json#/$defs/count" },
+        "denial_reasons": { "type": "array", "items": { "enum": ["no_marker", "diff_mismatch", "stale_marker"] } },
+        "allowed": { "$ref": "harness.events.v1.json#/$defs/count" }
+      }
+    },
+    "commit": {
+      "description": "null when the task ended without a commit (human, abandoned).",
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["sha", "files_changed", "lines_added", "lines_removed"],
+          "properties": {
+            "sha": { "$ref": "harness.events.v1.json#/$defs/git_sha" },
+            "files_changed": { "$ref": "harness.events.v1.json#/$defs/count" },
+            "lines_added": { "$ref": "harness.events.v1.json#/$defs/count" },
+            "lines_removed": { "$ref": "harness.events.v1.json#/$defs/count" }
+          }
+        }
+      ]
+    },
+    "human_interventions": { "$ref": "harness.events.v1.json#/$defs/count" },
+    "outcome": { "enum": ["pass_first_try", "pass", "escalated_then_pass", "human", "abandoned"] },
+    "final_tier": { "$ref": "harness.events.v1.json#/$defs/tier" },
+    "wall_clock_s": { "$ref": "harness.events.v1.json#/$defs/count" },
+    "complete": { "description": "C12: false when an event this record expected was missing, so the record was built from partial evidence.", "type": "boolean" },
+    "missing_events": { "description": "Which expected event types were missing. Present when complete is false.", "type": "array", "items": { "type": "string" } }
+  },
+  "if": { "properties": { "complete": { "const": false } } },
+  "then": { "required": ["missing_events"] }
+}
