@@ -7,6 +7,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } fro
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseReport } from "../src/lib/ids.mjs";
+import { buildRecord } from "../src/lib/tasklog.mjs";
 import { describe, root, validators } from "./validators.mjs";
 
 const SESSION = "11111111-2222-4333-8444-555555555555";
@@ -189,6 +190,48 @@ test("a report handed back through SubagentHandback counts, and the agent is not
   assertValid(stopped);
   assert.equal(stopped.data.report, "PASS");
   assert.deepEqual(stopped.data.task_ids, ["PLAN-1.1"]);
+  assert.equal(stopped.data.model, "claude-opus-5-5");
+});
+
+test("a task's gate decisions are the ones made while it was being worked, not since the plan was scored", () => {
+  // As in PLAN-3: every task scored up front, then worked one after the other, each ending in a commit.
+  const dir = makeRepo();
+  const at = (ts, type, task, data = {}) => ({
+    ts, type, session_id: SESSION, event_id: ts, ...(task ? { task_id: task, plan_id: "PLAN-1" } : {}), data,
+    repo: { name: "r", remote_sha256: "0".repeat(64) }, producer: { name: "harness", version: "0.2.3" }, mode: "observe", config_sha256: "0".repeat(64),
+  });
+  const scores = { scores: { ambiguity: 0, blast: 0, coupling: 0, novelty: 0, reversibility: 0, verification: 0 }, total: 0, score_band: "T1", overrides: [], tier_planned: "T1" };
+  const done = { outcome: "pass_first_try", final_tier: "T1", eval_rounds: 1, escalations: 0 };
+  const events = [
+    at("2026-10-07T10:00:00Z", "task.scored", "PLAN-1.1", scores),
+    at("2026-10-07T10:00:01Z", "task.scored", "PLAN-1.2", scores),
+    at("2026-10-07T10:01:00Z", "task.dispatched", "PLAN-1.1", { tier: "T1", isolation: "none" }),
+    at("2026-10-07T10:05:00Z", "gate.decision", null, { decision: "allow", reason: "pass" }),
+    at("2026-10-07T10:05:02Z", "task.completed", "PLAN-1.1", done),
+    at("2026-10-07T10:06:00Z", "task.dispatched", "PLAN-1.2", { tier: "T1", isolation: "none" }),
+    at("2026-10-07T10:09:00Z", "gate.decision", null, { decision: "deny", reason: "no_marker" }),
+    at("2026-10-07T10:10:00Z", "gate.decision", null, { decision: "allow", reason: "pass" }),
+    at("2026-10-07T10:10:02Z", "task.completed", "PLAN-1.2", done),
+  ];
+  const config = { dir, includeJustifications: true };
+
+  assert.deepEqual(buildRecord(config, "PLAN-1.1", events, []).record.gate, { denials: 0, denial_reasons: [], allowed: 1 });
+  assert.deepEqual(buildRecord(config, "PLAN-1.2", events, []).record.gate, { denials: 1, denial_reasons: ["no_marker"], allowed: 1 });
+});
+
+test("a run whose meta.json names no model is recorded as having inherited it", () => {
+  const dir = makeRepo();
+  const transcript = join(dir, "agent-a7.jsonl");
+  writeFileSync(transcript, JSON.stringify({ type: "assistant", message: { model: "claude-opus-5-5", content: [] } }) + "\n");
+  writeFileSync(join(dir, "agent-a7.meta.json"), JSON.stringify({ agentType: "harness:impl-t1", description: "Implement PLAN-1.1" }));
+
+  hook(dir, "subagent-stop", {
+    session_id: SESSION, agent_id: "a7", agent_type: "harness:impl-t1", last_assistant_message: "DONE: PLAN-1.1", agent_transcript_path: transcript,
+  });
+
+  const stopped = lines(dir, "events").find((e) => e.type === "subagent.stopped");
+  assertValid(stopped);
+  assert.equal(stopped.data.model_requested, "inherit");
   assert.equal(stopped.data.model, "claude-opus-5-5");
 });
 

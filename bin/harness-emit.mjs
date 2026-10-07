@@ -7696,7 +7696,8 @@ function buildRecord(config2, taskId2, events = readEvents(config2), previous = 
     if (e.data.attribution) round.attribution = e.data.attribution;
     return round;
   });
-  const window = (e) => e.session_id === completed.session_id && e.ts >= scored.ts && e.ts <= completed.ts;
+  const opened = dispatched[0]?.ts ?? scored.ts;
+  const window = (e) => e.session_id === completed.session_id && e.ts >= opened && e.ts <= completed.ts;
   const gates = events.filter((e) => e.type === "gate.decision" && window(e));
   const commit = last(ofType("commit.created"));
   const rubric = {

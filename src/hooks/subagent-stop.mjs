@@ -63,8 +63,10 @@ function observed(transcriptPath) {
   const meta = transcriptPath?.replace(/\.jsonl$/, ".meta.json");
   if (meta && existsSync(meta)) {
     try {
+      // Claude Code writes a model into meta.json only when the call asked for one. None means the
+      // agent inherited the session's model, which is what observe mode does on purpose.
       const { model } = JSON.parse(readFileSync(meta, "utf8"));
-      if (model) found.model_requested = model;
+      found.model_requested = model || "inherit";
     } catch {
       // No request recorded.
     }
