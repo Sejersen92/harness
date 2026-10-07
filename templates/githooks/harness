@@ -1,0 +1,20 @@
+#!/bin/sh
+# Runs one of the Harness's git hooks (github.com/Sejersen92/harness): the commit gate for commits
+# made outside Claude Code, the AI-attribution strip, and the commit record.
+#
+# The plugin's location is read from ~/.harness/plugin.json, which the plugin writes whenever a
+# Claude Code session starts with it - never from a path written into this repository.
+root=$(node -e "const p=require('path'),o=require('os');try{process.stdout.write(require(p.join(process.env.HARNESS_HOME||p.join(o.homedir(),'.harness'),'plugin.json')).root)}catch{}" 2>/dev/null)
+
+if [ -z "$root" ] || [ ! -f "$root/bin/harness-git-hook.mjs" ]; then
+  # Only pre-commit guards anything; the others have nothing to do without the plugin.
+  [ "$1" = "pre-commit" ] || exit 0
+  echo "harness: this repository gates commits on an eval, but the Harness plugin is not set up on this machine." >&2
+  echo "  1. git clone https://github.com/Sejersen92/harness c:/src/harness   (Node 22 or later)" >&2
+  echo "  2. start Claude Code in this repository once with: claude --plugin-dir c:/src/harness" >&2
+  echo "     so it records where it lives, then commit again." >&2
+  echo "  (git commit --no-verify skips this check.)" >&2
+  exit 1
+fi
+
+exec node "$root/bin/harness-git-hook.mjs" "$@"

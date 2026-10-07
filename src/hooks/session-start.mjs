@@ -1,11 +1,16 @@
 // SessionStart: when the repo has a routing.yaml, tells the session the Harness is active and
 // how to call harness-emit (Bash commands can't see CLAUDE_PLUGIN_ROOT, so this hands over the
 // absolute path). Silent when the Harness is off.
+//
+// It also records where the plugin lives (~/.harness/plugin.json), whatever the mode, so a
+// repository's git hooks can find it when a commit is made outside Claude Code.
 import { join } from "node:path";
-import { loadConfig, pluginRoot } from "../lib/config.mjs";
+import { loadConfig, pluginRoot, producer } from "../lib/config.mjs";
+import { recordPluginRoot } from "../lib/spool.mjs";
 import { readHookInput } from "./input.mjs";
 
 await readHookInput();
+recordPluginRoot(pluginRoot(), producer().version);
 const config = loadConfig();
 if (config.mode !== "off") {
   const bin = (name) => join(pluginRoot(), "bin", `${name}.mjs`).replace(/\\/g, "/");

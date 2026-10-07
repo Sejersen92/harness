@@ -900,14 +900,14 @@ var require_Collection = __commonJS({
         if (isEmptyPath(path))
           this.add(value);
         else {
-          const [key, ...rest] = path;
+          const [key, ...rest2] = path;
           const node = this.get(key, true);
           if (identity.isCollection(node))
-            node.addIn(rest, value);
+            node.addIn(rest2, value);
           else if (node === void 0 && this.schema)
-            this.set(key, collectionFromPath(this.schema, rest, value));
+            this.set(key, collectionFromPath(this.schema, rest2, value));
           else
-            throw new Error(`Expected YAML collection at ${key}. Remaining path: ${rest}`);
+            throw new Error(`Expected YAML collection at ${key}. Remaining path: ${rest2}`);
         }
       }
       /**
@@ -915,14 +915,14 @@ var require_Collection = __commonJS({
        * @returns `true` if the item was found and removed.
        */
       deleteIn(path) {
-        const [key, ...rest] = path;
-        if (rest.length === 0)
+        const [key, ...rest2] = path;
+        if (rest2.length === 0)
           return this.delete(key);
         const node = this.get(key, true);
         if (identity.isCollection(node))
-          return node.deleteIn(rest);
+          return node.deleteIn(rest2);
         else
-          throw new Error(`Expected YAML collection at ${key}. Remaining path: ${rest}`);
+          throw new Error(`Expected YAML collection at ${key}. Remaining path: ${rest2}`);
       }
       /**
        * Returns item at `key`, or `undefined` if not found. By default unwraps
@@ -930,12 +930,12 @@ var require_Collection = __commonJS({
        * `true` (collections are always returned intact).
        */
       getIn(path, keepScalar) {
-        const [key, ...rest] = path;
+        const [key, ...rest2] = path;
         const node = this.get(key, true);
-        if (rest.length === 0)
+        if (rest2.length === 0)
           return !keepScalar && identity.isScalar(node) ? node.value : node;
         else
-          return identity.isCollection(node) ? node.getIn(rest, keepScalar) : void 0;
+          return identity.isCollection(node) ? node.getIn(rest2, keepScalar) : void 0;
       }
       hasAllNullValues(allowScalar) {
         return this.items.every((node) => {
@@ -949,28 +949,28 @@ var require_Collection = __commonJS({
        * Checks if the collection includes a value with the key `key`.
        */
       hasIn(path) {
-        const [key, ...rest] = path;
-        if (rest.length === 0)
+        const [key, ...rest2] = path;
+        if (rest2.length === 0)
           return this.has(key);
         const node = this.get(key, true);
-        return identity.isCollection(node) ? node.hasIn(rest) : false;
+        return identity.isCollection(node) ? node.hasIn(rest2) : false;
       }
       /**
        * Sets a value in this collection. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
       setIn(path, value) {
-        const [key, ...rest] = path;
-        if (rest.length === 0) {
+        const [key, ...rest2] = path;
+        if (rest2.length === 0) {
           this.set(key, value);
         } else {
           const node = this.get(key, true);
           if (identity.isCollection(node))
-            node.setIn(rest, value);
+            node.setIn(rest2, value);
           else if (node === void 0 && this.schema)
-            this.set(key, collectionFromPath(this.schema, rest, value));
+            this.set(key, collectionFromPath(this.schema, rest2, value));
           else
-            throw new Error(`Expected YAML collection at ${key}. Remaining path: ${rest}`);
+            throw new Error(`Expected YAML collection at ${key}. Remaining path: ${rest2}`);
         }
       }
     };
@@ -3328,9 +3328,9 @@ var require_stringifyDocument = __commonJS({
       const lines = [];
       let hasDirectives = options.directives === true;
       if (options.directives !== false && doc.directives) {
-        const dir = doc.directives.toString(doc);
-        if (dir) {
-          lines.push(dir);
+        const dir2 = doc.directives.toString(doc);
+        if (dir2) {
+          lines.push(dir2);
           hasDirectives = true;
         } else if (doc.directives.docStart)
           hasDirectives = true;
@@ -5357,10 +5357,10 @@ var require_cst_scalar = __commonJS({
         case "|":
         case ">": {
           const he = source.indexOf("\n");
-          const head = source.substring(0, he);
+          const head2 = source.substring(0, he);
           const body = source.substring(he + 1) + "\n";
           const props = [
-            { type: "block-scalar-header", offset, indent, source: head }
+            { type: "block-scalar-header", offset, indent, source: head2 }
           ];
           if (!addEndtoBlockProps(props, end))
             props.push({ type: "newline", offset: -1, indent, source: "\n" });
@@ -5420,19 +5420,19 @@ var require_cst_scalar = __commonJS({
     }
     function setBlockScalarValue(token, source) {
       const he = source.indexOf("\n");
-      const head = source.substring(0, he);
+      const head2 = source.substring(0, he);
       const body = source.substring(he + 1) + "\n";
       if (token.type === "block-scalar") {
         const header = token.props[0];
         if (header.type !== "block-scalar-header")
           throw new Error("Invalid block scalar header");
-        header.source = head;
+        header.source = head2;
         token.source = body;
       } else {
         const { offset } = token;
         const indent = "indent" in token ? token.indent : -1;
         const props = [
-          { type: "block-scalar-header", offset, indent, source: head }
+          { type: "block-scalar-header", offset, indent, source: head2 }
         ];
         if (!addEndtoBlockProps(props, "end" in token ? token.end : void 0))
           props.push({ type: "newline", offset: -1, indent, source: "\n" });
@@ -7367,8 +7367,10 @@ var require_dist = __commonJS({
   }
 });
 
-// src/hooks/session-start.mjs
-import { join as join3 } from "node:path";
+// src/cli/harness-git-hook.mjs
+import { execFileSync as execFileSync4, spawnSync as spawnSync2 } from "node:child_process";
+import { readFileSync as readFileSync4, writeFileSync as writeFileSync3 } from "node:fs";
+import { join as join4 } from "node:path";
 
 // src/lib/config.mjs
 var import_yaml = __toESM(require_dist(), 1);
@@ -7379,6 +7381,22 @@ import { fileURLToPath } from "node:url";
 
 // src/lib/ids.mjs
 import { createHash, randomBytes } from "node:crypto";
+var CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+function ulid(ms = Date.now()) {
+  let time = "";
+  let t = BigInt(ms);
+  for (let i = 0; i < 10; i++) {
+    time = CROCKFORD[Number(t % 32n)] + time;
+    t /= 32n;
+  }
+  let rand = BigInt("0x" + randomBytes(10).toString("hex"));
+  let tail = "";
+  for (let i = 0; i < 16; i++) {
+    tail = CROCKFORD[Number(rand % 32n)] + tail;
+    rand /= 32n;
+  }
+  return time + tail;
+}
 var sha256 = (data) => createHash("sha256").update(data).digest("hex");
 var utcNow = (date = /* @__PURE__ */ new Date()) => date.toISOString().replace(/\.\d{3}Z$/, "Z");
 
@@ -7393,15 +7411,21 @@ var git = (cwd, ...args) => {
 function projectDir(cwd = process.cwd()) {
   return process.env.CLAUDE_PROJECT_DIR || git(cwd, "rev-parse", "--show-toplevel") || cwd;
 }
+function repoIdentity(dir2) {
+  const remote = git(dir2, "remote", "get-url", "origin");
+  const normalised = remote?.trim().toLowerCase().replace(/\/+$/, "").replace(/\.git$/, "");
+  const name = (normalised ? normalised.split(/[/:]/).pop() : basename(dir2)).toLowerCase();
+  return { name, remote_sha256: sha256(normalised ?? `local:${dir2.toLowerCase()}`) };
+}
 function pluginRoot() {
   if (process.env.CLAUDE_PLUGIN_ROOT) return process.env.CLAUDE_PLUGIN_ROOT;
-  let dir = dirname(fileURLToPath(import.meta.url));
-  while (!existsSync(join(dir, ".claude-plugin", "plugin.json"))) {
-    const parent = dirname(dir);
-    if (parent === dir) return null;
-    dir = parent;
+  let dir2 = dirname(fileURLToPath(import.meta.url));
+  while (!existsSync(join(dir2, ".claude-plugin", "plugin.json"))) {
+    const parent = dirname(dir2);
+    if (parent === dir2) return null;
+    dir2 = parent;
   }
-  return dir;
+  return dir2;
 }
 function producer() {
   try {
@@ -7411,18 +7435,18 @@ function producer() {
     return { name: "harness", version: "0.0.0-unknown" };
   }
 }
-function loadConfig(dir = projectDir()) {
-  const path = join(dir, "routing.yaml");
-  if (!existsSync(path)) return { dir, mode: "off", reason: "no routing.yaml" };
+function loadConfig(dir2 = projectDir()) {
+  const path = join(dir2, "routing.yaml");
+  if (!existsSync(path)) return { dir: dir2, mode: "off", reason: "no routing.yaml" };
   const bytes = readFileSync(path);
   const yaml = (0, import_yaml.parse)(bytes.toString("utf8")) ?? {};
   const metadata = yaml.metadata ?? {};
   return {
-    dir,
+    dir: dir2,
     mode: ["off", "observe", "route"].includes(yaml.mode) ? yaml.mode : "off",
     tiers: yaml.tiers ?? {},
     config_sha256: sha256(bytes),
-    metadataDir: join(dir, metadata.dir ?? ".harness"),
+    metadataDir: join(dir2, metadata.dir ?? ".harness"),
     retentionDays: Number.isInteger(metadata.retention_days) ? metadata.retention_days : 30,
     includeJustifications: metadata.include_justifications !== false,
     stages: Array.isArray(yaml.eval?.stages) ? yaml.eval.stages : [],
@@ -7430,49 +7454,214 @@ function loadConfig(dir = projectDir()) {
   };
 }
 
-// src/lib/spool.mjs
-import { appendFileSync, existsSync as existsSync2, mkdirSync, readdirSync, readFileSync as readFileSync2, renameSync, rmSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+// src/lib/eval.mjs
+import { spawnSync, execFileSync as execFileSync2 } from "node:child_process";
+import { existsSync as existsSync2, mkdirSync, readFileSync as readFileSync2, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join as join2, resolve } from "node:path";
-var pluginRecordPath = () => join2(process.env.HARNESS_HOME || join2(homedir(), ".harness"), "plugin.json");
-function recordPluginRoot(root, version, now = /* @__PURE__ */ new Date()) {
-  if (!root) return;
-  const path = pluginRecordPath();
+var git2 = (dir2, ...args) => execFileSync2("git", ["-C", dir2, ...args], { maxBuffer: 1 << 30, stdio: ["ignore", "pipe", "ignore"] });
+var stagedDiffSha256 = (dir2) => sha256(git2(dir2, "diff", "--cached", "--binary"));
+function head(dir2) {
   try {
-    const known = existsSync2(path) ? JSON.parse(readFileSync2(path, "utf8")) : null;
-    if (known?.root === resolve(root) && known?.version === version) return;
-    mkdirSync(join2(path, ".."), { recursive: true });
-    writeFileSync(`${path}.tmp`, JSON.stringify({ root: resolve(root), version, recorded: utcNow(now) }, null, 2) + "\n");
-    renameSync(`${path}.tmp`, path);
-  } catch (error) {
-    process.stderr.write(`harness: could not record the plugin's location in ${path}: ${error.message}
-`);
-  }
-}
-
-// src/hooks/input.mjs
-async function readHookInput() {
-  const chunks = [];
-  for await (const chunk of process.stdin) chunks.push(chunk);
-  try {
-    return JSON.parse(Buffer.concat(chunks).toString("utf8")) ?? {};
+    return git2(dir2, "rev-parse", "HEAD").toString().trim();
   } catch {
-    return {};
+    return null;
+  }
+}
+var markerPath = (dir2) => join2(dir2, ".claude", "state", "eval-pass.json");
+function readMarker(dir2) {
+  try {
+    return JSON.parse(readFileSync2(markerPath(dir2), "utf8"));
+  } catch {
+    return null;
   }
 }
 
-// src/hooks/session-start.mjs
-await readHookInput();
-recordPluginRoot(pluginRoot(), producer().version);
-var config = loadConfig();
-if (config.mode !== "off") {
-  const bin = (name) => join3(pluginRoot(), "bin", `${name}.mjs`).replace(/\\/g, "/");
-  const context = [
-    `The Harness is active in this repository (mode: ${config.mode}).`,
-    `Record Harness events with: node "${bin("harness-emit")}" <type> --task PLAN-n.m --data '<json>'`,
-    `Run the eval on what is staged with: node "${bin("harness-eval")}" --task PLAN-n.m (a pass is what allows a commit)`,
-    "Only the harness:orchestrator agent records plan and task events."
-  ].join("\n");
-  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: context } }));
+// src/lib/gate.mjs
+import { execFileSync as execFileSync3 } from "node:child_process";
+var AI_TRAILER = /^\s*co-authored-by:.*\b(claude|anthropic|copilot|chatgpt|openai|codex|gemini|cursor)\b.*$/i;
+var AI_FOOTER = /^.*generated (with|by) \[?claude( code)?\]?.*$/i;
+function stripAttribution(message) {
+  const lines = message.split(/\r?\n/);
+  const kept = lines.filter((line) => !AI_TRAILER.test(line) && !AI_FOOTER.test(line));
+  if (kept.length === lines.length) return null;
+  while (kept.length && !kept.at(-1).trim()) kept.pop();
+  return kept.join("\n") + "\n";
 }
+var unstagedTracked = (dir2) => execFileSync3("git", ["-C", dir2, "diff", "--name-only"], { stdio: ["ignore", "pipe", "ignore"] }).toString().trim().length > 0;
+function checkMarker(dir2, ttlMinutes, now = /* @__PURE__ */ new Date()) {
+  const marker = readMarker(dir2);
+  if (!marker?.diff_sha256) return { decision: "deny", reason: "no_marker", detail: "there is no eval pass" };
+  const ageMinutes = (now.getTime() - Date.parse(marker.passed_at)) / 6e4;
+  if (!(ageMinutes <= ttlMinutes)) {
+    return { decision: "deny", reason: "stale_marker", detail: `the eval pass is ${Math.round(ageMinutes)} minutes old, over the ${ttlMinutes}-minute limit` };
+  }
+  if (marker.head !== head(dir2)) {
+    return { decision: "deny", reason: "diff_mismatch", detail: "HEAD has moved since the eval passed" };
+  }
+  if (marker.diff_sha256 !== stagedDiffSha256(dir2)) {
+    return { decision: "deny", reason: "diff_mismatch", detail: "the staged diff is not the one the eval passed" };
+  }
+  if (unstagedTracked(dir2)) {
+    return { decision: "deny", reason: "diff_mismatch", detail: "tracked files have unstaged changes the eval did not see" };
+  }
+  return { decision: "allow", reason: "pass", detail: "an eval passed for this staged diff" };
+}
+
+// src/lib/spool.mjs
+import { appendFileSync, existsSync as existsSync3, mkdirSync as mkdirSync2, readdirSync, readFileSync as readFileSync3, renameSync as renameSync2, rmSync as rmSync2, writeFileSync as writeFileSync2 } from "node:fs";
+import { homedir } from "node:os";
+import { join as join3, resolve as resolve2 } from "node:path";
+var MAX_LINE_BYTES = 4096;
+var registryPath = () => join3(process.env.HARNESS_HOME || join3(homedir(), ".harness"), "spools.json");
+function registerSpool(config2, now = /* @__PURE__ */ new Date()) {
+  const path = registryPath();
+  const metadataDir = resolve2(config2.metadataDir);
+  try {
+    const registry = existsSync3(path) ? JSON.parse(readFileSync3(path, "utf8")) : { version: 1, spools: [] };
+    if (registry.spools.some((s) => s.metadata_dir.toLowerCase() === metadataDir.toLowerCase())) return;
+    registry.spools.push({ repo_dir: resolve2(config2.dir), metadata_dir: metadataDir, first_seen: utcNow(now) });
+    mkdirSync2(join3(path, ".."), { recursive: true });
+    writeFileSync2(`${path}.tmp`, JSON.stringify(registry, null, 2) + "\n");
+    renameSync2(`${path}.tmp`, path);
+  } catch (error) {
+    recordFailure(config2, `spool registry: ${error.message}`);
+  }
+}
+function recordFailure(config2, why) {
+  process.stderr.write(`harness: metadata not written: ${why}
+`);
+  try {
+    mkdirSync2(config2.metadataDir, { recursive: true });
+    const file = join3(config2.metadataDir, "emit-failures");
+    const count = existsSync3(file) ? Number.parseInt(readFileSync3(file, "utf8"), 10) || 0 : 0;
+    writeFileSync2(file, `${count + 1}
+`);
+  } catch {
+  }
+}
+function appendLine(config2, file, record) {
+  const line = JSON.stringify(record);
+  if (Buffer.byteLength(line) >= MAX_LINE_BYTES) {
+    recordFailure(config2, `${record.type ?? record.schema} line is ${Buffer.byteLength(line)} bytes, over the 4 KB limit`);
+    return false;
+  }
+  try {
+    const firstLineInFile = !existsSync3(file);
+    mkdirSync2(join3(file, ".."), { recursive: true });
+    appendFileSync(file, line + "\n", { flag: "a" });
+    if (firstLineInFile) registerSpool(config2);
+    return true;
+  } catch (error) {
+    recordFailure(config2, error.message);
+    return false;
+  }
+}
+function sweep(config2, now) {
+  const today = utcNow(now).slice(0, 10);
+  const marker = join3(config2.metadataDir, "state", "swept");
+  try {
+    if (existsSync3(marker) && readFileSync3(marker, "utf8").trim() === today) return;
+    const cutoff = new Date(now.getTime() - config2.retentionDays * 864e5).toISOString().slice(0, 10);
+    for (const [folder, toDate] of [["events", (n) => n.slice(0, 10)], ["routing-log", (n) => `${n.slice(0, 7)}-31`]]) {
+      const dir2 = join3(config2.metadataDir, folder);
+      if (!existsSync3(dir2)) continue;
+      for (const name of readdirSync(dir2).filter((n) => n.endsWith(".jsonl"))) {
+        if (toDate(name) < cutoff) rmSync2(join3(dir2, name));
+      }
+    }
+    mkdirSync2(join3(config2.metadataDir, "state"), { recursive: true });
+    writeFileSync2(marker, today);
+  } catch (error) {
+    recordFailure(config2, `retention sweep: ${error.message}`);
+  }
+}
+function emitEvent(config2, type, fields = {}, data = {}, now = /* @__PURE__ */ new Date()) {
+  if (config2.mode === "off") return null;
+  sweep(config2, now);
+  const sessionId = fields.session_id ?? process.env.CLAUDE_CODE_SESSION_ID;
+  if (!sessionId) {
+    recordFailure(config2, `${type}: no session id (not running inside Claude Code?)`);
+    return null;
+  }
+  const event = {
+    schema: "harness.events/v1",
+    event_id: ulid(now.getTime()),
+    ts: utcNow(now),
+    type,
+    producer: producer(),
+    repo: repoIdentity(config2.dir),
+    mode: config2.mode,
+    session_id: sessionId,
+    config_sha256: config2.config_sha256
+  };
+  for (const key of ["prompt_id", "agent_id", "agent_type", "plan_id", "task_id"]) {
+    if (fields[key]) event[key] = fields[key];
+  }
+  event.data = data;
+  const file = join3(config2.metadataDir, "events", `${event.ts.slice(0, 10)}.jsonl`);
+  return appendLine(config2, file, event) ? event : null;
+}
+
+// src/cli/harness-git-hook.mjs
+var [hook, ...rest] = process.argv.slice(2);
+var git3 = (...args) => execFileSync4("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+var dir = (() => {
+  try {
+    return git3("rev-parse", "--show-toplevel");
+  } catch {
+    return process.cwd();
+  }
+})();
+var config = loadConfig(dir);
+var say = (line) => process.stderr.write(`${line}
+`);
+if (hook === "commit-msg") {
+  const file = rest[0];
+  try {
+    const stripped = stripAttribution(readFileSync4(file, "utf8"));
+    if (stripped !== null) writeFileSync3(file, stripped);
+  } catch (error) {
+    say(`harness: commit-msg could not read ${file}: ${error.message}`);
+  }
+  process.exit(0);
+}
+if (config.mode === "off") process.exit(0);
+if (hook === "pre-commit") {
+  const first = checkMarker(dir, config.markerTtlMinutes);
+  if (first.decision === "allow") process.exit(0);
+  say(`harness: no eval pass for this commit (${first.detail}), so running harness-eval now.`);
+  const run = spawnSync2("node", [join4(pluginRoot(), "bin", "harness-eval.mjs")], {
+    cwd: dir,
+    env: { ...process.env, CLAUDE_PROJECT_DIR: dir },
+    stdio: ["ignore", "inherit", "inherit"]
+  });
+  const second = run.status === 0 ? checkMarker(dir, config.markerTtlMinutes) : null;
+  if (second?.decision === "allow") process.exit(0);
+  say(`harness: commit stopped - ${second ? second.detail : "harness-eval did not pass"}. (git commit --no-verify skips this check.)`);
+  process.exit(1);
+}
+if (hook === "post-commit") {
+  if (!process.env.CLAUDE_CODE_SESSION_ID) process.exit(0);
+  try {
+    const sha = git3("rev-parse", "HEAD");
+    let files = 0, added = 0, removed = 0;
+    for (const line of git3("show", "--numstat", "--format=", "HEAD").split("\n").filter(Boolean)) {
+      const [a, r] = line.split("	");
+      files++;
+      added += Number.parseInt(a, 10) || 0;
+      removed += Number.parseInt(r, 10) || 0;
+    }
+    const taskIds = readMarker(dir)?.task_ids ?? [];
+    emitEvent(
+      config,
+      "commit.created",
+      taskIds.length === 1 ? { task_id: taskIds[0], plan_id: taskIds[0].replace(/\..*$/, "") } : {},
+      { commit_sha: sha, task_ids: taskIds, files_changed: files, lines_added: added, lines_removed: removed }
+    );
+  } catch (error) {
+    say(`harness: post-commit could not record the commit: ${error.message}`);
+  }
+  process.exit(0);
+}
+say(`harness-git-hook: unknown hook "${hook ?? ""}"`);
 process.exit(0);

@@ -14,6 +14,28 @@ const MAX_LINE_BYTES = 4096;
  */
 export const registryPath = () => join(process.env.HARNESS_HOME || join(homedir(), ".harness"), "spools.json");
 
+/**
+ * Where this machine's copy of the plugin lives: ~/.harness/plugin.json. A repository's git hooks run
+ * outside Claude Code, where CLAUDE_PLUGIN_ROOT doesn't exist, and they read it from here rather than
+ * from a path written into the repository, which would be one machine's truth on every machine.
+ */
+export const pluginRecordPath = () => join(process.env.HARNESS_HOME || join(homedir(), ".harness"), "plugin.json");
+
+/** Records the plugin's root and version, if they changed. Called by SessionStart. Never throws. */
+export function recordPluginRoot(root, version, now = new Date()) {
+  if (!root) return;
+  const path = pluginRecordPath();
+  try {
+    const known = existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : null;
+    if (known?.root === resolve(root) && known?.version === version) return;
+    mkdirSync(join(path, ".."), { recursive: true });
+    writeFileSync(`${path}.tmp`, JSON.stringify({ root: resolve(root), version, recorded: utcNow(now) }, null, 2) + "\n");
+    renameSync(`${path}.tmp`, path);
+  } catch (error) {
+    process.stderr.write(`harness: could not record the plugin's location in ${path}: ${error.message}\n`);
+  }
+}
+
 /** Adds this repository's metadata folder to the registry if it isn't there. Cheap after the first time. */
 export function registerSpool(config, now = new Date()) {
   const path = registryPath();
