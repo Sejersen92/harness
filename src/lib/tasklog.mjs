@@ -47,10 +47,15 @@ export function buildRecord(config, taskId, events = readEvents(config), previou
     return round;
   });
 
-  // gate.decision carries no task id: count the decisions made in this session while the task was being
-  // worked. That starts at its first dispatch, not when it was scored: the orchestrator scores every task
-  // of a plan up front, so a window from scoring took in every earlier task's commits too (PLAN-3, 2026-10-07).
-  const opened = dispatched[0]?.ts ?? scored.ts;
+  // When work on the task began: its first subagent (the evaluator writing its tests runs before the
+  // dispatch) or its first dispatch, whichever came first. Not when it was scored: the orchestrator scores
+  // every task of a plan up front, so a clock from scoring counted the time a task spent waiting behind the
+  // ones before it, and a gate window from scoring took in their commits (PLAN-3, 2026-10-07).
+  const opened = [dispatched[0]?.ts, ...runs.map((r) => r.started)]
+    .filter((ts) => ts && ts >= scored.ts)
+    .sort()[0] ?? scored.ts;
+
+  // gate.decision carries no task id: count the decisions made in this session while the task was worked.
   const window = (e) => e.session_id === completed.session_id && e.ts >= opened && e.ts <= completed.ts;
   const gates = events.filter((e) => e.type === "gate.decision" && window(e));
   const commit = last(ofType("commit.created"));
@@ -98,7 +103,7 @@ export function buildRecord(config, taskId, events = readEvents(config), previou
     human_interventions: ofType("human.intervention").length,
     outcome: completed.data.outcome,
     final_tier: completed.data.final_tier,
-    wall_clock_s: seconds(scored.ts, completed.ts),
+    wall_clock_s: seconds(opened, completed.ts),
     complete: missing.length === 0,
   };
   if (missing.length) record.missing_events = missing;

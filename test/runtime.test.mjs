@@ -208,6 +208,9 @@ test("a task's gate decisions are the ones made while it was being worked, not s
     at("2026-10-07T10:01:00Z", "task.dispatched", "PLAN-1.1", { tier: "T1", isolation: "none" }),
     at("2026-10-07T10:05:00Z", "gate.decision", null, { decision: "allow", reason: "pass" }),
     at("2026-10-07T10:05:02Z", "task.completed", "PLAN-1.1", done),
+    // PLAN-1.2's tests are written before it is dispatched, and that is when its work began.
+    { ...at("2026-10-07T10:05:30Z", "subagent.started", null), agent_id: "a-tests", agent_type: "harness:evaluator" },
+    { ...at("2026-10-07T10:05:50Z", "subagent.stopped", null, { report: "DONE", duration_ms: 20000, partial: false, task_ids: ["PLAN-1.2"] }), agent_id: "a-tests", agent_type: "harness:evaluator" },
     at("2026-10-07T10:06:00Z", "task.dispatched", "PLAN-1.2", { tier: "T1", isolation: "none" }),
     at("2026-10-07T10:09:00Z", "gate.decision", null, { decision: "deny", reason: "no_marker" }),
     at("2026-10-07T10:10:00Z", "gate.decision", null, { decision: "allow", reason: "pass" }),
@@ -215,8 +218,15 @@ test("a task's gate decisions are the ones made while it was being worked, not s
   ];
   const config = { dir, includeJustifications: true };
 
-  assert.deepEqual(buildRecord(config, "PLAN-1.1", events, []).record.gate, { denials: 0, denial_reasons: [], allowed: 1 });
-  assert.deepEqual(buildRecord(config, "PLAN-1.2", events, []).record.gate, { denials: 1, denial_reasons: ["no_marker"], allowed: 1 });
+  const first = buildRecord(config, "PLAN-1.1", events, []).record;
+  const second = buildRecord(config, "PLAN-1.2", events, []).record;
+  assert.deepEqual(first.gate, { denials: 0, denial_reasons: [], allowed: 1 });
+  assert.deepEqual(second.gate, { denials: 1, denial_reasons: ["no_marker"], allowed: 1 });
+
+  // The clock runs from when work began, not from scoring: 10:01:00 -> 10:05:02, and 10:05:30 (its
+  // tests, before its dispatch) -> 10:10:02. From scoring, PLAN-1.2 would have read 600 s.
+  assert.equal(first.wall_clock_s, 242);
+  assert.equal(second.wall_clock_s, 272);
 });
 
 test("a run whose meta.json names no model is recorded as having inherited it", () => {
