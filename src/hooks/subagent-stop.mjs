@@ -13,7 +13,29 @@ const input = await readHookInput();
 const config = loadConfig();
 if (config.mode === "off" || !isHarnessAgent(input) || !input.agent_id) process.exit(0);
 
-const { report, task_ids } = parseReport(input.last_assistant_message);
+/**
+ * The report a subagent ended with. Usually its last message. But a subagent can hand its report back
+ * through the SubagentHandback tool instead, and then its last message is not the report: in the first
+ * full run (2026-10-07) every subagent did, each was blocked for "no header" with a correct header in
+ * hand, and none of their stops was recorded. So the last handback in the agent's transcript counts too.
+ */
+function findReport() {
+  const fromMessage = parseReport(input.last_assistant_message);
+  if (fromMessage.report !== "none") return fromMessage;
+  try {
+    const lines = readFileSync(input.agent_transcript_path, "utf8").trim().split("\n");
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const content = JSON.parse(lines[i]).message?.content;
+      const handback = Array.isArray(content) ? content.findLast((c) => c.type === "tool_use" && c.name === "SubagentHandback") : null;
+      if (handback) return parseReport(handback.input?.message);
+    }
+  } catch {
+    // No transcript to read: the message was all there was.
+  }
+  return fromMessage;
+}
+
+const { report, task_ids } = findReport();
 
 if (report === "none" && !input.stop_hook_active) {
   process.stdout.write(JSON.stringify({

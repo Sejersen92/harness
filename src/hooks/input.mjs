@@ -12,8 +12,14 @@ export async function readHookInput() {
   }
 }
 
-/** Only subagents from this plugin are the Harness's business. */
-export const isHarnessAgent = (input) => typeof input.agent_type === "string" && input.agent_type.startsWith("harness:");
+/**
+ * Only subagents from this plugin are the Harness's business, and the orchestrator is not one. It runs
+ * as the main thread (`claude --agent harness:orchestrator`), and Claude Code labels the main thread's
+ * own contexts with that type: in the first full run (2026-10-07) each relay that delivered a
+ * subagent's handback fired SubagentStop as "harness:orchestrator", with an id no transcript has.
+ */
+export const isHarnessAgent = (input) =>
+  typeof input.agent_type === "string" && input.agent_type.startsWith("harness:") && input.agent_type !== "harness:orchestrator";
 
 /** Small per-agent state between SubagentStart and SubagentStop (start time), under <metadata dir>/state/agents. */
 export const agentState = (config, agentId) => {

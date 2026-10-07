@@ -151,6 +151,38 @@ test("subagents from other plugins are ignored", () => {
   assert.equal(lines(dir, "events").length, 0);
 });
 
+test("a report handed back through SubagentHandback counts, and the agent is not sent back for it", () => {
+  // As in the first full run (2026-10-07): the agent's last turn is the handback call, so its last
+  // message is not the report.
+  const dir = makeRepo();
+  const transcript = join(dir, "agent-a1.jsonl");
+  writeFileSync(transcript, [
+    JSON.stringify({ type: "assistant", message: { model: "claude-opus-5-5", content: [{ type: "tool_use", name: "Bash", input: { command: "npm test" } }] } }),
+    JSON.stringify({ type: "assistant", message: { model: "claude-opus-5-5", content: [{ type: "tool_use", name: "SubagentHandback", input: { message: "PASS: PLAN-1.1\n\nEvery criterion met." } }] } }),
+    JSON.stringify({ type: "user", message: { content: [{ type: "tool_result", content: "Report delivered to your caller." }] } }),
+  ].join("\n") + "\n");
+
+  const result = hook(dir, "subagent-stop", {
+    session_id: SESSION, agent_id: "a1", agent_type: "harness:evaluator", last_assistant_message: "", stop_hook_active: false, agent_transcript_path: transcript,
+  });
+
+  assert.equal(result.stdout, "", "a correct handback must not be blocked");
+  const stopped = lines(dir, "events").find((e) => e.type === "subagent.stopped");
+  assertValid(stopped);
+  assert.equal(stopped.data.report, "PASS");
+  assert.deepEqual(stopped.data.task_ids, ["PLAN-1.1"]);
+  assert.equal(stopped.data.model, "claude-opus-5-5");
+});
+
+test("the orchestrator's own contexts are not subagent runs", () => {
+  const dir = makeRepo();
+  for (const name of ["subagent-start", "subagent-stop"]) {
+    const result = hook(dir, name, { session_id: SESSION, agent_id: "a9802488", agent_type: "harness:orchestrator", last_assistant_message: "no header", stop_hook_active: false });
+    assert.equal(result.stdout, "", `${name} acted on the orchestrator`);
+  }
+  assert.equal(lines(dir, "events").length, 0);
+});
+
 test("SessionStart hands the session the path to harness-emit", () => {
   const dir = makeRepo();
   const out = JSON.parse(hook(dir, "session-start", { session_id: SESSION, source: "startup" }).stdout);

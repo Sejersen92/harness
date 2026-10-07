@@ -7580,7 +7580,7 @@ async function readHookInput() {
     return {};
   }
 }
-var isHarnessAgent = (input2) => typeof input2.agent_type === "string" && input2.agent_type.startsWith("harness:");
+var isHarnessAgent = (input2) => typeof input2.agent_type === "string" && input2.agent_type.startsWith("harness:") && input2.agent_type !== "harness:orchestrator";
 var agentState = (config2, agentId) => {
   const dir = join3(config2.metadataDir, "state", "agents");
   const file = join3(dir, `${agentId}.json`);
@@ -7606,7 +7606,21 @@ var agentState = (config2, agentId) => {
 var input = await readHookInput();
 var config = loadConfig();
 if (config.mode === "off" || !isHarnessAgent(input) || !input.agent_id) process.exit(0);
-var { report, task_ids } = parseReport(input.last_assistant_message);
+function findReport() {
+  const fromMessage = parseReport(input.last_assistant_message);
+  if (fromMessage.report !== "none") return fromMessage;
+  try {
+    const lines = readFileSync4(input.agent_transcript_path, "utf8").trim().split("\n");
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const content = JSON.parse(lines[i]).message?.content;
+      const handback = Array.isArray(content) ? content.findLast((c) => c.type === "tool_use" && c.name === "SubagentHandback") : null;
+      if (handback) return parseReport(handback.input?.message);
+    }
+  } catch {
+  }
+  return fromMessage;
+}
+var { report, task_ids } = findReport();
 if (report === "none" && !input.stop_hook_active) {
   process.stdout.write(JSON.stringify({
     decision: "block",
