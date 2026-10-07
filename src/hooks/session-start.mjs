@@ -8,10 +8,11 @@ import { readHookInput } from "./input.mjs";
 await readHookInput();
 const config = loadConfig();
 if (config.mode !== "off") {
-  const emit = join(pluginRoot(), "bin", "harness-emit.mjs").replace(/\\/g, "/");
+  const bin = (name) => join(pluginRoot(), "bin", `${name}.mjs`).replace(/\\/g, "/");
   const context = [
     `The Harness is active in this repository (mode: ${config.mode}).`,
-    `Record Harness events with: node "${emit}" <type> --task PLAN-n.m --data '<json>'`,
+    `Record Harness events with: node "${bin("harness-emit")}" <type> --task PLAN-n.m --data '<json>'`,
+    `Run the eval on what is staged with: node "${bin("harness-eval")}" --task PLAN-n.m (a pass is what allows a commit)`,
     "Only the harness:orchestrator agent records plan and task events.",
   ].join("\n");
   process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: context } }));

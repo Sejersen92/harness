@@ -4,6 +4,7 @@ import { build } from "esbuild";
 
 const entries = {
   "harness-emit": "src/cli/harness-emit.mjs",
+  "harness-eval": "src/cli/harness-eval.mjs",
   "hook-session-start": "src/hooks/session-start.mjs",
   "hook-subagent-start": "src/hooks/subagent-start.mjs",
   "hook-subagent-stop": "src/hooks/subagent-stop.mjs",

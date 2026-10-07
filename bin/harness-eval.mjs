@@ -124,12 +124,12 @@ var require_visit = __commonJS({
         if (identity.isCollection(node)) {
           path = Object.freeze(path.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = visit_(i, node.items[i], visitor, path);
-            if (typeof ci === "number")
-              i = ci - 1;
-            else if (ci === BREAK)
+            const ci2 = visit_(i, node.items[i], visitor, path);
+            if (typeof ci2 === "number")
+              i = ci2 - 1;
+            else if (ci2 === BREAK)
               return BREAK;
-            else if (ci === REMOVE) {
+            else if (ci2 === REMOVE) {
               node.items.splice(i, 1);
               i -= 1;
             }
@@ -172,12 +172,12 @@ var require_visit = __commonJS({
         if (identity.isCollection(node)) {
           path = Object.freeze(path.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = await visitAsync_(i, node.items[i], visitor, path);
-            if (typeof ci === "number")
-              i = ci - 1;
-            else if (ci === BREAK)
+            const ci2 = await visitAsync_(i, node.items[i], visitor, path);
+            if (typeof ci2 === "number")
+              i = ci2 - 1;
+            else if (ci2 === BREAK)
               return BREAK;
-            else if (ci === REMOVE) {
+            else if (ci2 === REMOVE) {
               node.items.splice(i, 1);
               i -= 1;
             }
@@ -3735,16 +3735,16 @@ var require_errors = __commonJS({
       error.linePos = error.pos.map((pos) => lc.linePos(pos));
       const { line, col } = error.linePos[0];
       error.message += ` at line ${line}, column ${col}`;
-      let ci = col - 1;
+      let ci2 = col - 1;
       let lineStr = src.substring(lc.lineStarts[line - 1], lc.lineStarts[line]).replace(/[\n\r]+$/, "");
-      if (ci >= 60 && lineStr.length > 80) {
-        const trimStart = Math.min(ci - 39, lineStr.length - 79);
+      if (ci2 >= 60 && lineStr.length > 80) {
+        const trimStart = Math.min(ci2 - 39, lineStr.length - 79);
         lineStr = "\u2026" + lineStr.substring(trimStart);
-        ci -= trimStart - 1;
+        ci2 -= trimStart - 1;
       }
       if (lineStr.length > 80)
         lineStr = lineStr.substring(0, 79) + "\u2026";
-      if (line > 1 && /^ *$/.test(lineStr.substring(0, ci))) {
+      if (line > 1 && /^ *$/.test(lineStr.substring(0, ci2))) {
         let prev = src.substring(lc.lineStarts[line - 2], lc.lineStarts[line - 1]);
         if (prev.length > 80)
           prev = prev.substring(0, 79) + "\u2026\n";
@@ -3754,9 +3754,9 @@ var require_errors = __commonJS({
         let count = 1;
         const end = error.linePos[1];
         if (end?.line === line && end.col > col) {
-          count = Math.max(1, Math.min(end.col - col, 80 - ci));
+          count = Math.max(1, Math.min(end.col - col, 80 - ci2));
         }
-        const pointer = " ".repeat(ci) + "^".repeat(count);
+        const pointer = " ".repeat(ci2) + "^".repeat(count);
         error.message += `:
 
 ${lineStr}
@@ -5357,10 +5357,10 @@ var require_cst_scalar = __commonJS({
         case "|":
         case ">": {
           const he = source.indexOf("\n");
-          const head = source.substring(0, he);
+          const head2 = source.substring(0, he);
           const body = source.substring(he + 1) + "\n";
           const props = [
-            { type: "block-scalar-header", offset, indent, source: head }
+            { type: "block-scalar-header", offset, indent, source: head2 }
           ];
           if (!addEndtoBlockProps(props, end))
             props.push({ type: "newline", offset: -1, indent, source: "\n" });
@@ -5420,19 +5420,19 @@ var require_cst_scalar = __commonJS({
     }
     function setBlockScalarValue(token, source) {
       const he = source.indexOf("\n");
-      const head = source.substring(0, he);
+      const head2 = source.substring(0, he);
       const body = source.substring(he + 1) + "\n";
       if (token.type === "block-scalar") {
         const header = token.props[0];
         if (header.type !== "block-scalar-header")
           throw new Error("Invalid block scalar header");
-        header.source = head;
+        header.source = head2;
         token.source = body;
       } else {
         const { offset } = token;
         const indent = "indent" in token ? token.indent : -1;
         const props = [
-          { type: "block-scalar-header", offset, indent, source: head }
+          { type: "block-scalar-header", offset, indent, source: head2 }
         ];
         if (!addEndtoBlockProps(props, "end" in token ? token.end : void 0))
           props.push({ type: "newline", offset: -1, indent, source: "\n" });
@@ -5602,12 +5602,12 @@ var require_cst_visit = __commonJS({
         const token = item[field];
         if (token && "items" in token) {
           for (let i = 0; i < token.items.length; ++i) {
-            const ci = _visit(Object.freeze(path.concat([[field, i]])), token.items[i], visitor);
-            if (typeof ci === "number")
-              i = ci - 1;
-            else if (ci === BREAK)
+            const ci2 = _visit(Object.freeze(path.concat([[field, i]])), token.items[i], visitor);
+            if (typeof ci2 === "number")
+              i = ci2 - 1;
+            else if (ci2 === BREAK)
               return BREAK;
-            else if (ci === REMOVE) {
+            else if (ci2 === REMOVE) {
               token.items.splice(i, 1);
               i -= 1;
             }
@@ -7367,6 +7367,9 @@ var require_dist = __commonJS({
   }
 });
 
+// src/cli/harness-eval.mjs
+import { join as join4, relative } from "node:path";
+
 // src/lib/config.mjs
 var import_yaml = __toESM(require_dist(), 1);
 import { execFileSync } from "node:child_process";
@@ -7396,9 +7399,9 @@ var sha256 = (data) => createHash("sha256").update(data).digest("hex");
 var utcNow = (date = /* @__PURE__ */ new Date()) => date.toISOString().replace(/\.\d{3}Z$/, "Z");
 
 // src/lib/config.mjs
-var git = (cwd, ...args) => {
+var git = (cwd, ...args2) => {
   try {
-    return execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    return execFileSync("git", ["-C", cwd, ...args2], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
   } catch {
     return null;
   }
@@ -7449,22 +7452,104 @@ function loadConfig(dir = projectDir()) {
   };
 }
 
-// src/lib/spool.mjs
-import { appendFileSync, existsSync as existsSync2, mkdirSync, readdirSync, readFileSync as readFileSync2, renameSync, rmSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+// src/lib/eval.mjs
+import { spawnSync, execFileSync as execFileSync2 } from "node:child_process";
+import { existsSync as existsSync2, mkdirSync, readFileSync as readFileSync2, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join as join2, resolve } from "node:path";
+var git2 = (dir, ...args2) => execFileSync2("git", ["-C", dir, ...args2], { maxBuffer: 1 << 30, stdio: ["ignore", "pipe", "ignore"] });
+var stagedDiffSha256 = (dir) => sha256(git2(dir, "diff", "--cached", "--binary"));
+var hasStagedChanges = (dir) => git2(dir, "diff", "--cached", "--name-only").length > 0;
+function head(dir) {
+  try {
+    return git2(dir, "rev-parse", "HEAD").toString().trim();
+  } catch {
+    return null;
+  }
+}
+function unstaged(dir) {
+  const modified = git2(dir, "diff", "--name-only").toString().split("\n").filter(Boolean);
+  const untracked = git2(dir, "ls-files", "--others", "--exclude-standard").toString().split("\n").filter(Boolean);
+  return [...modified.map((f) => `modified: ${f}`), ...untracked.map((f) => `untracked: ${f}`)];
+}
+var markerPath = (dir) => join2(dir, ".claude", "state", "eval-pass.json");
+function writeMarker(dir, marker) {
+  const path = markerPath(dir);
+  mkdirSync(join2(path, ".."), { recursive: true });
+  writeFileSync(`${path}.tmp`, JSON.stringify(marker, null, 2) + "\n");
+  renameSync(`${path}.tmp`, path);
+}
+var clearMarker = (dir) => rmSync(markerPath(dir), { force: true });
+function stageProblems(stages) {
+  if (!stages.length) return "routing.yaml has no eval.stages, so there is nothing to evaluate";
+  const names = /* @__PURE__ */ new Set();
+  for (const [i, stage] of stages.entries()) {
+    if (!stage || typeof stage.name !== "string" || !stage.name) return `eval.stages[${i}] has no name`;
+    if (typeof stage.run !== "string" || !stage.run.trim()) return `eval.stages[${i}] (${stage.name}) has no run command`;
+    if (names.has(stage.name)) return `eval.stages has "${stage.name}" twice`;
+    names.add(stage.name);
+  }
+  return null;
+}
+var AC_ID = /PLAN-\d+(?:\.\d+)+\/AC-\d+/g;
+function runStages(dir, stages, logDir2, { onStage = () => {
+} } = {}) {
+  mkdirSync(logDir2, { recursive: true });
+  const results = [];
+  let failed = null;
+  for (const stage of stages) {
+    if (failed) {
+      results.push({ name: stage.name, status: "skipped", duration_ms: 0 });
+      continue;
+    }
+    onStage(stage);
+    const started = Date.now();
+    const run = spawnSync(stage.run, {
+      cwd: resolve(dir, stage.cwd ?? "."),
+      env: { ...process.env, ...Object.fromEntries(Object.entries(stage.env ?? {}).map(([k, v]) => [k, String(v)])) },
+      shell: true,
+      windowsHide: true,
+      maxBuffer: 256 << 20,
+      timeout: (stage.timeout_minutes ?? 15) * 6e4
+    });
+    const output = Buffer.concat([run.stdout ?? Buffer.alloc(0), run.stderr ?? Buffer.alloc(0)]).toString("utf8") + (run.error ? `
+${run.error.code === "ETIMEDOUT" ? `timed out after ${stage.timeout_minutes ?? 15} minutes` : run.error.message}
+` : "");
+    writeFileSync(join2(logDir2, `${stage.name}.log`), output);
+    const status = run.status === 0 && !run.error ? "pass" : "fail";
+    results.push({ name: stage.name, status, duration_ms: Date.now() - started });
+    if (status === "fail") failed = { stage: stage.name, output };
+  }
+  return {
+    result: failed ? "fail" : "pass",
+    stages: results,
+    failed,
+    failed_acs: failed ? [...new Set(failed.output.match(AC_ID) ?? [])] : []
+  };
+}
+var passMarker = (dir, { diffSha256: diffSha2562, taskIds: taskIds2, configSha256, now = /* @__PURE__ */ new Date() }) => ({
+  diff_sha256: diffSha2562,
+  head: head(dir),
+  passed_at: utcNow(now),
+  task_ids: taskIds2,
+  config_sha256: configSha256
+});
+
+// src/lib/spool.mjs
+import { appendFileSync, existsSync as existsSync3, mkdirSync as mkdirSync2, readdirSync, readFileSync as readFileSync3, renameSync as renameSync2, rmSync as rmSync2, writeFileSync as writeFileSync2 } from "node:fs";
+import { homedir } from "node:os";
+import { join as join3, resolve as resolve2 } from "node:path";
 var MAX_LINE_BYTES = 4096;
-var registryPath = () => join2(process.env.HARNESS_HOME || join2(homedir(), ".harness"), "spools.json");
+var registryPath = () => join3(process.env.HARNESS_HOME || join3(homedir(), ".harness"), "spools.json");
 function registerSpool(config2, now = /* @__PURE__ */ new Date()) {
   const path = registryPath();
-  const metadataDir = resolve(config2.metadataDir);
+  const metadataDir = resolve2(config2.metadataDir);
   try {
-    const registry = existsSync2(path) ? JSON.parse(readFileSync2(path, "utf8")) : { version: 1, spools: [] };
+    const registry = existsSync3(path) ? JSON.parse(readFileSync3(path, "utf8")) : { version: 1, spools: [] };
     if (registry.spools.some((s) => s.metadata_dir.toLowerCase() === metadataDir.toLowerCase())) return;
-    registry.spools.push({ repo_dir: resolve(config2.dir), metadata_dir: metadataDir, first_seen: utcNow(now) });
-    mkdirSync(join2(path, ".."), { recursive: true });
-    writeFileSync(`${path}.tmp`, JSON.stringify(registry, null, 2) + "\n");
-    renameSync(`${path}.tmp`, path);
+    registry.spools.push({ repo_dir: resolve2(config2.dir), metadata_dir: metadataDir, first_seen: utcNow(now) });
+    mkdirSync2(join3(path, ".."), { recursive: true });
+    writeFileSync2(`${path}.tmp`, JSON.stringify(registry, null, 2) + "\n");
+    renameSync2(`${path}.tmp`, path);
   } catch (error) {
     recordFailure(config2, `spool registry: ${error.message}`);
   }
@@ -7473,10 +7558,10 @@ function recordFailure(config2, why) {
   process.stderr.write(`harness: metadata not written: ${why}
 `);
   try {
-    mkdirSync(config2.metadataDir, { recursive: true });
-    const file = join2(config2.metadataDir, "emit-failures");
-    const count = existsSync2(file) ? Number.parseInt(readFileSync2(file, "utf8"), 10) || 0 : 0;
-    writeFileSync(file, `${count + 1}
+    mkdirSync2(config2.metadataDir, { recursive: true });
+    const file = join3(config2.metadataDir, "emit-failures");
+    const count = existsSync3(file) ? Number.parseInt(readFileSync3(file, "utf8"), 10) || 0 : 0;
+    writeFileSync2(file, `${count + 1}
 `);
   } catch {
   }
@@ -7488,8 +7573,8 @@ function appendLine(config2, file, record) {
     return false;
   }
   try {
-    const firstLineInFile = !existsSync2(file);
-    mkdirSync(join2(file, ".."), { recursive: true });
+    const firstLineInFile = !existsSync3(file);
+    mkdirSync2(join3(file, ".."), { recursive: true });
     appendFileSync(file, line + "\n", { flag: "a" });
     if (firstLineInFile) registerSpool(config2);
     return true;
@@ -7500,19 +7585,19 @@ function appendLine(config2, file, record) {
 }
 function sweep(config2, now) {
   const today = utcNow(now).slice(0, 10);
-  const marker = join2(config2.metadataDir, "state", "swept");
+  const marker = join3(config2.metadataDir, "state", "swept");
   try {
-    if (existsSync2(marker) && readFileSync2(marker, "utf8").trim() === today) return;
+    if (existsSync3(marker) && readFileSync3(marker, "utf8").trim() === today) return;
     const cutoff = new Date(now.getTime() - config2.retentionDays * 864e5).toISOString().slice(0, 10);
     for (const [folder, toDate] of [["events", (n) => n.slice(0, 10)], ["routing-log", (n) => `${n.slice(0, 7)}-31`]]) {
-      const dir = join2(config2.metadataDir, folder);
-      if (!existsSync2(dir)) continue;
+      const dir = join3(config2.metadataDir, folder);
+      if (!existsSync3(dir)) continue;
       for (const name of readdirSync(dir).filter((n) => n.endsWith(".jsonl"))) {
-        if (toDate(name) < cutoff) rmSync(join2(dir, name));
+        if (toDate(name) < cutoff) rmSync2(join3(dir, name));
       }
     }
-    mkdirSync(join2(config2.metadataDir, "state"), { recursive: true });
-    writeFileSync(marker, today);
+    mkdirSync2(join3(config2.metadataDir, "state"), { recursive: true });
+    writeFileSync2(marker, today);
   } catch (error) {
     recordFailure(config2, `retention sweep: ${error.message}`);
   }
@@ -7520,8 +7605,8 @@ function sweep(config2, now) {
 function emitEvent(config2, type, fields = {}, data = {}, now = /* @__PURE__ */ new Date()) {
   if (config2.mode === "off") return null;
   sweep(config2, now);
-  const sessionId = fields.session_id ?? process.env.CLAUDE_CODE_SESSION_ID;
-  if (!sessionId) {
+  const sessionId2 = fields.session_id ?? process.env.CLAUDE_CODE_SESSION_ID;
+  if (!sessionId2) {
     recordFailure(config2, `${type}: no session id (not running inside Claude Code?)`);
     return null;
   }
@@ -7533,61 +7618,81 @@ function emitEvent(config2, type, fields = {}, data = {}, now = /* @__PURE__ */ 
     producer: producer(),
     repo: repoIdentity(config2.dir),
     mode: config2.mode,
-    session_id: sessionId,
+    session_id: sessionId2,
     config_sha256: config2.config_sha256
   };
   for (const key of ["prompt_id", "agent_id", "agent_type", "plan_id", "task_id"]) {
     if (fields[key]) event[key] = fields[key];
   }
   event.data = data;
-  const file = join2(config2.metadataDir, "events", `${event.ts.slice(0, 10)}.jsonl`);
+  const file = join3(config2.metadataDir, "events", `${event.ts.slice(0, 10)}.jsonl`);
   return appendLine(config2, file, event) ? event : null;
 }
 
-// src/hooks/input.mjs
-import { existsSync as existsSync3, mkdirSync as mkdirSync2, readFileSync as readFileSync3, rmSync as rmSync2, writeFileSync as writeFileSync2 } from "node:fs";
-import { join as join3 } from "node:path";
-async function readHookInput() {
-  const chunks = [];
-  for await (const chunk of process.stdin) chunks.push(chunk);
-  try {
-    return JSON.parse(Buffer.concat(chunks).toString("utf8")) ?? {};
-  } catch {
-    return {};
-  }
-}
-var isHarnessAgent = (input2) => typeof input2.agent_type === "string" && input2.agent_type.startsWith("harness:");
-var agentState = (config2, agentId) => {
-  const dir = join3(config2.metadataDir, "state", "agents");
-  const file = join3(dir, `${agentId}.json`);
-  return {
-    save(value) {
-      mkdirSync2(dir, { recursive: true });
-      writeFileSync2(file, JSON.stringify(value));
-    },
-    take() {
-      if (!existsSync3(file)) return null;
-      try {
-        return JSON.parse(readFileSync3(file, "utf8"));
-      } catch {
-        return null;
-      } finally {
-        rmSync2(file, { force: true });
-      }
-    }
-  };
+// src/cli/harness-eval.mjs
+var args = process.argv.slice(2);
+var ci = args.includes("--ci");
+var taskIds = [...new Set(args.flatMap((a, i) => args[i - 1] === "--task" ? a.split(",") : []).map((t) => t.trim()).filter(Boolean))];
+var say = (line = "") => process.stdout.write(line + "\n");
+var refuse = (why, details = []) => {
+  say(`harness-eval: refused - ${why}`);
+  for (const d of details.slice(0, 20)) say(`  ${d}`);
+  if (details.length > 20) say(`  ... and ${details.length - 20} more`);
+  process.exit(2);
 };
-
-// src/hooks/subagent-start.mjs
-var input = await readHookInput();
 var config = loadConfig();
-if (config.mode !== "off" && isHarnessAgent(input) && input.agent_id) {
-  const event = emitEvent(config, "subagent.started", {
-    session_id: input.session_id,
-    prompt_id: input.prompt_id,
-    agent_id: input.agent_id,
-    agent_type: input.agent_type
-  }, {});
-  if (event) agentState(config, input.agent_id).save({ started: event.ts, startedMs: Date.now() });
+if (config.mode === "off") {
+  say(`harness-eval: the Harness is off here (${config.reason ?? "mode: off"}), so no eval is needed`);
+  process.exit(0);
 }
+var problem = stageProblems(config.stages);
+if (problem) refuse(problem);
+if (!ci) {
+  if (!hasStagedChanges(config.dir)) refuse("nothing is staged. Stage the change to commit (git add), then run harness-eval");
+  const loose = unstaged(config.dir);
+  if (loose.length) refuse("the working tree has changes that are not staged. Stage them or set them aside, so the eval tests exactly what will be committed:", loose);
+  clearMarker(config.dir);
+}
+var diffSha256 = stagedDiffSha256(config.dir);
+var sessionId = process.env.CLAUDE_CODE_SESSION_ID;
+var emit = (type, data) => {
+  if (sessionId) emitEvent(config, type, taskIds.length === 1 ? { task_id: taskIds[0], plan_id: taskIds[0].replace(/\..*$/, "") } : {}, data);
+};
+say(`harness-eval: ${config.stages.length} stage(s) for ${ci ? "the checkout (ci)" : `staged diff ${diffSha256.slice(0, 12)}`}${taskIds.length ? ` (${taskIds.join(", ")})` : ""}`);
+emit("eval.started", { task_ids: taskIds, diff_sha256: diffSha256, ci });
+var logDir = join4(config.metadataDir, "state", "eval");
+var outcome = runStages(config.dir, config.stages, logDir, {
+  onStage: (stage) => process.stdout.write(`  ....  ${stage.name}\r`)
+});
+for (const stage of outcome.stages) {
+  say(`  ${stage.status.padEnd(7)} ${stage.name.padEnd(24)} ${stage.status === "skipped" ? "" : `${(stage.duration_ms / 1e3).toFixed(1)}s`}`);
+}
+emit("eval.completed", {
+  result: outcome.result,
+  stages: outcome.stages,
+  failed_acs: outcome.failed_acs,
+  task_ids: taskIds,
+  diff_sha256: diffSha256,
+  ...outcome.failed_acs.length ? { attribution: "task" } : {}
+});
+if (outcome.failed) {
+  const tail = outcome.failed.output.trimEnd().split(/\r?\n/).slice(-60);
+  say();
+  say(`--- ${outcome.failed.stage}: last ${tail.length} lines (full log: ${relative(config.dir, join4(logDir, `${outcome.failed.stage}.log`))}) ---`);
+  for (const line of tail) say(line);
+  say("---");
+  if (outcome.failed_acs.length) say(`failing acceptance criteria: ${outcome.failed_acs.join(", ")}`);
+  say(`harness-eval: FAIL at ${outcome.failed.stage}`);
+  process.exit(1);
+}
+if (ci) {
+  say("harness-eval: PASS (ci, no marker written)");
+  process.exit(0);
+}
+if (stagedDiffSha256(config.dir) !== diffSha256 || unstaged(config.dir).length) {
+  say("harness-eval: FAIL - the staged diff or the working tree changed while the eval ran, so this pass would vouch for something else. Run it again.");
+  process.exit(1);
+}
+writeMarker(config.dir, passMarker(config.dir, { diffSha256, taskIds, configSha256: config.config_sha256 }));
+say(`harness-eval: PASS - ${relative(config.dir, markerPath(config.dir))} written; a commit of this staged diff is allowed for ${config.markerTtlMinutes} minutes`);
 process.exit(0);

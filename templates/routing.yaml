@@ -9,6 +9,12 @@ tiers:                   # thresholds and overrides come from the complexity-rub
   T3: { max_score: 9,  agent: impl-t3, model: sonnet, effort: high }
   T4: { max_score: 12, agent: impl-t4, model: opus,   effort: medium }
 
+eval:                    # harness-eval runs these in order against what is staged; the first failure stops it
+  stages: []             # e.g. - { name: build, run: "npm run build", cwd: web, env: { CI: "1" }, timeout_minutes: 15 }
+
+gate:
+  marker_ttl_minutes: 30 # how long a pass allows a commit of the diff it was for
+
 metadata:
   dir: .harness          # gitignored
   retention_days: 30

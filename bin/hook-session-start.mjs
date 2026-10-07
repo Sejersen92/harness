@@ -7415,7 +7415,9 @@ function loadConfig(dir = projectDir()) {
     config_sha256: sha256(bytes),
     metadataDir: join(dir, metadata.dir ?? ".harness"),
     retentionDays: Number.isInteger(metadata.retention_days) ? metadata.retention_days : 30,
-    includeJustifications: metadata.include_justifications !== false
+    includeJustifications: metadata.include_justifications !== false,
+    stages: Array.isArray(yaml.eval?.stages) ? yaml.eval.stages : [],
+    markerTtlMinutes: Number.isInteger(yaml.gate?.marker_ttl_minutes) ? yaml.gate.marker_ttl_minutes : 30
   };
 }
 
@@ -7434,10 +7436,11 @@ async function readHookInput() {
 await readHookInput();
 var config = loadConfig();
 if (config.mode !== "off") {
-  const emit = join2(pluginRoot(), "bin", "harness-emit.mjs").replace(/\\/g, "/");
+  const bin = (name) => join2(pluginRoot(), "bin", `${name}.mjs`).replace(/\\/g, "/");
   const context = [
     `The Harness is active in this repository (mode: ${config.mode}).`,
-    `Record Harness events with: node "${emit}" <type> --task PLAN-n.m --data '<json>'`,
+    `Record Harness events with: node "${bin("harness-emit")}" <type> --task PLAN-n.m --data '<json>'`,
+    `Run the eval on what is staged with: node "${bin("harness-eval")}" --task PLAN-n.m (a pass is what allows a commit)`,
     "Only the harness:orchestrator agent records plan and task events."
   ].join("\n");
   process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: context } }));

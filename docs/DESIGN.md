@@ -83,7 +83,12 @@ Plugin subagents ignore `hooks`, `mcpServers` and `permissionMode` in their fron
 
 ## Eval and the commit gate
 
-- **`harness-eval`** is a stage runner. It reads the stage list from `routing.yaml` and runs each command in order, so it doesn't care which test framework a repo uses. For PU the stages are: `dotnet build` and tests for the CLI, then `npm run lint`, `npm run build` and `npm run gate` for the web app. A passing run writes `.claude/state/eval-pass.json` with `sha256(git diff --cached --binary)`, `HEAD` and a timestamp. It is the only thing allowed to write that marker.
+- **`harness-eval`** is a stage runner. It reads `eval.stages` from `routing.yaml` (`{ name, run, cwd?, env?, timeout_minutes? }`) and runs each command through the shell in order, so it doesn't care which test framework a repo uses. For PU the stages are `dotnet build` and tests for the CLI, then `npm run lint` and `npm run build` for the web app. `npm run gate` is left out: it needs a running dev server and a sign-in, so it stays a manual check (decided 2026-10-07).
+  - **It evaluates exactly what will be committed.** The stages run on the working tree, so it refuses (exit 2) while anything is unstaged or untracked, and when nothing is staged or there are no stages. A pass is void if the staged diff or working tree changed while it ran.
+  - **The first failing stage stops the run.** Later stages are recorded as `skipped`. Each stage's full output is in `.harness/state/eval/<stage>.log`; the console shows the failing stage's last 60 lines and any AC ids (`PLAN-n.m/AC-k`) in its output, which become `failed_acs`.
+  - **The marker.** A run that starts deletes the old marker, so a failure also revokes an earlier pass. A pass writes `.claude/state/eval-pass.json` with `sha256(git diff --cached --binary)`, `HEAD`, a timestamp, the task ids and `config_sha256`. `harness-eval` is the only thing allowed to write it.
+  - `eval.*` events are written only inside Claude Code (there is a session id). A run by hand or with `--ci` still gates, records nothing, and is not counted as an emit failure. `--ci` evaluates the checkout as it is and writes no marker.
+  - Exit codes: 0 pass, 1 fail, 2 refused.
 - **The commit gate has two layers:**
   1. The `commit-gate` hook, inside Claude Code.
   2. lefthook `pre-commit`, which catches commits made outside Claude Code.

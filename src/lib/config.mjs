@@ -69,5 +69,7 @@ export function loadConfig(dir = projectDir()) {
     metadataDir: join(dir, metadata.dir ?? ".harness"),
     retentionDays: Number.isInteger(metadata.retention_days) ? metadata.retention_days : 30,
     includeJustifications: metadata.include_justifications !== false,
+    stages: Array.isArray(yaml.eval?.stages) ? yaml.eval.stages : [],
+    markerTtlMinutes: Number.isInteger(yaml.gate?.marker_ttl_minutes) ? yaml.gate.marker_ttl_minutes : 30,
   };
 }

@@ -76,7 +76,7 @@ The core idea working end to end: one real task is scored, dispatched and shown 
 ### M2 — Gated (2–3 days). The baseline clock starts here
 
 - **Harness:**
-  - `harness-eval` as a stage runner driven by `routing.yaml`. PU's stages: CLI `dotnet build`, CLI tests, web `npm run lint`, `npm run build`, and the existing `npm run gate`.
+  - `harness-eval` as a stage runner driven by `routing.yaml`. PU's stages: CLI `dotnet build`, CLI tests, web `npm run lint` and `npm run build`. *Decided 2026-10-07: `npm run gate` is left out because it needs a dev server and a sign-in. ESLint was installed first (PU #48), since `npm run lint` had nothing to run.*
   - A pass marker holding the staged-diff hash.
   - `commit-gate` with the fixed regex (C2), and `marker-guard`.
   - lefthook `pre-commit` and `commit-msg`.
