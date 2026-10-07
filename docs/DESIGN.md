@@ -86,6 +86,8 @@ Plugin subagents ignore `hooks`, `mcpServers` and `permissionMode` in their fron
 **Implementation rules from the spikes:**
 - Scripts are single-file Node ESM (K2), registered in exec form (`"command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/bin/<script>.mjs"]`), with no shell and no `.cmd` shim on Windows (S8).
 - **A policy hook blocks with a JSON `permissionDecision: "deny"` or exit 2, never exit 1.** Exit 1 is a non-blocking error and the action proceeds (S8).
+- **A subagent's report may arrive as a `SubagentHandback` tool call, not as its last message** (found in the first full run, 2026-10-07, Claude Code 2.1.285). `require-report` reads the last handback in the agent's transcript when the message has no header. Before this fix, every subagent was blocked once with a correct report in hand, and none of their stops was recorded.
+- **`harness:orchestrator` is the main thread, not a subagent.** Claude Code labels the main thread's own contexts with its `--agent` type, so the subagent hooks skip it. The orchestrator passes `run_in_background: false` on every Agent call.
 
 ## Eval and the commit gate
 

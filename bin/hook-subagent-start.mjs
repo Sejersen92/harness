@@ -7568,7 +7568,7 @@ async function readHookInput() {
     return {};
   }
 }
-var isHarnessAgent = (input2) => typeof input2.agent_type === "string" && input2.agent_type.startsWith("harness:");
+var isHarnessAgent = (input2) => typeof input2.agent_type === "string" && input2.agent_type.startsWith("harness:") && input2.agent_type !== "harness:orchestrator";
 var agentState = (config2, agentId) => {
   const dir = join3(config2.metadataDir, "state", "agents");
   const file = join3(dir, `${agentId}.json`);
