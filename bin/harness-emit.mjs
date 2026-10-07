@@ -7555,7 +7555,39 @@ function emitEvent(config2, type2, fields = {}, data2 = {}, now = /* @__PURE__ *
   }
   event2.data = data2;
   const file = join2(config2.metadataDir, "events", `${event2.ts.slice(0, 10)}.jsonl`);
-  return appendLine(config2, file, event2) ? event2 : null;
+  if (!appendLine(config2, file, event2)) return null;
+  snapshotConfig(config2, event2.repo, now);
+  return event2;
+}
+var TIERS = ["T1", "T2", "T3", "T4"];
+var EFFORTS = ["low", "medium", "high", "xhigh", "max"];
+function snapshotConfig(config2, repo, now = /* @__PURE__ */ new Date()) {
+  const path = join2(config2.metadataDir, "configs", `${config2.config_sha256}.json`);
+  if (existsSync2(path)) return;
+  const tiers = {};
+  for (const tier of TIERS) {
+    const t = config2.tiers?.[tier];
+    if (!t || !Number.isInteger(t.max_score) || typeof t.agent !== "string" || typeof t.model !== "string") continue;
+    tiers[tier] = { max_score: t.max_score, agent: t.agent, model: t.model, ...EFFORTS.includes(t.effort) ? { effort: t.effort } : {} };
+  }
+  const snapshot = {
+    schema: "harness.config/v1",
+    config_sha256: config2.config_sha256,
+    captured: utcNow(now),
+    producer: producer(),
+    repo,
+    mode: config2.mode,
+    tiers,
+    eval: { stages: config2.stages.map((s) => s?.name).filter((n) => typeof n === "string" && n) },
+    gate: { marker_ttl_minutes: config2.markerTtlMinutes }
+  };
+  try {
+    mkdirSync(join2(path, ".."), { recursive: true });
+    writeFileSync(`${path}.tmp`, JSON.stringify(snapshot, null, 2) + "\n");
+    renameSync(`${path}.tmp`, path);
+  } catch (error) {
+    recordFailure(config2, `config snapshot: ${error.message}`);
+  }
 }
 function writeRoutingLog(config2, record) {
   const file = join2(config2.metadataDir, "routing-log", `${record.timestamps.completed.slice(0, 7)}.jsonl`);

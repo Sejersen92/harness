@@ -151,6 +151,24 @@ test("subagents from other plugins are ignored", () => {
   assert.equal(lines(dir, "events").length, 0);
 });
 
+test("the first event under a config snapshots it, once, as harness.config/v1", () => {
+  const dir = makeRepo();
+  emit(dir, "task.scored", "--task", "PLAN-1.1", "--data", '{"scores":{"ambiguity":0,"blast":0,"coupling":0,"novelty":0,"reversibility":0,"verification":0},"total":0,"score_band":"T1","overrides":[],"tier_planned":"T1"}');
+  const [event] = lines(dir, "events");
+  const path = join(dir, ".harness", "configs", `${event.config_sha256}.json`);
+
+  const snapshot = JSON.parse(readFileSync(path, "utf8"));
+  assertValid(snapshot);
+  assert.equal(snapshot.mode, "observe");
+  assert.deepEqual(snapshot.tiers.T1, { max_score: 2, agent: "impl-t1", model: "sonnet", effort: "low" });
+  assert.deepEqual(snapshot.tiers.T4, { max_score: 12, agent: "impl-t4", model: "opus", effort: "medium" });
+  assert.deepEqual(snapshot.repo, event.repo);
+
+  const written = readFileSync(path, "utf8");
+  emit(dir, "task.completed", "--task", "PLAN-1.1", "--data", '{"outcome":"human","final_tier":"T1","eval_rounds":0,"escalations":0}');
+  assert.equal(readFileSync(path, "utf8"), written, "a snapshot is written once and never rewritten");
+});
+
 test("a report handed back through SubagentHandback counts, and the agent is not sent back for it", () => {
   // As in the first full run (2026-10-07): the agent's last turn is the handback call, so its last
   // message is not the report.
