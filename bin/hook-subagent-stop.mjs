@@ -7677,7 +7677,7 @@ function observed(transcriptPath) {
   if (meta && existsSync4(meta)) {
     try {
       const { model } = JSON.parse(readFileSync4(meta, "utf8"));
-      if (model) found.model_requested = model;
+      found.model_requested = model || "inherit";
     } catch {
     }
   }

@@ -1,6 +1,6 @@
 {
   "name": "harness",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "private": true,
   "description": "The Harness: complexity-routed models and eval-gated commits for Claude Code, part of PreviouslyUpcoming.",
   "type": "module",

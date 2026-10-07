@@ -47,8 +47,11 @@ export function buildRecord(config, taskId, events = readEvents(config), previou
     return round;
   });
 
-  // gate.decision carries no task id: count the decisions made in this session while the task was open.
-  const window = (e) => e.session_id === completed.session_id && e.ts >= scored.ts && e.ts <= completed.ts;
+  // gate.decision carries no task id: count the decisions made in this session while the task was being
+  // worked. That starts at its first dispatch, not when it was scored: the orchestrator scores every task
+  // of a plan up front, so a window from scoring took in every earlier task's commits too (PLAN-3, 2026-10-07).
+  const opened = dispatched[0]?.ts ?? scored.ts;
+  const window = (e) => e.session_id === completed.session_id && e.ts >= opened && e.ts <= completed.ts;
   const gates = events.filter((e) => e.type === "gate.decision" && window(e));
   const commit = last(ofType("commit.created"));
 

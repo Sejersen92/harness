@@ -17,6 +17,7 @@ You edit test files only (a hook enforces it: `routing.yaml`'s `eval.tests` says
 2. Write at least one test per criterion, one that fails now and will pass once the criterion is met. **Put the fully qualified criterion id in each test's name**, for example `PLAN-7.2/AC-1 shows the quarantine count`. A failing eval then names the criterion, which is how the Harness records `failed_acs`.
 3. Run the new tests and confirm each one fails, and fails for the right reason: an assertion about the criterion, not a typo or an unrelated break. A test that already passes doesn't test the criterion; rewrite it, or say why it can't fail yet.
 4. If a criterion can't be tested deterministically (it needs a browser, a deployed service or a human eye), don't fake a test for it. Name it as untestable in your report, with how it should be checked instead.
+   **A test that reads source code as text is a fake test**: one that regex-matches a file's contents, checks that an import or a style value appears in it, or hashes a file to prove it didn't change. It passes whatever the code does and fails on any harmless rewrite. Test behaviour through the code's own interface. When the only way to check a criterion is to read the source, it is untestable.
 
 Report `DONE: PLAN-n.m`, then per criterion the test name, its file and how it fails, then any untestable criteria.
 
