@@ -79,7 +79,7 @@ The core idea working end to end: one real task is scored, dispatched and shown 
   - `harness-eval` as a stage runner driven by `routing.yaml`. PU's stages: CLI `dotnet build`, CLI tests, web `npm run lint` and `npm run build`. *Decided 2026-10-07: `npm run gate` is left out because it needs a dev server and a sign-in. ESLint was installed first (PU #48), since `npm run lint` had nothing to run.*
   - A pass marker holding the staged-diff hash.
   - `commit-gate` with the fixed regex (C2), and `marker-guard`.
-  - lefthook `pre-commit` and `commit-msg`.
+  - git `pre-commit`, `commit-msg` and `post-commit`. *Decided 2026-10-07: plain git hooks via `core.hooksPath`, not lefthook. Pre-commit runs the eval itself when there is no pass.*
   - Permission denies merged by `/harness:init`, including the `commit-tree` denies.
   - The evaluator in both modes, plus `protect-tests` and `tests-only`.
   - Events `eval.*`, `gate.decision` and `commit.created`.

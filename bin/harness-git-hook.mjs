@@ -124,12 +124,12 @@ var require_visit = __commonJS({
         if (identity.isCollection(node)) {
           path = Object.freeze(path.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci2 = visit_(i, node.items[i], visitor, path);
-            if (typeof ci2 === "number")
-              i = ci2 - 1;
-            else if (ci2 === BREAK)
+            const ci = visit_(i, node.items[i], visitor, path);
+            if (typeof ci === "number")
+              i = ci - 1;
+            else if (ci === BREAK)
               return BREAK;
-            else if (ci2 === REMOVE) {
+            else if (ci === REMOVE) {
               node.items.splice(i, 1);
               i -= 1;
             }
@@ -172,12 +172,12 @@ var require_visit = __commonJS({
         if (identity.isCollection(node)) {
           path = Object.freeze(path.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci2 = await visitAsync_(i, node.items[i], visitor, path);
-            if (typeof ci2 === "number")
-              i = ci2 - 1;
-            else if (ci2 === BREAK)
+            const ci = await visitAsync_(i, node.items[i], visitor, path);
+            if (typeof ci === "number")
+              i = ci - 1;
+            else if (ci === BREAK)
               return BREAK;
-            else if (ci2 === REMOVE) {
+            else if (ci === REMOVE) {
               node.items.splice(i, 1);
               i -= 1;
             }
@@ -900,14 +900,14 @@ var require_Collection = __commonJS({
         if (isEmptyPath(path))
           this.add(value);
         else {
-          const [key, ...rest] = path;
+          const [key, ...rest2] = path;
           const node = this.get(key, true);
           if (identity.isCollection(node))
-            node.addIn(rest, value);
+            node.addIn(rest2, value);
           else if (node === void 0 && this.schema)
-            this.set(key, collectionFromPath(this.schema, rest, value));
+            this.set(key, collectionFromPath(this.schema, rest2, value));
           else
-            throw new Error(`Expected YAML collection at ${key}. Remaining path: ${rest}`);
+            throw new Error(`Expected YAML collection at ${key}. Remaining path: ${rest2}`);
         }
       }
       /**
@@ -915,14 +915,14 @@ var require_Collection = __commonJS({
        * @returns `true` if the item was found and removed.
        */
       deleteIn(path) {
-        const [key, ...rest] = path;
-        if (rest.length === 0)
+        const [key, ...rest2] = path;
+        if (rest2.length === 0)
           return this.delete(key);
         const node = this.get(key, true);
         if (identity.isCollection(node))
-          return node.deleteIn(rest);
+          return node.deleteIn(rest2);
         else
-          throw new Error(`Expected YAML collection at ${key}. Remaining path: ${rest}`);
+          throw new Error(`Expected YAML collection at ${key}. Remaining path: ${rest2}`);
       }
       /**
        * Returns item at `key`, or `undefined` if not found. By default unwraps
@@ -930,12 +930,12 @@ var require_Collection = __commonJS({
        * `true` (collections are always returned intact).
        */
       getIn(path, keepScalar) {
-        const [key, ...rest] = path;
+        const [key, ...rest2] = path;
         const node = this.get(key, true);
-        if (rest.length === 0)
+        if (rest2.length === 0)
           return !keepScalar && identity.isScalar(node) ? node.value : node;
         else
-          return identity.isCollection(node) ? node.getIn(rest, keepScalar) : void 0;
+          return identity.isCollection(node) ? node.getIn(rest2, keepScalar) : void 0;
       }
       hasAllNullValues(allowScalar) {
         return this.items.every((node) => {
@@ -949,28 +949,28 @@ var require_Collection = __commonJS({
        * Checks if the collection includes a value with the key `key`.
        */
       hasIn(path) {
-        const [key, ...rest] = path;
-        if (rest.length === 0)
+        const [key, ...rest2] = path;
+        if (rest2.length === 0)
           return this.has(key);
         const node = this.get(key, true);
-        return identity.isCollection(node) ? node.hasIn(rest) : false;
+        return identity.isCollection(node) ? node.hasIn(rest2) : false;
       }
       /**
        * Sets a value in this collection. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
       setIn(path, value) {
-        const [key, ...rest] = path;
-        if (rest.length === 0) {
+        const [key, ...rest2] = path;
+        if (rest2.length === 0) {
           this.set(key, value);
         } else {
           const node = this.get(key, true);
           if (identity.isCollection(node))
-            node.setIn(rest, value);
+            node.setIn(rest2, value);
           else if (node === void 0 && this.schema)
-            this.set(key, collectionFromPath(this.schema, rest, value));
+            this.set(key, collectionFromPath(this.schema, rest2, value));
           else
-            throw new Error(`Expected YAML collection at ${key}. Remaining path: ${rest}`);
+            throw new Error(`Expected YAML collection at ${key}. Remaining path: ${rest2}`);
         }
       }
     };
@@ -3328,9 +3328,9 @@ var require_stringifyDocument = __commonJS({
       const lines = [];
       let hasDirectives = options.directives === true;
       if (options.directives !== false && doc.directives) {
-        const dir = doc.directives.toString(doc);
-        if (dir) {
-          lines.push(dir);
+        const dir2 = doc.directives.toString(doc);
+        if (dir2) {
+          lines.push(dir2);
           hasDirectives = true;
         } else if (doc.directives.docStart)
           hasDirectives = true;
@@ -3735,16 +3735,16 @@ var require_errors = __commonJS({
       error.linePos = error.pos.map((pos) => lc.linePos(pos));
       const { line, col } = error.linePos[0];
       error.message += ` at line ${line}, column ${col}`;
-      let ci2 = col - 1;
+      let ci = col - 1;
       let lineStr = src.substring(lc.lineStarts[line - 1], lc.lineStarts[line]).replace(/[\n\r]+$/, "");
-      if (ci2 >= 60 && lineStr.length > 80) {
-        const trimStart = Math.min(ci2 - 39, lineStr.length - 79);
+      if (ci >= 60 && lineStr.length > 80) {
+        const trimStart = Math.min(ci - 39, lineStr.length - 79);
         lineStr = "\u2026" + lineStr.substring(trimStart);
-        ci2 -= trimStart - 1;
+        ci -= trimStart - 1;
       }
       if (lineStr.length > 80)
         lineStr = lineStr.substring(0, 79) + "\u2026";
-      if (line > 1 && /^ *$/.test(lineStr.substring(0, ci2))) {
+      if (line > 1 && /^ *$/.test(lineStr.substring(0, ci))) {
         let prev = src.substring(lc.lineStarts[line - 2], lc.lineStarts[line - 1]);
         if (prev.length > 80)
           prev = prev.substring(0, 79) + "\u2026\n";
@@ -3754,9 +3754,9 @@ var require_errors = __commonJS({
         let count = 1;
         const end = error.linePos[1];
         if (end?.line === line && end.col > col) {
-          count = Math.max(1, Math.min(end.col - col, 80 - ci2));
+          count = Math.max(1, Math.min(end.col - col, 80 - ci));
         }
-        const pointer = " ".repeat(ci2) + "^".repeat(count);
+        const pointer = " ".repeat(ci) + "^".repeat(count);
         error.message += `:
 
 ${lineStr}
@@ -5602,12 +5602,12 @@ var require_cst_visit = __commonJS({
         const token = item[field];
         if (token && "items" in token) {
           for (let i = 0; i < token.items.length; ++i) {
-            const ci2 = _visit(Object.freeze(path.concat([[field, i]])), token.items[i], visitor);
-            if (typeof ci2 === "number")
-              i = ci2 - 1;
-            else if (ci2 === BREAK)
+            const ci = _visit(Object.freeze(path.concat([[field, i]])), token.items[i], visitor);
+            if (typeof ci === "number")
+              i = ci - 1;
+            else if (ci === BREAK)
               return BREAK;
-            else if (ci2 === REMOVE) {
+            else if (ci === REMOVE) {
               token.items.splice(i, 1);
               i -= 1;
             }
@@ -7367,8 +7367,10 @@ var require_dist = __commonJS({
   }
 });
 
-// src/cli/harness-eval.mjs
-import { join as join4, relative } from "node:path";
+// src/cli/harness-git-hook.mjs
+import { execFileSync as execFileSync4, spawnSync as spawnSync2 } from "node:child_process";
+import { readFileSync as readFileSync4, writeFileSync as writeFileSync3 } from "node:fs";
+import { join as join4 } from "node:path";
 
 // src/lib/config.mjs
 var import_yaml = __toESM(require_dist(), 1);
@@ -7399,9 +7401,9 @@ var sha256 = (data) => createHash("sha256").update(data).digest("hex");
 var utcNow = (date = /* @__PURE__ */ new Date()) => date.toISOString().replace(/\.\d{3}Z$/, "Z");
 
 // src/lib/config.mjs
-var git = (cwd, ...args2) => {
+var git = (cwd, ...args) => {
   try {
-    return execFileSync("git", ["-C", cwd, ...args2], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    return execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
   } catch {
     return null;
   }
@@ -7409,21 +7411,21 @@ var git = (cwd, ...args2) => {
 function projectDir(cwd = process.cwd()) {
   return process.env.CLAUDE_PROJECT_DIR || git(cwd, "rev-parse", "--show-toplevel") || cwd;
 }
-function repoIdentity(dir) {
-  const remote = git(dir, "remote", "get-url", "origin");
+function repoIdentity(dir2) {
+  const remote = git(dir2, "remote", "get-url", "origin");
   const normalised = remote?.trim().toLowerCase().replace(/\/+$/, "").replace(/\.git$/, "");
-  const name = (normalised ? normalised.split(/[/:]/).pop() : basename(dir)).toLowerCase();
-  return { name, remote_sha256: sha256(normalised ?? `local:${dir.toLowerCase()}`) };
+  const name = (normalised ? normalised.split(/[/:]/).pop() : basename(dir2)).toLowerCase();
+  return { name, remote_sha256: sha256(normalised ?? `local:${dir2.toLowerCase()}`) };
 }
 function pluginRoot() {
   if (process.env.CLAUDE_PLUGIN_ROOT) return process.env.CLAUDE_PLUGIN_ROOT;
-  let dir = dirname(fileURLToPath(import.meta.url));
-  while (!existsSync(join(dir, ".claude-plugin", "plugin.json"))) {
-    const parent = dirname(dir);
-    if (parent === dir) return null;
-    dir = parent;
+  let dir2 = dirname(fileURLToPath(import.meta.url));
+  while (!existsSync(join(dir2, ".claude-plugin", "plugin.json"))) {
+    const parent = dirname(dir2);
+    if (parent === dir2) return null;
+    dir2 = parent;
   }
-  return dir;
+  return dir2;
 }
 function producer() {
   try {
@@ -7433,18 +7435,18 @@ function producer() {
     return { name: "harness", version: "0.0.0-unknown" };
   }
 }
-function loadConfig(dir = projectDir()) {
-  const path = join(dir, "routing.yaml");
-  if (!existsSync(path)) return { dir, mode: "off", reason: "no routing.yaml" };
+function loadConfig(dir2 = projectDir()) {
+  const path = join(dir2, "routing.yaml");
+  if (!existsSync(path)) return { dir: dir2, mode: "off", reason: "no routing.yaml" };
   const bytes = readFileSync(path);
   const yaml = (0, import_yaml.parse)(bytes.toString("utf8")) ?? {};
   const metadata = yaml.metadata ?? {};
   return {
-    dir,
+    dir: dir2,
     mode: ["off", "observe", "route"].includes(yaml.mode) ? yaml.mode : "off",
     tiers: yaml.tiers ?? {},
     config_sha256: sha256(bytes),
-    metadataDir: join(dir, metadata.dir ?? ".harness"),
+    metadataDir: join(dir2, metadata.dir ?? ".harness"),
     retentionDays: Number.isInteger(metadata.retention_days) ? metadata.retention_days : 30,
     includeJustifications: metadata.include_justifications !== false,
     stages: Array.isArray(yaml.eval?.stages) ? yaml.eval.stages : [],
@@ -7456,83 +7458,54 @@ function loadConfig(dir = projectDir()) {
 import { spawnSync, execFileSync as execFileSync2 } from "node:child_process";
 import { existsSync as existsSync2, mkdirSync, readFileSync as readFileSync2, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join as join2, resolve } from "node:path";
-var git2 = (dir, ...args2) => execFileSync2("git", ["-C", dir, ...args2], { maxBuffer: 1 << 30, stdio: ["ignore", "pipe", "ignore"] });
-var stagedDiffSha256 = (dir) => sha256(git2(dir, "diff", "--cached", "--binary"));
-var hasStagedChanges = (dir) => git2(dir, "diff", "--cached", "--name-only").length > 0;
-function head(dir) {
+var git2 = (dir2, ...args) => execFileSync2("git", ["-C", dir2, ...args], { maxBuffer: 1 << 30, stdio: ["ignore", "pipe", "ignore"] });
+var stagedDiffSha256 = (dir2) => sha256(git2(dir2, "diff", "--cached", "--binary"));
+function head(dir2) {
   try {
-    return git2(dir, "rev-parse", "HEAD").toString().trim();
+    return git2(dir2, "rev-parse", "HEAD").toString().trim();
   } catch {
     return null;
   }
 }
-function unstaged(dir) {
-  const modified = git2(dir, "diff", "--name-only").toString().split("\n").filter(Boolean);
-  const untracked = git2(dir, "ls-files", "--others", "--exclude-standard").toString().split("\n").filter(Boolean);
-  return [...modified.map((f) => `modified: ${f}`), ...untracked.map((f) => `untracked: ${f}`)];
-}
-var markerPath = (dir) => join2(dir, ".claude", "state", "eval-pass.json");
-function writeMarker(dir, marker) {
-  const path = markerPath(dir);
-  mkdirSync(join2(path, ".."), { recursive: true });
-  writeFileSync(`${path}.tmp`, JSON.stringify(marker, null, 2) + "\n");
-  renameSync(`${path}.tmp`, path);
-}
-var clearMarker = (dir) => rmSync(markerPath(dir), { force: true });
-function stageProblems(stages) {
-  if (!stages.length) return "routing.yaml has no eval.stages, so there is nothing to evaluate";
-  const names = /* @__PURE__ */ new Set();
-  for (const [i, stage] of stages.entries()) {
-    if (!stage || typeof stage.name !== "string" || !stage.name) return `eval.stages[${i}] has no name`;
-    if (typeof stage.run !== "string" || !stage.run.trim()) return `eval.stages[${i}] (${stage.name}) has no run command`;
-    if (names.has(stage.name)) return `eval.stages has "${stage.name}" twice`;
-    names.add(stage.name);
+var markerPath = (dir2) => join2(dir2, ".claude", "state", "eval-pass.json");
+function readMarker(dir2) {
+  try {
+    return JSON.parse(readFileSync2(markerPath(dir2), "utf8"));
+  } catch {
+    return null;
   }
-  return null;
 }
-var AC_ID = /PLAN-\d+(?:\.\d+)+\/AC-\d+/g;
-function runStages(dir, stages, logDir2, { onStage = () => {
-} } = {}) {
-  mkdirSync(logDir2, { recursive: true });
-  const results = [];
-  let failed = null;
-  for (const stage of stages) {
-    if (failed) {
-      results.push({ name: stage.name, status: "skipped", duration_ms: 0 });
-      continue;
-    }
-    onStage(stage);
-    const started = Date.now();
-    const run = spawnSync(stage.run, {
-      cwd: resolve(dir, stage.cwd ?? "."),
-      env: { ...process.env, ...Object.fromEntries(Object.entries(stage.env ?? {}).map(([k, v]) => [k, String(v)])) },
-      shell: true,
-      windowsHide: true,
-      maxBuffer: 256 << 20,
-      timeout: (stage.timeout_minutes ?? 15) * 6e4
-    });
-    const output = Buffer.concat([run.stdout ?? Buffer.alloc(0), run.stderr ?? Buffer.alloc(0)]).toString("utf8") + (run.error ? `
-${run.error.code === "ETIMEDOUT" ? `timed out after ${stage.timeout_minutes ?? 15} minutes` : run.error.message}
-` : "");
-    writeFileSync(join2(logDir2, `${stage.name}.log`), output);
-    const status = run.status === 0 && !run.error ? "pass" : "fail";
-    results.push({ name: stage.name, status, duration_ms: Date.now() - started });
-    if (status === "fail") failed = { stage: stage.name, output };
+
+// src/lib/gate.mjs
+import { execFileSync as execFileSync3 } from "node:child_process";
+var AI_TRAILER = /^\s*co-authored-by:.*\b(claude|anthropic|copilot|chatgpt|openai|codex|gemini|cursor)\b.*$/i;
+var AI_FOOTER = /^.*generated (with|by) \[?claude( code)?\]?.*$/i;
+function stripAttribution(message) {
+  const lines = message.split(/\r?\n/);
+  const kept = lines.filter((line) => !AI_TRAILER.test(line) && !AI_FOOTER.test(line));
+  if (kept.length === lines.length) return null;
+  while (kept.length && !kept.at(-1).trim()) kept.pop();
+  return kept.join("\n") + "\n";
+}
+var unstagedTracked = (dir2) => execFileSync3("git", ["-C", dir2, "diff", "--name-only"], { stdio: ["ignore", "pipe", "ignore"] }).toString().trim().length > 0;
+function checkMarker(dir2, ttlMinutes, now = /* @__PURE__ */ new Date()) {
+  const marker = readMarker(dir2);
+  if (!marker?.diff_sha256) return { decision: "deny", reason: "no_marker", detail: "there is no eval pass" };
+  const ageMinutes = (now.getTime() - Date.parse(marker.passed_at)) / 6e4;
+  if (!(ageMinutes <= ttlMinutes)) {
+    return { decision: "deny", reason: "stale_marker", detail: `the eval pass is ${Math.round(ageMinutes)} minutes old, over the ${ttlMinutes}-minute limit` };
   }
-  return {
-    result: failed ? "fail" : "pass",
-    stages: results,
-    failed,
-    failed_acs: failed ? [...new Set(failed.output.match(AC_ID) ?? [])] : []
-  };
+  if (marker.head !== head(dir2)) {
+    return { decision: "deny", reason: "diff_mismatch", detail: "HEAD has moved since the eval passed" };
+  }
+  if (marker.diff_sha256 !== stagedDiffSha256(dir2)) {
+    return { decision: "deny", reason: "diff_mismatch", detail: "the staged diff is not the one the eval passed" };
+  }
+  if (unstagedTracked(dir2)) {
+    return { decision: "deny", reason: "diff_mismatch", detail: "tracked files have unstaged changes the eval did not see" };
+  }
+  return { decision: "allow", reason: "pass", detail: "an eval passed for this staged diff" };
 }
-var passMarker = (dir, { diffSha256: diffSha2562, taskIds: taskIds2, configSha256, now = /* @__PURE__ */ new Date() }) => ({
-  diff_sha256: diffSha2562,
-  head: head(dir),
-  passed_at: utcNow(now),
-  task_ids: taskIds2,
-  config_sha256: configSha256
-});
 
 // src/lib/spool.mjs
 import { appendFileSync, existsSync as existsSync3, mkdirSync as mkdirSync2, readdirSync, readFileSync as readFileSync3, renameSync as renameSync2, rmSync as rmSync2, writeFileSync as writeFileSync2 } from "node:fs";
@@ -7590,10 +7563,10 @@ function sweep(config2, now) {
     if (existsSync3(marker) && readFileSync3(marker, "utf8").trim() === today) return;
     const cutoff = new Date(now.getTime() - config2.retentionDays * 864e5).toISOString().slice(0, 10);
     for (const [folder, toDate] of [["events", (n) => n.slice(0, 10)], ["routing-log", (n) => `${n.slice(0, 7)}-31`]]) {
-      const dir = join3(config2.metadataDir, folder);
-      if (!existsSync3(dir)) continue;
-      for (const name of readdirSync(dir).filter((n) => n.endsWith(".jsonl"))) {
-        if (toDate(name) < cutoff) rmSync2(join3(dir, name));
+      const dir2 = join3(config2.metadataDir, folder);
+      if (!existsSync3(dir2)) continue;
+      for (const name of readdirSync(dir2).filter((n) => n.endsWith(".jsonl"))) {
+        if (toDate(name) < cutoff) rmSync2(join3(dir2, name));
       }
     }
     mkdirSync2(join3(config2.metadataDir, "state"), { recursive: true });
@@ -7605,8 +7578,8 @@ function sweep(config2, now) {
 function emitEvent(config2, type, fields = {}, data = {}, now = /* @__PURE__ */ new Date()) {
   if (config2.mode === "off") return null;
   sweep(config2, now);
-  const sessionId2 = fields.session_id ?? process.env.CLAUDE_CODE_SESSION_ID;
-  if (!sessionId2) {
+  const sessionId = fields.session_id ?? process.env.CLAUDE_CODE_SESSION_ID;
+  if (!sessionId) {
     recordFailure(config2, `${type}: no session id (not running inside Claude Code?)`);
     return null;
   }
@@ -7618,7 +7591,7 @@ function emitEvent(config2, type, fields = {}, data = {}, now = /* @__PURE__ */ 
     producer: producer(),
     repo: repoIdentity(config2.dir),
     mode: config2.mode,
-    session_id: sessionId2,
+    session_id: sessionId,
     config_sha256: config2.config_sha256
   };
   for (const key of ["prompt_id", "agent_id", "agent_type", "plan_id", "task_id"]) {
@@ -7629,71 +7602,66 @@ function emitEvent(config2, type, fields = {}, data = {}, now = /* @__PURE__ */ 
   return appendLine(config2, file, event) ? event : null;
 }
 
-// src/cli/harness-eval.mjs
-var args = process.argv.slice(2);
-var ci = args.includes("--ci");
-var taskIds = [...new Set(args.flatMap((a, i) => args[i - 1] === "--task" ? a.split(",") : []).map((t) => t.trim()).filter(Boolean))];
-var say = (line = "") => process.stdout.write(line + "\n");
-var refuse = (why, details = []) => {
-  say(`harness-eval: refused - ${why}`);
-  for (const d of details.slice(0, 20)) say(`  ${d}`);
-  if (details.length > 20) say(`  ... and ${details.length - 20} more`);
-  process.exit(2);
-};
-var config = loadConfig();
-if (config.mode === "off") {
-  say(`harness-eval: the Harness is off here (${config.reason ?? "mode: off"}), so no eval is needed`);
+// src/cli/harness-git-hook.mjs
+var [hook, ...rest] = process.argv.slice(2);
+var git3 = (...args) => execFileSync4("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+var dir = (() => {
+  try {
+    return git3("rev-parse", "--show-toplevel");
+  } catch {
+    return process.cwd();
+  }
+})();
+var config = loadConfig(dir);
+var say = (line) => process.stderr.write(`${line}
+`);
+if (hook === "commit-msg") {
+  const file = rest[0];
+  try {
+    const stripped = stripAttribution(readFileSync4(file, "utf8"));
+    if (stripped !== null) writeFileSync3(file, stripped);
+  } catch (error) {
+    say(`harness: commit-msg could not read ${file}: ${error.message}`);
+  }
   process.exit(0);
 }
-var problem = stageProblems(config.stages);
-if (problem) refuse(problem);
-if (!ci) {
-  if (!hasStagedChanges(config.dir)) refuse("nothing is staged. Stage the change to commit (git add), then run harness-eval");
-  const loose = unstaged(config.dir);
-  if (loose.length) refuse("the working tree has changes that are not staged. Stage them or set them aside, so the eval tests exactly what will be committed:", loose);
-  clearMarker(config.dir);
-}
-var diffSha256 = stagedDiffSha256(config.dir);
-var sessionId = process.env.CLAUDE_CODE_SESSION_ID;
-var emit = (type, data) => {
-  if (sessionId) emitEvent(config, type, taskIds.length === 1 ? { task_id: taskIds[0], plan_id: taskIds[0].replace(/\..*$/, "") } : {}, data);
-};
-say(`harness-eval: ${config.stages.length} stage(s) for ${ci ? "the checkout (ci)" : `staged diff ${diffSha256.slice(0, 12)}`}${taskIds.length ? ` (${taskIds.join(", ")})` : ""}`);
-emit("eval.started", { task_ids: taskIds, diff_sha256: diffSha256, ci });
-var logDir = join4(config.metadataDir, "state", "eval");
-var outcome = runStages(config.dir, config.stages, logDir, {
-  // A progress line that the result overwrites only works on a terminal; in a log it is noise.
-  onStage: (stage) => process.stdout.isTTY && process.stdout.write(`  ....  ${stage.name}\r`)
-});
-for (const stage of outcome.stages) {
-  say(`  ${stage.status.padEnd(7)} ${stage.name.padEnd(24)} ${stage.status === "skipped" ? "" : `${(stage.duration_ms / 1e3).toFixed(1)}s`}`);
-}
-emit("eval.completed", {
-  result: outcome.result,
-  stages: outcome.stages,
-  failed_acs: outcome.failed_acs,
-  task_ids: taskIds,
-  diff_sha256: diffSha256,
-  ...outcome.failed_acs.length ? { attribution: "task" } : {}
-});
-if (outcome.failed) {
-  const tail = outcome.failed.output.trimEnd().split(/\r?\n/).slice(-60);
-  say();
-  say(`--- ${outcome.failed.stage}: last ${tail.length} lines (full log: ${relative(config.dir, join4(logDir, `${outcome.failed.stage}.log`))}) ---`);
-  for (const line of tail) say(line);
-  say("---");
-  if (outcome.failed_acs.length) say(`failing acceptance criteria: ${outcome.failed_acs.join(", ")}`);
-  say(`harness-eval: FAIL at ${outcome.failed.stage}`);
+if (config.mode === "off") process.exit(0);
+if (hook === "pre-commit") {
+  const first = checkMarker(dir, config.markerTtlMinutes);
+  if (first.decision === "allow") process.exit(0);
+  say(`harness: no eval pass for this commit (${first.detail}), so running harness-eval now.`);
+  const run = spawnSync2("node", [join4(pluginRoot(), "bin", "harness-eval.mjs")], {
+    cwd: dir,
+    env: { ...process.env, CLAUDE_PROJECT_DIR: dir },
+    stdio: ["ignore", "inherit", "inherit"]
+  });
+  const second = run.status === 0 ? checkMarker(dir, config.markerTtlMinutes) : null;
+  if (second?.decision === "allow") process.exit(0);
+  say(`harness: commit stopped - ${second ? second.detail : "harness-eval did not pass"}. (git commit --no-verify skips this check.)`);
   process.exit(1);
 }
-if (ci) {
-  say("harness-eval: PASS (ci, no marker written)");
+if (hook === "post-commit") {
+  if (!process.env.CLAUDE_CODE_SESSION_ID) process.exit(0);
+  try {
+    const sha = git3("rev-parse", "HEAD");
+    let files = 0, added = 0, removed = 0;
+    for (const line of git3("show", "--numstat", "--format=", "HEAD").split("\n").filter(Boolean)) {
+      const [a, r] = line.split("	");
+      files++;
+      added += Number.parseInt(a, 10) || 0;
+      removed += Number.parseInt(r, 10) || 0;
+    }
+    const taskIds = readMarker(dir)?.task_ids ?? [];
+    emitEvent(
+      config,
+      "commit.created",
+      taskIds.length === 1 ? { task_id: taskIds[0], plan_id: taskIds[0].replace(/\..*$/, "") } : {},
+      { commit_sha: sha, task_ids: taskIds, files_changed: files, lines_added: added, lines_removed: removed }
+    );
+  } catch (error) {
+    say(`harness: post-commit could not record the commit: ${error.message}`);
+  }
   process.exit(0);
 }
-if (stagedDiffSha256(config.dir) !== diffSha256 || unstaged(config.dir).length) {
-  say("harness-eval: FAIL - the staged diff or the working tree changed while the eval ran, so this pass would vouch for something else. Run it again.");
-  process.exit(1);
-}
-writeMarker(config.dir, passMarker(config.dir, { diffSha256, taskIds, configSha256: config.config_sha256 }));
-say(`harness-eval: PASS - ${relative(config.dir, markerPath(config.dir))} written; a commit of this staged diff is allowed for ${config.markerTtlMinutes} minutes`);
+say(`harness-git-hook: unknown hook "${hook ?? ""}"`);
 process.exit(0);

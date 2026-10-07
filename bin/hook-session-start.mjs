@@ -7368,7 +7368,7 @@ var require_dist = __commonJS({
 });
 
 // src/hooks/session-start.mjs
-import { join as join2 } from "node:path";
+import { join as join3 } from "node:path";
 
 // src/lib/config.mjs
 var import_yaml = __toESM(require_dist(), 1);
@@ -7380,6 +7380,7 @@ import { fileURLToPath } from "node:url";
 // src/lib/ids.mjs
 import { createHash, randomBytes } from "node:crypto";
 var sha256 = (data) => createHash("sha256").update(data).digest("hex");
+var utcNow = (date = /* @__PURE__ */ new Date()) => date.toISOString().replace(/\.\d{3}Z$/, "Z");
 
 // src/lib/config.mjs
 var git = (cwd, ...args) => {
@@ -7402,6 +7403,14 @@ function pluginRoot() {
   }
   return dir;
 }
+function producer() {
+  try {
+    const { version } = JSON.parse(readFileSync(join(pluginRoot(), ".claude-plugin", "plugin.json"), "utf8"));
+    return { name: "harness", version };
+  } catch {
+    return { name: "harness", version: "0.0.0-unknown" };
+  }
+}
 function loadConfig(dir = projectDir()) {
   const path = join(dir, "routing.yaml");
   if (!existsSync(path)) return { dir, mode: "off", reason: "no routing.yaml" };
@@ -7421,6 +7430,26 @@ function loadConfig(dir = projectDir()) {
   };
 }
 
+// src/lib/spool.mjs
+import { appendFileSync, existsSync as existsSync2, mkdirSync, readdirSync, readFileSync as readFileSync2, renameSync, rmSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join as join2, resolve } from "node:path";
+var pluginRecordPath = () => join2(process.env.HARNESS_HOME || join2(homedir(), ".harness"), "plugin.json");
+function recordPluginRoot(root, version, now = /* @__PURE__ */ new Date()) {
+  if (!root) return;
+  const path = pluginRecordPath();
+  try {
+    const known = existsSync2(path) ? JSON.parse(readFileSync2(path, "utf8")) : null;
+    if (known?.root === resolve(root) && known?.version === version) return;
+    mkdirSync(join2(path, ".."), { recursive: true });
+    writeFileSync(`${path}.tmp`, JSON.stringify({ root: resolve(root), version, recorded: utcNow(now) }, null, 2) + "\n");
+    renameSync(`${path}.tmp`, path);
+  } catch (error) {
+    process.stderr.write(`harness: could not record the plugin's location in ${path}: ${error.message}
+`);
+  }
+}
+
 // src/hooks/input.mjs
 async function readHookInput() {
   const chunks = [];
@@ -7434,9 +7463,10 @@ async function readHookInput() {
 
 // src/hooks/session-start.mjs
 await readHookInput();
+recordPluginRoot(pluginRoot(), producer().version);
 var config = loadConfig();
 if (config.mode !== "off") {
-  const bin = (name) => join2(pluginRoot(), "bin", `${name}.mjs`).replace(/\\/g, "/");
+  const bin = (name) => join3(pluginRoot(), "bin", `${name}.mjs`).replace(/\\/g, "/");
   const context = [
     `The Harness is active in this repository (mode: ${config.mode}).`,
     `Record Harness events with: node "${bin("harness-emit")}" <type> --task PLAN-n.m --data '<json>'`,

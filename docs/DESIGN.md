@@ -96,7 +96,10 @@ Plugin subagents ignore `hooks`, `mcpServers` and `permissionMode` in their fron
   - Exit codes: 0 pass, 1 fail, 2 refused.
 - **The commit gate has two layers:**
   1. The `commit-gate` hook, inside Claude Code.
-  2. lefthook `pre-commit`, which catches commits made outside Claude Code.
+  2. The git `pre-commit` hook, which catches commits made outside Claude Code. **Plain git hooks, not lefthook** (decided 2026-10-07): there is one hook to run, so a committed `.githooks/` folder switched on with `git config core.hooksPath .githooks` does the job without a tool to install on every machine. The wrappers are in [`templates/githooks/`](../templates/githooks/) and call `bin/harness-git-hook.mjs`.
+     - **It finds the plugin through `~/.harness/plugin.json`**, which SessionStart writes whenever a session starts with the plugin. Nothing machine-specific is written into the repository. Without that file, `pre-commit` stops the commit and prints the setup steps; `git commit --no-verify` remains the escape hatch, as for any git hook.
+     - **With no pass for what is staged, `pre-commit` runs `harness-eval` itself** and lets the commit through if it passes (decided 2026-10-07), so a commit by hand needs no separate step. `git commit -a` works, because git hands the hook an index that already holds everything the commit will take.
+     - `post-commit` records `commit.created` inside Claude Code (that is where the session id is), with the task ids from the marker.
 
   Both recompute the staged-diff hash, and deny when there is no marker, when the diff differs, or when the marker is more than 30 minutes old (`gate.marker_ttl_minutes`).
 - **Commit detection (C2):** the hook runs on every Bash call and its script decides whether the command is a commit. It treats `git` as the start of a command at the beginning of the line; after `;`, `&&`, `||`, `|`, `$(` or a backtick; or after an opening `"` or `'`. It then skips any global options, including `-C <path>`, `-c <k=v>`, and `--git-dir`, `--work-tree` and `--namespace` whether they take their value with `=` or a space, before looking for `commit`. M2 implements these cases as tests:
@@ -115,7 +118,7 @@ Plugin subagents ignore `hooks`, `mcpServers` and `permissionMode` in their fron
   | `git commit-tree …` | not gated by the pattern; denied by permission rules instead |
 
 - **The permission rules** come from the Harness document's Permissions section, plus `Bash(git commit-tree*)` and `Bash(git * commit-tree*)`. A plugin cannot ship permission rules (spike S7 fails), so `/harness:init` merges them into `.claude/settings.json` and shows the diff first.
-- **`commit-msg`** strips AI attribution trailers. Claude Code's own `attribution` setting is also turned off, so the hook is only a backstop.
+- **`commit-msg`** strips AI attribution trailers (`Co-Authored-By` naming Claude, Anthropic, Copilot and similar, and the "Generated with Claude Code" line); anyone else's `Co-Authored-By` stays. Claude Code's own `attribution.commit` setting is also turned off, so the hook is only a backstop. Confirmed for PU on 2026-10-07.
 
 ## Escalation
 
@@ -139,7 +142,7 @@ Independent tasks with no overlapping file scope can run in parallel worktrees, 
 `/harness:init`:
 - writes `routing.yaml` with the stages it detects;
 - merges the permission rules (S7) and `worktree.baseRef: "head"` (S6) into `.claude/settings.json`, showing the diff before writing;
-- installs `lefthook.yml` and the CI eval workflow;
+- installs the `.githooks/` wrappers, sets `core.hooksPath`, and adds the CI eval workflow;
 - adds `.harness/` and `.claude/state/` to `.gitignore`;
 - runs a dry-run commit to prove the gate denies.
 

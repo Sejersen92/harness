@@ -42,6 +42,19 @@ export function isCommit(command) {
   return false;
 }
 
+/** Lines that credit an AI tool with a commit. Anyone else's Co-Authored-By stays. */
+const AI_TRAILER = /^\s*co-authored-by:.*\b(claude|anthropic|copilot|chatgpt|openai|codex|gemini|cursor)\b.*$/i;
+const AI_FOOTER = /^.*generated (with|by) \[?claude( code)?\]?.*$/i;
+
+/** A commit message without AI attribution trailers, or null when it had none (the commit-msg hook). */
+export function stripAttribution(message) {
+  const lines = message.split(/\r?\n/);
+  const kept = lines.filter((line) => !AI_TRAILER.test(line) && !AI_FOOTER.test(line));
+  if (kept.length === lines.length) return null;
+  while (kept.length && !kept.at(-1).trim()) kept.pop();
+  return kept.join("\n") + "\n";
+}
+
 /** Whether a file path is the pass marker (or its temp file), however it is spelled. */
 export const isMarkerPath = (path) => /\.claude[\\/]+state[\\/]+eval-pass\.json/i.test(String(path ?? ""));
 

@@ -157,4 +157,6 @@ test("SessionStart hands the session the path to harness-emit", () => {
   assert.match(out.hookSpecificOutput.additionalContext, /mode: observe/);
   assert.match(out.hookSpecificOutput.additionalContext, /bin\/harness-emit\.mjs/);
   assert.match(out.hookSpecificOutput.additionalContext, /bin\/harness-eval\.mjs/);
+  // ...and records where the plugin lives, for the repository's git hooks.
+  assert.equal(JSON.parse(readFileSync(join(dir, ".harness-home", "plugin.json"), "utf8")).root, root);
 });
