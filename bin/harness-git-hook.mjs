@@ -7435,6 +7435,17 @@ function producer() {
     return { name: "harness", version: "0.0.0-unknown" };
   }
 }
+var DEFAULT_TEST_GLOBS = [
+  "**/*.test.*",
+  "**/*.spec.*",
+  "**/*_test.*",
+  "**/test_*.py",
+  "**/test/**",
+  "**/tests/**",
+  "**/__tests__/**",
+  "**/*.Tests/**",
+  "**/*Tests.cs"
+];
 function loadConfig(dir2 = projectDir()) {
   const path = join(dir2, "routing.yaml");
   if (!existsSync(path)) return { dir: dir2, mode: "off", reason: "no routing.yaml" };
@@ -7450,6 +7461,7 @@ function loadConfig(dir2 = projectDir()) {
     retentionDays: Number.isInteger(metadata.retention_days) ? metadata.retention_days : 30,
     includeJustifications: metadata.include_justifications !== false,
     stages: Array.isArray(yaml.eval?.stages) ? yaml.eval.stages : [],
+    testGlobs: Array.isArray(yaml.eval?.tests) && yaml.eval.tests.length ? yaml.eval.tests.map(String) : DEFAULT_TEST_GLOBS,
     markerTtlMinutes: Number.isInteger(yaml.gate?.marker_ttl_minutes) ? yaml.gate.marker_ttl_minutes : 30
   };
 }

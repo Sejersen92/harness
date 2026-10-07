@@ -11,6 +11,7 @@ tiers:                   # thresholds and overrides come from the complexity-rub
 
 eval:                    # harness-eval runs these in order against what is staged; the first failure stops it
   stages: []             # e.g. - { name: build, run: "npm run build", cwd: web, env: { CI: "1" }, timeout_minutes: 15 }
+  # tests: ["src/**/*.test.ts"]   # which files are tests (protect-tests, tests-only); omitted = the usual names
 
 gate:
   marker_ttl_minutes: 30 # how long a pass allows a commit of the diff it was for

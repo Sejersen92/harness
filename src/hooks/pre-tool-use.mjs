@@ -5,15 +5,21 @@
 // - commit-gate: a Bash command that commits is denied unless harness-eval passed for exactly what is
 //   staged (lib/gate.mjs). Every decision is recorded as gate.decision.
 // - marker-guard: nothing but harness-eval may write the pass marker, so no tool call may touch it.
+// - protect-tests: an implementer (harness:impl-t*) may not edit a test file.
+// - tests-only: the evaluator (harness:evaluator) may edit nothing but test files.
+//   Both read routing.yaml's eval.tests globs. They cover the edit tools; a test file rewritten
+//   through Bash is outside what a hook can see reliably, and the evaluator's review is the backstop.
 //
 // A deny is a JSON permissionDecision, never exit 1, which Claude Code treats as a non-blocking error
 // and lets the call through (S8). Anything this script can't decide, it allows: an unreadable input
 // or a broken repository is not a reason to stop all work, and the git pre-commit hook still stands.
 import { join } from "node:path";
 import { loadConfig, pluginRoot } from "../lib/config.mjs";
-import { checkMarker, isCommit, isMarkerPath } from "../lib/gate.mjs";
+import { checkMarker, isCommit, isMarkerPath, isTestPath } from "../lib/gate.mjs";
 import { emitEvent } from "../lib/spool.mjs";
 import { readHookInput } from "./input.mjs";
+
+const EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
 
 const deny = (reason) => {
   process.stdout.write(JSON.stringify({
@@ -33,13 +39,28 @@ const touchesMarker = tool === "Bash"
   ? /eval-pass\.json/i.test(command) && !/harness-eval(\.mjs)?\b/.test(command)
   : isMarkerPath(args.file_path ?? args.notebook_path);
 const commits = tool === "Bash" && isCommit(command);
-if (!touchesMarker && !commits) process.exit(0);
+const agent = String(input.agent_type ?? "");
+const role = agent.startsWith("harness:impl-t") ? "implementer" : agent === "harness:evaluator" ? "evaluator" : null;
+const edited = EDIT_TOOLS.has(tool) ? (args.file_path ?? args.notebook_path) : null;
+const policedEdit = Boolean(role && edited);
+if (!touchesMarker && !commits && !policedEdit) process.exit(0);
 
 const config = loadConfig();
 if (config.mode === "off") process.exit(0);
 
 if (touchesMarker) {
   deny("harness: the eval pass marker (.claude/state/eval-pass.json) is written only by harness-eval. Run harness-eval instead of touching the file.");
+}
+
+if (policedEdit) {
+  const test = isTestPath(edited, config.dir, config.testGlobs);
+  if (role === "implementer" && test) {
+    deny(`harness: implementers don't change tests (${edited} is a test by routing.yaml's eval.tests). If a test is wrong, say so in an ESCALATE report.`);
+  }
+  if (role === "evaluator" && !test) {
+    deny(`harness: the evaluator writes tests only, and ${edited} is not one by routing.yaml's eval.tests. Report what the code needs in FAIL instead.`);
+  }
+  process.exit(0);
 }
 
 let verdict;

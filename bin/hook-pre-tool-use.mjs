@@ -7433,6 +7433,17 @@ function producer() {
     return { name: "harness", version: "0.0.0-unknown" };
   }
 }
+var DEFAULT_TEST_GLOBS = [
+  "**/*.test.*",
+  "**/*.spec.*",
+  "**/*_test.*",
+  "**/test_*.py",
+  "**/test/**",
+  "**/tests/**",
+  "**/__tests__/**",
+  "**/*.Tests/**",
+  "**/*Tests.cs"
+];
 function loadConfig(dir = projectDir()) {
   const path = join(dir, "routing.yaml");
   if (!existsSync(path)) return { dir, mode: "off", reason: "no routing.yaml" };
@@ -7448,12 +7459,14 @@ function loadConfig(dir = projectDir()) {
     retentionDays: Number.isInteger(metadata.retention_days) ? metadata.retention_days : 30,
     includeJustifications: metadata.include_justifications !== false,
     stages: Array.isArray(yaml.eval?.stages) ? yaml.eval.stages : [],
+    testGlobs: Array.isArray(yaml.eval?.tests) && yaml.eval.tests.length ? yaml.eval.tests.map(String) : DEFAULT_TEST_GLOBS,
     markerTtlMinutes: Number.isInteger(yaml.gate?.marker_ttl_minutes) ? yaml.gate.marker_ttl_minutes : 30
   };
 }
 
 // src/lib/gate.mjs
 import { execFileSync as execFileSync3 } from "node:child_process";
+import { isAbsolute, relative, resolve as resolve2 } from "node:path";
 
 // src/lib/eval.mjs
 import { spawnSync, execFileSync as execFileSync2 } from "node:child_process";
@@ -7498,6 +7511,13 @@ function isCommit(command2) {
   }
   return false;
 }
+var globToRegExp = (glob) => new RegExp(`^${glob.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*\*\//g, "\0").replace(/\*\*/g, "").replace(/\*/g, "[^/]*").replace(/\?/g, "[^/]").replace(/\u0000/g, "(?:.*/)?").replace(/\u0001/g, ".*")}$`, "i");
+function isTestPath(file, dir, globs) {
+  if (!file) return false;
+  const rel = relative(dir, resolve2(dir, String(file))).replace(/\\/g, "/");
+  if (!rel || rel.startsWith("../") || isAbsolute(rel)) return false;
+  return globs.some((glob) => globToRegExp(glob).test(rel));
+}
 var isMarkerPath = (path) => /\.claude[\\/]+state[\\/]+eval-pass\.json/i.test(String(path ?? ""));
 var unstagedTracked = (dir) => execFileSync3("git", ["-C", dir, "diff", "--name-only"], { stdio: ["ignore", "pipe", "ignore"] }).toString().trim().length > 0;
 function checkMarker(dir, ttlMinutes, now = /* @__PURE__ */ new Date()) {
@@ -7522,16 +7542,16 @@ function checkMarker(dir, ttlMinutes, now = /* @__PURE__ */ new Date()) {
 // src/lib/spool.mjs
 import { appendFileSync, existsSync as existsSync3, mkdirSync as mkdirSync2, readdirSync, readFileSync as readFileSync3, renameSync as renameSync2, rmSync as rmSync2, writeFileSync as writeFileSync2 } from "node:fs";
 import { homedir } from "node:os";
-import { join as join3, resolve as resolve2 } from "node:path";
+import { join as join3, resolve as resolve3 } from "node:path";
 var MAX_LINE_BYTES = 4096;
 var registryPath = () => join3(process.env.HARNESS_HOME || join3(homedir(), ".harness"), "spools.json");
 function registerSpool(config2, now = /* @__PURE__ */ new Date()) {
   const path = registryPath();
-  const metadataDir = resolve2(config2.metadataDir);
+  const metadataDir = resolve3(config2.metadataDir);
   try {
     const registry = existsSync3(path) ? JSON.parse(readFileSync3(path, "utf8")) : { version: 1, spools: [] };
     if (registry.spools.some((s) => s.metadata_dir.toLowerCase() === metadataDir.toLowerCase())) return;
-    registry.spools.push({ repo_dir: resolve2(config2.dir), metadata_dir: metadataDir, first_seen: utcNow(now) });
+    registry.spools.push({ repo_dir: resolve3(config2.dir), metadata_dir: metadataDir, first_seen: utcNow(now) });
     mkdirSync2(join3(path, ".."), { recursive: true });
     writeFileSync2(`${path}.tmp`, JSON.stringify(registry, null, 2) + "\n");
     renameSync2(`${path}.tmp`, path);
@@ -7626,6 +7646,7 @@ async function readHookInput() {
 }
 
 // src/hooks/pre-tool-use.mjs
+var EDIT_TOOLS = /* @__PURE__ */ new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
 var deny = (reason) => {
   process.stdout.write(JSON.stringify({
     hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: reason }
@@ -7638,11 +7659,25 @@ var args = input.tool_input ?? {};
 var command = tool === "Bash" ? String(args.command ?? "") : "";
 var touchesMarker = tool === "Bash" ? /eval-pass\.json/i.test(command) && !/harness-eval(\.mjs)?\b/.test(command) : isMarkerPath(args.file_path ?? args.notebook_path);
 var commits = tool === "Bash" && isCommit(command);
-if (!touchesMarker && !commits) process.exit(0);
+var agent = String(input.agent_type ?? "");
+var role = agent.startsWith("harness:impl-t") ? "implementer" : agent === "harness:evaluator" ? "evaluator" : null;
+var edited = EDIT_TOOLS.has(tool) ? args.file_path ?? args.notebook_path : null;
+var policedEdit = Boolean(role && edited);
+if (!touchesMarker && !commits && !policedEdit) process.exit(0);
 var config = loadConfig();
 if (config.mode === "off") process.exit(0);
 if (touchesMarker) {
   deny("harness: the eval pass marker (.claude/state/eval-pass.json) is written only by harness-eval. Run harness-eval instead of touching the file.");
+}
+if (policedEdit) {
+  const test = isTestPath(edited, config.dir, config.testGlobs);
+  if (role === "implementer" && test) {
+    deny(`harness: implementers don't change tests (${edited} is a test by routing.yaml's eval.tests). If a test is wrong, say so in an ESCALATE report.`);
+  }
+  if (role === "evaluator" && !test) {
+    deny(`harness: the evaluator writes tests only, and ${edited} is not one by routing.yaml's eval.tests. Report what the code needs in FAIL instead.`);
+  }
+  process.exit(0);
 }
 var verdict;
 try {
