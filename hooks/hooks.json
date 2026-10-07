@@ -3,6 +3,9 @@
     "SessionStart": [
       { "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/bin/hook-session-start.mjs"], "timeout": 10 } ] }
     ],
+    "PreToolUse": [
+      { "matcher": "Bash|Edit|Write|MultiEdit|NotebookEdit", "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/bin/hook-pre-tool-use.mjs"], "timeout": 30 } ] }
+    ],
     "SubagentStart": [
       { "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/bin/hook-subagent-start.mjs"], "timeout": 10 } ] }
     ],

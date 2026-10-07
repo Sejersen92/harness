@@ -77,6 +77,11 @@ Plugin subagents ignore `hooks`, `mcpServers` and `permissionMode` in their fron
 | `require-report` | SubagentStop | Require a `DONE`/`ESCALATE`/`PASS`/`FAIL`/`PLAN` header; emit `subagent.stopped` |
 | `log-subagent` | SubagentStart | Emit `subagent.started` |
 
+**One process per event, not per policy.** The `PreToolUse` policies (`commit-gate`, `marker-guard`, and in step 4 `protect-tests` and `tests-only`) all run inside one script, `bin/hook-pre-tool-use.mjs`, registered for `Bash|Edit|Write|MultiEdit|NotebookEdit`. It runs on every Bash call, and Node's start-up is most of its cost. A call that is neither a commit nor about the marker leaves before `routing.yaml` is read. Measured on Windows (2026-10-07): 64 ms for a non-commit call against 63 ms for bare `node`, and about 100 ms for a commit check.
+
+- **`commit-gate`** allows a commit only with a marker for exactly the staged diff, on the current `HEAD`, younger than `gate.marker_ttl_minutes`, and with no unstaged edits to tracked files. Without that last check, `git commit -a` would take changes the eval never saw. Every decision is recorded as `gate.decision`. If the hook itself fails, it allows the commit and the git `pre-commit` hook decides.
+- **`marker-guard`** denies any Edit/Write to `.claude/state/eval-pass.json`, and any Bash command naming `eval-pass.json` unless it runs `harness-eval`.
+
 **Implementation rules from the spikes:**
 - Scripts are single-file Node ESM (K2), registered in exec form (`"command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/bin/<script>.mjs"]`), with no shell and no `.cmd` shim on Windows (S8).
 - **A policy hook blocks with a JSON `permissionDecision: "deny"` or exit 2, never exit 1.** Exit 1 is a non-blocking error and the action proceeds (S8).
