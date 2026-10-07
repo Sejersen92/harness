@@ -133,7 +133,47 @@ export function emitEvent(config, type, fields = {}, data = {}, now = new Date()
   }
   event.data = data;
   const file = join(config.metadataDir, "events", `${event.ts.slice(0, 10)}.jsonl`);
-  return appendLine(config, file, event) ? event : null;
+  if (!appendLine(config, file, event)) return null;
+  snapshotConfig(config, event.repo, now);
+  return event;
+}
+
+const TIERS = ["T1", "T2", "T3", "T4"];
+const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
+
+/**
+ * Writes <metadata dir>/configs/<config_sha256>.json, the config this line was written under
+ * (harness.config/v1), unless it is already there. Events carry only the hash; this is what it stood
+ * for, so PU can show each tier's model and effort without ever reading routing.yaml. A tier entry
+ * that isn't well formed is left out rather than guessed.
+ */
+export function snapshotConfig(config, repo, now = new Date()) {
+  const path = join(config.metadataDir, "configs", `${config.config_sha256}.json`);
+  if (existsSync(path)) return;
+  const tiers = {};
+  for (const tier of TIERS) {
+    const t = config.tiers?.[tier];
+    if (!t || !Number.isInteger(t.max_score) || typeof t.agent !== "string" || typeof t.model !== "string") continue;
+    tiers[tier] = { max_score: t.max_score, agent: t.agent, model: t.model, ...(EFFORTS.includes(t.effort) ? { effort: t.effort } : {}) };
+  }
+  const snapshot = {
+    schema: "harness.config/v1",
+    config_sha256: config.config_sha256,
+    captured: utcNow(now),
+    producer: producer(),
+    repo,
+    mode: config.mode,
+    tiers,
+    eval: { stages: config.stages.map((s) => s?.name).filter((n) => typeof n === "string" && n) },
+    gate: { marker_ttl_minutes: config.markerTtlMinutes },
+  };
+  try {
+    mkdirSync(join(path, ".."), { recursive: true });
+    writeFileSync(`${path}.tmp`, JSON.stringify(snapshot, null, 2) + "\n");
+    renameSync(`${path}.tmp`, path);
+  } catch (error) {
+    recordFailure(config, `config snapshot: ${error.message}`);
+  }
 }
 
 export function writeRoutingLog(config, record) {

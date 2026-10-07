@@ -13,10 +13,12 @@ export const ajv = new Ajv2020({ allErrors: true, strict: true, strictTypes: fal
 addFormats(ajv);
 ajv.addSchema(readJson("schema/harness.events.v1.json"));
 ajv.addSchema(readJson("schema/routing-log.v1.json"));
+ajv.addSchema(readJson("schema/config.v1.json"));
 
 export const validators = {
   "harness.events/v1": ajv.getSchema("https://github.com/Sejersen92/harness/schema/harness.events.v1.json"),
   "harness.routing-log/v1": ajv.getSchema("https://github.com/Sejersen92/harness/schema/routing-log.v1.json"),
+  "harness.config/v1": ajv.getSchema("https://github.com/Sejersen92/harness/schema/config.v1.json"),
 };
 
 export const describe = (validate) => ajv.errorsText(validate.errors, { separator: "\n  " });

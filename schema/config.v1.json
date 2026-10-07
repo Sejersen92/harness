@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Sejersen92/harness/schema/config.v1.json",
+  "title": "Harness config snapshot v1",
+  "description": "The routing.yaml a task ran under, as the Harness read it, in .harness/configs/<config_sha256>.json. Every event and routing-log record names its config by config_sha256; this is what that hash stood for, so a reader can show which model and effort each tier was set to without ever seeing the YAML. Written once per config, the first time an event is written under it. Additive within v1, like the other two formats.",
+  "type": "object",
+  "required": ["schema", "config_sha256", "captured", "producer", "repo", "mode", "tiers"],
+  "properties": {
+    "schema": { "const": "harness.config/v1" },
+    "config_sha256": { "$ref": "harness.events.v1.json#/$defs/sha256" },
+    "captured": { "type": "string", "format": "date-time" },
+    "producer": { "$ref": "harness.events.v1.json#/$defs/producer" },
+    "repo": { "$ref": "harness.events.v1.json#/$defs/repo" },
+    "mode": { "$ref": "harness.events.v1.json#/$defs/mode" },
+    "tiers": {
+      "description": "Each tier as configured. In observe mode the model is what route mode would use, not what ran.",
+      "type": "object",
+      "propertyNames": { "$ref": "harness.events.v1.json#/$defs/tier" },
+      "additionalProperties": { "$ref": "#/$defs/tier_config" }
+    },
+    "eval": {
+      "type": "object",
+      "properties": {
+        "stages": { "description": "Stage names in the order they run; the commands stay on the machine.", "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "gate": {
+      "type": "object",
+      "properties": { "marker_ttl_minutes": { "type": "integer", "minimum": 1 } }
+    }
+  },
+  "$defs": {
+    "tier_config": {
+      "type": "object",
+      "required": ["max_score", "agent", "model"],
+      "properties": {
+        "max_score": { "type": "integer", "minimum": 0, "maximum": 12 },
+        "agent": { "type": "string", "minLength": 1 },
+        "model": { "description": "An alias (sonnet, opus, haiku) as written in routing.yaml (C3).", "type": "string", "minLength": 1 },
+        "effort": { "$ref": "harness.events.v1.json#/$defs/effort" }
+      }
+    }
+  }
+}

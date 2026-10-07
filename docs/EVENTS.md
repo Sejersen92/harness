@@ -134,6 +134,29 @@ The record for the example above:
 }
 ```
 
+## Config snapshots
+
+Every event and routing-log record names the `routing.yaml` it ran under only by `config_sha256`. The first time an event is written under a config, the Harness also writes what that hash stood for to `.harness/configs/<config_sha256>.json` ([`schema/config.v1.json`](../schema/config.v1.json)). It holds each tier's model and effort, the mode, the eval stage names and the gate's TTL. It is never rewritten, since the hash names its content. A reader can then show "would route to sonnet, low; ran on opus, low" without reading YAML. Stage commands stay on the machine.
+
+```json
+{
+  "schema": "harness.config/v1",
+  "config_sha256": "9f811fd217cfa016d705daa56a07b63e731424ff9223514e5091e4d7802bdff5",
+  "captured": "2026-10-12T09:14:03Z",
+  "producer": { "name": "harness", "version": "0.2.2" },
+  "repo": { "name": "previouslyupcoming", "remote_sha256": "8870c7e3b16d6d10f365ee183b8906cfe8c76d6a9fd8229e1990e0247877a6e3" },
+  "mode": "observe",
+  "tiers": {
+    "T1": { "max_score": 2, "agent": "impl-t1", "model": "sonnet", "effort": "low" },
+    "T2": { "max_score": 6, "agent": "impl-t2", "model": "sonnet", "effort": "medium" },
+    "T3": { "max_score": 9, "agent": "impl-t3", "model": "sonnet", "effort": "high" },
+    "T4": { "max_score": 12, "agent": "impl-t4", "model": "opus", "effort": "medium" }
+  },
+  "eval": { "stages": ["cli-build", "cli-test", "web-lint", "web-test", "web-build"] },
+  "gate": { "marker_ttl_minutes": 30 }
+}
+```
+
 ## Versioning
 
 1. Within v1, changes are **additive only**: new event types, new optional fields.

@@ -7638,7 +7638,39 @@ function emitEvent(config2, type, fields = {}, data = {}, now = /* @__PURE__ */ 
   }
   event.data = data;
   const file = join3(config2.metadataDir, "events", `${event.ts.slice(0, 10)}.jsonl`);
-  return appendLine(config2, file, event) ? event : null;
+  if (!appendLine(config2, file, event)) return null;
+  snapshotConfig(config2, event.repo, now);
+  return event;
+}
+var TIERS = ["T1", "T2", "T3", "T4"];
+var EFFORTS = ["low", "medium", "high", "xhigh", "max"];
+function snapshotConfig(config2, repo, now = /* @__PURE__ */ new Date()) {
+  const path = join3(config2.metadataDir, "configs", `${config2.config_sha256}.json`);
+  if (existsSync3(path)) return;
+  const tiers = {};
+  for (const tier of TIERS) {
+    const t = config2.tiers?.[tier];
+    if (!t || !Number.isInteger(t.max_score) || typeof t.agent !== "string" || typeof t.model !== "string") continue;
+    tiers[tier] = { max_score: t.max_score, agent: t.agent, model: t.model, ...EFFORTS.includes(t.effort) ? { effort: t.effort } : {} };
+  }
+  const snapshot = {
+    schema: "harness.config/v1",
+    config_sha256: config2.config_sha256,
+    captured: utcNow(now),
+    producer: producer(),
+    repo,
+    mode: config2.mode,
+    tiers,
+    eval: { stages: config2.stages.map((s) => s?.name).filter((n) => typeof n === "string" && n) },
+    gate: { marker_ttl_minutes: config2.markerTtlMinutes }
+  };
+  try {
+    mkdirSync2(join3(path, ".."), { recursive: true });
+    writeFileSync2(`${path}.tmp`, JSON.stringify(snapshot, null, 2) + "\n");
+    renameSync2(`${path}.tmp`, path);
+  } catch (error) {
+    recordFailure(config2, `config snapshot: ${error.message}`);
+  }
 }
 
 // src/cli/harness-eval.mjs
