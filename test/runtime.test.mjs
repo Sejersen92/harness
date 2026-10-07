@@ -156,4 +156,5 @@ test("SessionStart hands the session the path to harness-emit", () => {
   const out = JSON.parse(hook(dir, "session-start", { session_id: SESSION, source: "startup" }).stdout);
   assert.match(out.hookSpecificOutput.additionalContext, /mode: observe/);
   assert.match(out.hookSpecificOutput.additionalContext, /bin\/harness-emit\.mjs/);
+  assert.match(out.hookSpecificOutput.additionalContext, /bin\/harness-eval\.mjs/);
 });
