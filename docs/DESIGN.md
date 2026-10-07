@@ -142,24 +142,36 @@ Independent tasks with no overlapping file scope can run in parallel worktrees, 
 
 ## Setup and health
 
-`/harness:init`:
-- writes `routing.yaml` with the stages it detects;
-- merges the permission rules (S7) and `worktree.baseRef: "head"` (S6) into `.claude/settings.json`, showing the diff before writing;
-- installs the `.githooks/` wrappers, sets `core.hooksPath`, and adds the CI eval workflow;
-- adds `.harness/` and `.claude/state/` to `.gitignore`;
-- runs a dry-run commit to prove the gate denies.
+Both are scripts (`bin/harness-init.mjs`, `bin/harness-doctor.mjs`) with slash commands in front of them (`commands/init.md`, `commands/doctor.md`). They share one list in `src/lib/setup.mjs`, so init never sets up something doctor doesn't check, and doctor never asks for something init can't do. `pu harness --install` will call the same scripts.
 
-`/harness:doctor` checks:
-- the Claude Code version (at least 2.1.284);
-- that the hook scripts resolve;
-- that the folder is trusted;
-- that `routing.yaml` validates;
-- that the spool is writable;
-- that `worktree.baseRef` is set;
-- that the working directory's casing matches the disk;
-- that attribution is off.
+**`/harness:init`** is a dry run unless given `--apply`. It lists each change and describes the settings change in words before anything is written (S7). Each step leaves what is already right alone, so running it twice is safe. It:
+- writes `routing.yaml` (mode `observe`) with the stages it detects: `lint`, `test` and `build` npm scripts, and a .NET solution or `*.Tests` project, at the root or one folder down;
+- adds `.harness/`, `.claude/state/` and `/PLAN.md` to `.gitignore`, and keeps `.githooks/*` LF in `.gitattributes`;
+- installs the `.githooks/` wrappers and sets `core.hooksPath` for this clone;
+- merges into `.claude/settings.json`: the deny rules, `attribution.commit: ""` and `worktree.baseRef: "head"` (S6). It keeps every setting and rule already there.
 
-It also reports `emit_failures` (C12) and emits `harness.doctor`.
+**The deny rules** are the source design's list without its Vercel and Azure rules, which belong to repositories that use them. They cover the guardrail files (`.claude/state/`, `.claude/settings.json`, `.githooks/`, `.github/workflows/`), anything that skips or bypasses the gate (`--no-verify`, `-n`, `commit-tree`), history rewrites and pushes to main, and `gh pr merge`, `release`, `repo delete` and `secret`. They apply to **every** Claude Code session in the repository, not only the Harness's, which is why init shows them first and the person decides.
+
+The CI eval workflow is not written by init yet (step 4c). The source's "dry-run commit to prove the gate denies" is covered by doctor's `git-hooks` check and the git-hook tests instead.
+
+**`/harness:doctor`** prints one line per check (`pass`, `warn` or `fail`) and exits 1 when anything fails:
+
+| Check | Fails or warns when |
+|---|---|
+| `node` | Node is older than 22 (fail) |
+| `claude-code` | Claude Code is older than 2.1.284 (fail); `claude` is not on PATH (warn) |
+| `plugin-recorded` | `~/.harness/plugin.json` is missing or points at no plugin (fail); git hooks use a different copy (warn) |
+| `routing-yaml` | missing, mode off, a tier malformed, or no eval stages, which means no commit can pass (fail) |
+| `spool-writable` | the metadata folder can't be written (fail) |
+| `git-hooks` | `core.hooksPath` isn't `.githooks` or a wrapper is missing, so commits outside Claude Code aren't gated (fail) |
+| `gitignore` | `.harness/`, `.claude/state/` or `/PLAN.md` isn't ignored (warn) |
+| `attribution-off` | `attribution.commit` isn't `""` (warn: the commit-msg hook still strips it) |
+| `permissions` | a deny rule is missing (warn) |
+| `worktree-base` | `worktree.baseRef` isn't `head` (warn: needed only for parallel groups, M6) |
+| `path-casing` | the working directory's letters differ in case from the disk's (warn, S6) |
+| `emit-failures` | `.harness/emit-failures` counts failed writes (warn, C12) |
+
+Inside Claude Code it also records `harness.doctor`. The trusted-folder check from the original list is left out: Claude Code keeps trust in its own state, and a check that reads it would break the next time that format changes.
 
 ## Metadata and PU
 
