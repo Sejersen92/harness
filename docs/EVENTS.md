@@ -86,7 +86,9 @@ Task PLAN-7.2 is scored T2, runs on the session model (observe mode), fails its 
 
 One line per completed task, holding everything known about how it was scored, routed, built, evaluated and committed. Most readers start here and drop to events only when they need timing detail.
 
-`runs[]` lists every model run with its `agent_id`, so a consumer can price each one from its transcript and sum per task. `model_requested` is what routing asked for. `model` is what the transcript says actually ran (C13), so a silent fallback or an override that didn't apply is visible. The spike showed both are readable: the agent's `meta.json` holds the request and each transcript line holds the model.
+`runs[]` lists every model run with its `agent_id`, so a consumer can price each one from its transcript and sum per task. `model_requested` is what routing asked for. `model` is what the transcript says actually ran (C13), so a silent fallback or an override that didn't apply is visible. The spike showed both are readable: the agent's `meta.json` holds the request and each transcript line holds the model. When `meta.json` names no model, the agent inherited the session's (observe mode), and `model_requested` is `inherit`.
+
+`wall_clock_s` runs from when work on the task began to `task.completed`. Work begins at its first subagent run (the evaluator writing its tests comes before the dispatch) or its first dispatch, whichever is earlier, and never before it was scored. It is not measured from scoring, because the orchestrator scores every task of a plan up front, and a later task would otherwise count the time it waited behind the earlier ones. `gate` counts the decisions made in the same window.
 
 The record for the example above:
 

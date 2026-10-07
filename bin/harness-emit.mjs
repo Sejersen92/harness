@@ -7696,7 +7696,7 @@ function buildRecord(config2, taskId2, events = readEvents(config2), previous = 
     if (e.data.attribution) round.attribution = e.data.attribution;
     return round;
   });
-  const opened = dispatched[0]?.ts ?? scored.ts;
+  const opened = [dispatched[0]?.ts, ...runs.map((r) => r.started)].filter((ts) => ts && ts >= scored.ts).sort()[0] ?? scored.ts;
   const window = (e) => e.session_id === completed.session_id && e.ts >= opened && e.ts <= completed.ts;
   const gates = events.filter((e) => e.type === "gate.decision" && window(e));
   const commit = last(ofType("commit.created"));
@@ -7740,7 +7740,7 @@ function buildRecord(config2, taskId2, events = readEvents(config2), previous = 
     human_interventions: ofType("human.intervention").length,
     outcome: completed.data.outcome,
     final_tier: completed.data.final_tier,
-    wall_clock_s: seconds(scored.ts, completed.ts),
+    wall_clock_s: seconds(opened, completed.ts),
     complete: missing.length === 0
   };
   if (missing.length) record.missing_events = missing;
