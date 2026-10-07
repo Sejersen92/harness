@@ -7662,7 +7662,8 @@ say(`harness-eval: ${config.stages.length} stage(s) for ${ci ? "the checkout (ci
 emit("eval.started", { task_ids: taskIds, diff_sha256: diffSha256, ci });
 var logDir = join4(config.metadataDir, "state", "eval");
 var outcome = runStages(config.dir, config.stages, logDir, {
-  onStage: (stage) => process.stdout.write(`  ....  ${stage.name}\r`)
+  // A progress line that the result overwrites only works on a terminal; in a log it is noise.
+  onStage: (stage) => process.stdout.isTTY && process.stdout.write(`  ....  ${stage.name}\r`)
 });
 for (const stage of outcome.stages) {
   say(`  ${stage.status.padEnd(7)} ${stage.name.padEnd(24)} ${stage.status === "skipped" ? "" : `${(stage.duration_ms / 1e3).toFixed(1)}s`}`);
