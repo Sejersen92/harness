@@ -2,6 +2,7 @@
 // pre-commit hook (outside it): is this command a commit, may this staged diff be committed, and is
 // this path the pass marker.
 import { execFileSync } from "node:child_process";
+import { isAbsolute, relative, resolve } from "node:path";
 import { head, readMarker, stagedDiffSha256 } from "./eval.mjs";
 
 // Where a command can start: the beginning, a new line, after ; & | ( or a backtick (which covers
@@ -40,6 +41,27 @@ export function isCommit(command) {
     }
   }
   return false;
+}
+
+/** A glob as a regular expression: ** spans folders, * and ? stay inside one. Case-insensitive, as Windows paths are. */
+const globToRegExp = (glob) => new RegExp(`^${glob
+  .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+  .replace(/\*\*\//g, "\u0000")
+  .replace(/\*\*/g, "\u0001")
+  .replace(/\*/g, "[^/]*")
+  .replace(/\?/g, "[^/]")
+  .replace(/\u0000/g, "(?:.*/)?")
+  .replace(/\u0001/g, ".*")}$`, "i");
+
+/**
+ * Whether a file is a test, by the repository's eval.tests globs. The path is made relative to the
+ * repository first; a file outside it is never a test of this repository.
+ */
+export function isTestPath(file, dir, globs) {
+  if (!file) return false;
+  const rel = relative(dir, resolve(dir, String(file))).replace(/\\/g, "/");
+  if (!rel || rel.startsWith("../") || isAbsolute(rel)) return false;
+  return globs.some((glob) => globToRegExp(glob).test(rel));
 }
 
 /** Lines that credit an AI tool with a commit. Anyone else's Co-Authored-By stays. */

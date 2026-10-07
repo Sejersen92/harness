@@ -6,7 +6,8 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { isCommit, isMarkerPath } from "../src/lib/gate.mjs";
+import { DEFAULT_TEST_GLOBS } from "../src/lib/config.mjs";
+import { isCommit, isMarkerPath, isTestPath } from "../src/lib/gate.mjs";
 import { describe, root, validators } from "./validators.mjs";
 
 const SESSION = "11111111-2222-4333-8444-555555555555";
@@ -91,10 +92,10 @@ const env = (dir) => ({ ...process.env, CLAUDE_CODE_SESSION_ID: SESSION, CLAUDE_
 
 const evaluate = (dir) => spawnSync("node", [join(root, "bin", "harness-eval.mjs")], { cwd: dir, env: env(dir), encoding: "utf8" });
 
-const preToolUse = (dir, tool_name, tool_input) => {
+const preToolUse = (dir, tool_name, tool_input, agent_type = undefined) => {
   const result = spawnSync("node", [join(root, "bin", "hook-pre-tool-use.mjs")], {
     cwd: dir, env: env(dir), encoding: "utf8",
-    input: JSON.stringify({ session_id: SESSION, hook_event_name: "PreToolUse", tool_name, tool_input }),
+    input: JSON.stringify({ session_id: SESSION, hook_event_name: "PreToolUse", tool_name, tool_input, ...(agent_type ? { agent_id: "a1", agent_type } : {}) }),
   });
   assert.equal(result.status, 0, result.stderr);
   return result.stdout ? JSON.parse(result.stdout).hookSpecificOutput : null;
@@ -212,6 +213,45 @@ test("the marker can't be written by a tool call, only by harness-eval", () => {
     assert.match(out.permissionDecisionReason, /only by harness-eval/);
   }
   assert.equal(preToolUse(repo.dir, "Bash", { command: "node /p/bin/harness-eval.mjs --task PLAN-1.1 # writes eval-pass.json" }), null);
+});
+
+test("what counts as a test: the default globs, relative to the repository", () => {
+  const dir = join(tmpdir(), "repo");
+  const yes = ["web/app/page.test.tsx", "src/x.spec.ts", "cli/PreviouslyUpcoming.Cli.Tests/HarnessSyncTests.cs", "test/eval.test.mjs",
+    "pkg/thing_test.go", "app/tests/test_api.py", "web/__tests__/a.js", join(dir, "Svc.Tests", "A.cs")];
+  const no = ["src/lib/gate.mjs", "cli/PreviouslyUpcoming.Cli/HarnessSync.cs", "docs/testing.md", "attest/x.cs", join(tmpdir(), "elsewhere", "a.test.js")];
+  for (const p of yes) assert.equal(isTestPath(p, dir, DEFAULT_TEST_GLOBS), true, p);
+  for (const p of no) assert.equal(isTestPath(p, dir, DEFAULT_TEST_GLOBS), false, p);
+  assert.equal(isTestPath("src/e2e/login.ts", dir, ["src/e2e/**"]), true);
+});
+
+test("implementers can't edit tests; everyone else's edits are untouched", () => {
+  const repo = makeRepo();
+  const test = join(repo.dir, "test", "a.test.mjs");
+  const code = join(repo.dir, "src", "a.mjs");
+
+  const denied = preToolUse(repo.dir, "Edit", { file_path: test }, "harness:impl-t2");
+  assert.equal(denied?.permissionDecision, "deny");
+  assert.match(denied.permissionDecisionReason, /implementers don't change tests/);
+  assert.equal(preToolUse(repo.dir, "Write", { file_path: code }, "harness:impl-t2"), null);
+  assert.equal(preToolUse(repo.dir, "Edit", { file_path: test }), null, "the main thread is not policed");
+  assert.equal(preToolUse(repo.dir, "Edit", { file_path: test }, "general-purpose"), null, "other agents are not policed");
+});
+
+test("the evaluator can edit tests and nothing else", () => {
+  const repo = makeRepo();
+  assert.equal(preToolUse(repo.dir, "Write", { file_path: join(repo.dir, "test", "a.test.mjs") }, "harness:evaluator"), null);
+
+  const denied = preToolUse(repo.dir, "MultiEdit", { file_path: join(repo.dir, "src", "a.mjs") }, "harness:evaluator");
+  assert.equal(denied?.permissionDecision, "deny");
+  assert.match(denied.permissionDecisionReason, /writes tests only/);
+});
+
+test("routing.yaml's eval.tests replaces the default globs", () => {
+  const repo = makeRepo();
+  writeFileSync(join(repo.dir, "routing.yaml"), readFileSync(join(repo.dir, "routing.yaml"), "utf8").replace("eval:\n", "eval:\n  tests: [\"checks/**\"]\n"));
+  assert.equal(preToolUse(repo.dir, "Write", { file_path: join(repo.dir, "checks", "a.mjs") }, "harness:evaluator"), null);
+  assert.equal(preToolUse(repo.dir, "Write", { file_path: join(repo.dir, "test", "a.test.mjs") }, "harness:evaluator")?.permissionDecision, "deny");
 });
 
 test("with the Harness off nothing is gated", () => {

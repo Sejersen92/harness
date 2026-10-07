@@ -52,6 +52,15 @@ export function producer() {
 }
 
 /**
+ * Which files are tests, when routing.yaml's eval.tests doesn't say: the usual names across
+ * JavaScript, .NET, Python and Go. protect-tests and tests-only both read this one list.
+ */
+export const DEFAULT_TEST_GLOBS = [
+  "**/*.test.*", "**/*.spec.*", "**/*_test.*", "**/test_*.py",
+  "**/test/**", "**/tests/**", "**/__tests__/**", "**/*.Tests/**", "**/*Tests.cs",
+];
+
+/**
  * routing.yaml from the project root. No file means the Harness is off for this repo.
  * config_sha256 covers this file only (C16): prompts and skills are versioned by the plugin.
  */
@@ -70,6 +79,7 @@ export function loadConfig(dir = projectDir()) {
     retentionDays: Number.isInteger(metadata.retention_days) ? metadata.retention_days : 30,
     includeJustifications: metadata.include_justifications !== false,
     stages: Array.isArray(yaml.eval?.stages) ? yaml.eval.stages : [],
+    testGlobs: Array.isArray(yaml.eval?.tests) && yaml.eval.tests.length ? yaml.eval.tests.map(String) : DEFAULT_TEST_GLOBS,
     markerTtlMinutes: Number.isInteger(yaml.gate?.marker_ttl_minutes) ? yaml.gate.marker_ttl_minutes : 30,
   };
 }
