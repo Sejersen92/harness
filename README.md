@@ -25,6 +25,8 @@ The original design documents are in [docs/sources/](docs/sources/).
 
 In a repository that isn't enrolled, the plugin does nothing.
 
+In a repository you own, the eval can run on every pull request too. `node <this checkout>/bin/harness-init.mjs --ci --apply` writes `.github/harness-eval.yml`, holding the home's eval stages, and `.github/workflows/harness-eval.yml`, which runs `harness-eval --ci --config .github/harness-eval.yml`. It never overwrites either file. Commit both. This repository is public, so the workflow checks it out without a token. `pu harness` offers to do this for a repository you own.
+
 ## Building
 
 The scripts are written in TypeScript in `src/` and bundled into self-contained JavaScript files in `bin/` by `npm run build` (esbuild), so the plugin runs from a plain checkout with no `npm install` and no compile step. `bin/` is committed, and CI fails if it is out of date (`npm run check:bin`).
