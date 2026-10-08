@@ -96,14 +96,14 @@ claude --plugin-dir <plugin> --agent harness:orchestrator
 The rules are today's list (`DENY` in `lib/setup.mjs`), with the guardrail paths moved to the home:
 
 ```text
-Edit(~/.harness/repos/*/state/**)      Write(~/.harness/repos/*/state/**)
+Edit(~/.harness/repos/*/state/**)
 Edit(~/.harness/repos/*/routing.yaml)  Edit(~/.harness/repos/*/settings.json)
-Edit(~/.harness/githooks/**)           Write(~/.harness/githooks/**)
+Edit(~/.harness/githooks/**)
 Edit(.github/workflows/**)
 ...plus the git and gh rules, unchanged
 ```
 
-`PLAN.md` stays writable, because the orchestrator writes it. The session-start hook tells the session where the home and its `PLAN.md` are, the same way it hands over the `harness-emit` path today.
+Only `Edit(...)` rules: S9 showed that `Write(path)` rules are never matched, and that `Edit` rules cover every file tool. `PLAN.md` stays writable, because the orchestrator writes it. `settings.json` also carries `worktree.baseRef: "head"` (S6). The session-start hook tells the session where the home and its `PLAN.md` are, the same way it hands over the `harness-emit` path today.
 
 `attribution.commit: ""` is no longer set by the Harness. Whether a repository's commits carry an AI trailer is that repository's choice. PU's committed `.claude/settings.json` keeps it, and the commit-msg hook still strips trailers in PU.
 
@@ -195,7 +195,7 @@ This doesn't block anything else in this design. It's its own track, R1 to R3 in
 
 | | Where | What | Depends on |
 |---|---|---|---|
-| **S9** | harness, by hand | Spike. Do `--settings` deny rules with `~/` and `*` paths apply, and add to the user's own settings rather than replacing them? Can `--add-dir` let the orchestrator write in the home with no prompt? Does Git for Windows accept a `core.hooksPath` outside the repository? Can the dispatcher chain to `.husky/`? | none |
+| **S9** | harness, by hand | **Done 2026-10-08, passed** ([spikes.md](spikes.md#s9-the-harness-with-nothing-in-the-repository-2026-10-08)). Spike. Do `--settings` deny rules with `~/` and `*` paths apply, and add to the user's own settings rather than replacing them? Can `--add-dir` let the orchestrator write in the home with no prompt? Does Git for Windows accept a `core.hooksPath` outside the repository? Can the dispatcher chain to `.husky/`? | none |
 | **P1** | PU CLI | `pu update` installs the Harness when it's missing and runs `--update` when it's present. It sets `cleanupPeriodDays` to at least 180 (never lowering a higher value), replaces the `gh auth login` hint with a credential-neutral one, and doesn't let a failed doctor check make `start` report the install as unfinished. Refresh CONNECTING-A-WORK-PC.md. | none, so it can run alongside S9 |
 | **H1** | harness | `repoHome()`, with every path in the table above moved to it, plus the one-release fallback. | S9 |
 | **H2** | harness | `harness-enrol` and `harness-forget`; the doctor checks the home and reports orphans. | H1 |

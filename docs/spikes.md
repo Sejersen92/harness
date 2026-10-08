@@ -14,6 +14,7 @@ Run 2026-10-06 on Windows 11, Claude Code 2.1.285, Node 22.16.
 | S6 | A worktree subagent starts from the current branch | **Only with `worktree.baseRef: "head"`** | `/harness:init` must set it. There is also a Windows path-casing hazard; see below. |
 | S7 | A plugin can ship permission rules | **Fail** | As the plan's fallback says: `/harness:init` merges the rules into `.claude/settings.json` and shows the diff. |
 | S8 | Plugin hooks run Node via `${CLAUDE_PLUGIN_ROOT}` on Windows; JSON deny and exit 2 block; exit 1 doesn't | **Pass** | No `.cmd` shim needed. Every policy hook must block with JSON deny or exit 2, never exit 1. |
+| S9 | A repository can be run with nothing in its tree: deny rules by `--settings`, writes to the home by `--add-dir`, git hooks from a `core.hooksPath` outside it, chained to its own hooks | **Pass** (2026-10-08) | [ANY-REPO.md](ANY-REPO.md) holds as designed. One correction: `Write(path)` deny rules are never matched, only `Edit(path)` rules are, and those cover every file tool. The `Write(...)` entries in `DENY` do nothing and go. |
 
 ## Evidence
 
@@ -70,3 +71,24 @@ A `PreToolUse` hook on `Bash`, run as `node ${CLAUDE_PLUGIN_ROOT}/bin/gate.mjs` 
 | `echo s8-json` | prints `permissionDecision: "deny"`, exits 0 | Blocked: "S8: denied by JSON" |
 | `echo s8-exit2` | writes to stderr, exits 2 | Blocked, with stderr shown to the model |
 | `echo s8-exit1` | writes to stderr, exits 1 | **Ran**; the error is treated as non-blocking |
+
+### S9: the Harness with nothing in the repository (2026-10-08)
+
+Run on Windows 11, Claude Code 2.1.285, Git for Windows. There was a scratch repository, with a scratch home at `~/.harness-s9/repos/demo-1234/` standing in for `~/.harness/repos/<id>/`. Each probe was `claude -p` on Haiku with `--permission-mode acceptEdits --add-dir <home> --settings <home>/settings.json --setting-sources project,local --no-session-persistence --disallowedTools Bash`, so no user hooks ran and no transcript was kept. The home's `settings.json` denied `Edit(~/.harness-s9/repos/*/state/**)`, and the repository's own `.claude/settings.json` denied `Edit(blocked-by-project.txt)`. Each result below was judged by whether the file existed afterwards, not by the model's reply.
+
+| Probe | Result |
+|---|---|
+| T1: write `<home>/PLAN.md` | **Written**, no prompt: `--add-dir` is enough |
+| T2: write `<home>/state/eval-pass.json` | **Denied**: `~` and `*` both match in a `--settings` rule |
+| T3: write the file the repository's settings deny | **Denied**: `--settings` adds to the other settings files, not replaces them |
+| T4: write outside the repository and the home | **Not written**: the home is writable because of `--add-dir`, nothing else |
+| G1: `core.hooksPath` set to an absolute path outside the repository | the hook ran |
+| G2: `core.hooksPath` set to `~/.harness-s9/githooks` | the hook ran (git expands `~`) |
+| G3: the dispatcher then runs the repository's own `.husky/pre-commit`, which fails | **commit refused**; both hooks ran |
+| G4: the same, in a `git worktree` | both hooks ran (`core.hooksPath` is shared, and the recorded relative path resolves in the worktree) |
+
+Claude Code printed this warning on every probe, about the `Write(...)` rule beside the `Edit(...)` one:
+
+> Write(~/.harness-s9/repos/*/state/**) is not matched by file permission checks — only Edit(path) rules are. Use Edit(~/.harness-s9/repos/*/state/**) instead (Edit rules cover all file-editing tools).
+
+So the protection in `DENY` comes from its `Edit(...)` rules alone. H1/H2 drop the `Write(...)` entries.
