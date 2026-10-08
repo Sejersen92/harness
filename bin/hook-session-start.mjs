@@ -7374,7 +7374,8 @@ import { join as join3 } from "node:path";
 var import_yaml = __toESM(require_dist(), 1);
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { homedir } from "node:os";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // src/lib/ids.ts
@@ -7391,6 +7392,14 @@ var git = (cwd, ...args) => {
     return null;
   }
 };
+var harnessHome = () => process.env.HARNESS_HOME || join(homedir(), ".harness");
+var normalisedPath = (dir) => resolve(dir).replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+function repoHome(dir) {
+  const key = normalisedPath(dir);
+  const name = basename(key).replace(/[^a-z0-9._-]+/g, "-") || "repo";
+  return join(harnessHome(), "repos", `${name}-${sha256(key).slice(0, 8)}`);
+}
+var NOT_ENROLLED = "not enrolled";
 function projectDir(cwd = process.cwd()) {
   return process.env.CLAUDE_PROJECT_DIR || git(cwd, "rev-parse", "--show-toplevel") || cwd;
 }
@@ -7426,17 +7435,36 @@ var DEFAULT_TEST_GLOBS = [
   "**/*Tests.cs"
 ];
 function loadConfig(dir = projectDir()) {
-  const path = join(dir, "routing.yaml");
-  if (!existsSync(path)) return { dir, mode: "off", reason: "no routing.yaml" };
-  const bytes = readFileSync(path);
+  const home = repoHome(dir);
+  const homed = existsSync(join(home, "routing.yaml"));
+  if (!homed && !existsSync(join(dir, "routing.yaml"))) return { dir, mode: "off", reason: NOT_ENROLLED, home };
+  const routingYaml = join(homed ? home : dir, "routing.yaml");
+  const bytes = readFileSync(routingYaml);
   const yaml = (0, import_yaml.parse)(bytes.toString("utf8")) ?? {};
   const metadata = yaml.metadata ?? {};
+  const layout = homed ? {
+    kind: "home",
+    root: home,
+    routingYaml,
+    metadataDir: home,
+    markerPath: join(home, "state", "eval-pass.json"),
+    planPath: join(home, "PLAN.md")
+  } : {
+    kind: "repository",
+    root: dir,
+    routingYaml,
+    metadataDir: join(dir, metadata.dir ?? ".harness"),
+    markerPath: join(dir, ".claude", "state", "eval-pass.json"),
+    planPath: join(dir, "PLAN.md")
+  };
   return {
     dir,
+    home,
+    layout,
     mode: MODES.includes(yaml.mode) ? yaml.mode : "off",
     tiers: yaml.tiers ?? {},
     config_sha256: sha256(bytes),
-    metadataDir: join(dir, metadata.dir ?? ".harness"),
+    metadataDir: layout.metadataDir,
     retentionDays: Number.isInteger(metadata.retention_days) ? metadata.retention_days : 30,
     includeJustifications: metadata.include_justifications !== false,
     stages: Array.isArray(yaml.eval?.stages) ? yaml.eval.stages : [],
@@ -7447,22 +7475,21 @@ function loadConfig(dir = projectDir()) {
 
 // src/lib/spool.ts
 import { appendFileSync, existsSync as existsSync2, mkdirSync, readdirSync, readFileSync as readFileSync2, renameSync, rmSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join as join2, resolve } from "node:path";
+import { join as join2, resolve as resolve2 } from "node:path";
 
 // src/lib/types.ts
 var messageOf = (error) => error instanceof Error ? error.message : String(error);
 
 // src/lib/spool.ts
-var pluginRecordPath = () => join2(process.env.HARNESS_HOME || join2(homedir(), ".harness"), "plugin.json");
+var pluginRecordPath = () => join2(harnessHome(), "plugin.json");
 function recordPluginRoot(root, version, now = /* @__PURE__ */ new Date()) {
   if (!root) return;
   const path = pluginRecordPath();
   try {
     const known = existsSync2(path) ? JSON.parse(readFileSync2(path, "utf8")) : null;
-    if (known?.root === resolve(root) && known?.version === version) return;
+    if (known?.root === resolve2(root) && known?.version === version) return;
     mkdirSync(join2(path, ".."), { recursive: true });
-    writeFileSync(`${path}.tmp`, JSON.stringify({ root: resolve(root), version, recorded: utcNow(now) }, null, 2) + "\n");
+    writeFileSync(`${path}.tmp`, JSON.stringify({ root: resolve2(root), version, recorded: utcNow(now) }, null, 2) + "\n");
     renameSync(`${path}.tmp`, path);
   } catch (error) {
     process.stderr.write(`harness: could not record the plugin's location in ${path}: ${messageOf(error)}
@@ -7486,11 +7513,15 @@ await readHookInput();
 recordPluginRoot(pluginRoot(), producer().version);
 var config = loadConfig();
 if (config.mode !== "off") {
-  const bin = (name) => join3(pluginRoot() ?? "", "bin", `${name}.mjs`).replace(/\\/g, "/");
+  const slashed = (path) => path.replace(/\\/g, "/");
+  const bin = (name) => slashed(join3(pluginRoot() ?? "", "bin", `${name}.mjs`));
   const context = [
     `The Harness is active in this repository (mode: ${config.mode}).`,
     `Record Harness events with: node "${bin("harness-emit")}" <type> --task PLAN-n.m --data '<json>'`,
     `Run the eval on what is staged with: node "${bin("harness-eval")}" --task PLAN-n.m (a pass is what allows a commit)`,
+    // The orchestrator reads both and writes the plan. In a home they are outside the repository, so
+    // nothing else could tell it where they are.
+    `This repository's plan is ${slashed(config.layout.planPath)} and its routing config is ${slashed(config.layout.routingYaml)}.`,
     "Only the harness:orchestrator agent records plan and task events."
   ].join("\n");
   process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: context } }));

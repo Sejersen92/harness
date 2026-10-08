@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { stringify } from "yaml";
-import { loadConfig } from "./config.ts";
+import { loadConfig, NOT_ENROLLED } from "./config.ts";
 import { pluginRecordPath } from "./spool.ts";
 import { messageOf } from "./types.ts";
 
@@ -104,7 +104,7 @@ export function checks(
   else add("plugin-recorded", "pass", `git hooks use ${recorded.root} (${recorded.version})`);
 
   if (config.mode === "off") {
-    add("routing-yaml", "fail", config.reason === "no routing.yaml" ? "no routing.yaml: the Harness is off here (harness-init writes one)" : "mode is off or not recognised");
+    add("routing-yaml", "fail", config.reason === NOT_ENROLLED ? `not enrolled: there is no ${join(config.home, "routing.yaml")} (harness-init sets one up)` : "mode is off or not recognised");
   } else {
     const tiers = ["T1", "T2", "T3", "T4"].filter((t) => Number.isInteger(config.tiers?.[t]?.max_score) && typeof config.tiers?.[t]?.model === "string");
     if (tiers.length < 4) add("routing-yaml", "fail", `tiers ${["T1", "T2", "T3", "T4"].filter((t) => !tiers.includes(t)).join(", ")} are missing or malformed`);
@@ -112,14 +112,22 @@ export function checks(
     else add("routing-yaml", "pass", `mode ${config.mode}, ${config.stages.length} eval stage(s)`);
   }
 
-  try {
-    mkdirSync(config.metadataDir ?? join(dir, ".harness"), { recursive: true });
-    const probe = join(config.metadataDir ?? join(dir, ".harness"), `.doctor-${process.pid}`);
-    writeFileSync(probe, "");
-    rmSync(probe);
-    add("spool-writable", "pass", config.metadataDir ?? join(dir, ".harness"));
-  } catch (error) {
-    add("spool-writable", "fail", messageOf(error));
+  if (config.layout?.kind === "home") add("layout", "pass", `nothing in the repository; its files are in ${config.layout.root}`);
+  else if (config.layout) add("layout", "warn", `routing.yaml is in the repository, the layout from before homes; it still works, and enrolling moves it to ${config.home}`);
+
+  // Probed only where a spool belongs. Not enrolled, there is none yet, and creating one would put a
+  // folder in a repository that has asked for nothing.
+  if (!config.metadataDir) add("spool-writable", "warn", "not enrolled, so there is no spool yet");
+  else {
+    try {
+      mkdirSync(config.metadataDir, { recursive: true });
+      const probe = join(config.metadataDir, `.doctor-${process.pid}`);
+      writeFileSync(probe, "");
+      rmSync(probe);
+      add("spool-writable", "pass", config.metadataDir);
+    } catch (error) {
+      add("spool-writable", "fail", messageOf(error));
+    }
   }
 
   const hooksPath = git(dir, "config", "core.hooksPath");
@@ -154,7 +162,7 @@ export function checks(
     add("path-casing", "warn", messageOf(error));
   }
 
-  const failures = Number.parseInt(readSafely(join(config.metadataDir ?? join(dir, ".harness"), "emit-failures")), 10) || 0;
+  const failures = Number.parseInt(readSafely(join(config.metadataDir ?? config.home, "emit-failures")), 10) || 0;
   add("emit-failures", failures ? "warn" : "pass", failures ? `${failures} metadata write(s) failed; see stderr from the hooks` : "none");
 
   return results;

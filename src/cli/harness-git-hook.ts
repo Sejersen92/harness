@@ -47,7 +47,7 @@ if (hook === "commit-msg") {
 if (config.mode === "off") process.exit(0);
 
 if (hook === "pre-commit") {
-  const first = checkMarker(dir, config.markerTtlMinutes);
+  const first = checkMarker(dir, config.layout.markerPath, config.markerTtlMinutes);
   if (first.decision === "allow") process.exit(0);
 
   say(`harness: no eval pass for this commit (${first.detail}), so running harness-eval now.`);
@@ -56,7 +56,7 @@ if (hook === "pre-commit") {
     env: { ...process.env, CLAUDE_PROJECT_DIR: dir },
     stdio: ["ignore", "inherit", "inherit"],
   });
-  const second = run.status === 0 ? checkMarker(dir, config.markerTtlMinutes) : null;
+  const second = run.status === 0 ? checkMarker(dir, config.layout.markerPath, config.markerTtlMinutes) : null;
   if (second?.decision === "allow") process.exit(0);
 
   say(`harness: commit stopped - ${second ? second.detail : "harness-eval did not pass"}. (git commit --no-verify skips this check.)`);
@@ -74,7 +74,7 @@ if (hook === "post-commit") {
       added += Number.parseInt(a ?? "", 10) || 0; // "-" for a binary file
       removed += Number.parseInt(r ?? "", 10) || 0;
     }
-    const taskIds = readMarker(dir)?.task_ids ?? [];
+    const taskIds = readMarker(config.layout.markerPath)?.task_ids ?? [];
     const onlyTask = taskIds.length === 1 ? taskIds[0] : undefined;
     emitEvent(config, "commit.created", onlyTask ? { task_id: onlyTask, plan_id: onlyTask.replace(/\..*$/, "") } : {},
       { commit_sha: sha, task_ids: taskIds, files_changed: files, lines_added: added, lines_removed: removed });

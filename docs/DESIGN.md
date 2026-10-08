@@ -9,6 +9,8 @@
 
 This document records the design as it stands after the review fixes (C1–C16 in [PLAN.md](PLAN.md)) and the day-1 spikes ([spikes.md](spikes.md)). **Where they disagree, this document wins, then Appendix A, then the Harness document.** The metadata contract is in [EVENTS.md](EVENTS.md) and [`schema/`](../schema/).
 
+**Where a repository's files live (0.4.0):** in its home, `~/.harness/repos/<name>-<hash>/`: routing.yaml, `PLAN.md`, the spool and the pass marker (`state/eval-pass.json`), with nothing in the repository ([ANY-REPO.md](ANY-REPO.md)). A repository with `routing.yaml` at its root and no home is still read the old way, with `.harness/`, `.claude/state/` and `PLAN.md` in the repository. The paths below describe that layout until enrolment (H2) replaces it.
+
 ## The flow
 
 ```text

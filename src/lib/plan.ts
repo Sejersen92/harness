@@ -1,5 +1,4 @@
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import { taskIdsIn } from "./ids.ts";
 
 /** What the routing log takes from a task's PLAN.md section. */
@@ -18,8 +17,7 @@ const DIMENSIONS = ["ambiguity", "blast", "coupling", "novelty", "reversibility"
  * "### PLAN-7.2 — title" and runs to the next heading; the bullet format is the orchestrator's
  * template (agents/orchestrator.md). Returns null when the section isn't there.
  */
-export function planSection(dir: string, taskId: string): PlanSection | null {
-  const path = join(dir, "PLAN.md");
+export function planSection(path: string, taskId: string): PlanSection | null {
   if (!existsSync(path)) return null;
   const lines = readFileSync(path, "utf8").replace(/\r\n/g, "\n").split("\n");
   const start = lines.findIndex((l) => new RegExp(`^#{2,4}\\s+${taskId.replace(".", "\\.")}\\b`).test(l));

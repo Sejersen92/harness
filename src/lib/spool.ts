@@ -1,9 +1,8 @@
 // The only code that writes metadata. Telemetry must never block development, so nothing here
 // throws: a failed write is logged to stderr and counted in <metadata dir>/emit-failures (C12).
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { producer, repoIdentity } from "./config.ts";
+import { harnessHome, producer, repoIdentity } from "./config.ts";
 import { ulid, utcNow } from "./ids.ts";
 import { isEffort, messageOf, type Config, type EventFields, type HarnessEvent, type RepoIdentity } from "./types.ts";
 
@@ -28,14 +27,14 @@ const MAX_LINE_BYTES = 4096;
  * The machine's list of repositories with a spool, so a reader (PU's `pu sync`) finds every one
  * without guessing from session transcripts. ~/.harness/spools.json, or $HARNESS_HOME/spools.json.
  */
-export const registryPath = (): string => join(process.env.HARNESS_HOME || join(homedir(), ".harness"), "spools.json");
+export const registryPath = (): string => join(harnessHome(), "spools.json");
 
 /**
  * Where this machine's copy of the plugin lives: ~/.harness/plugin.json. A repository's git hooks run
  * outside Claude Code, where CLAUDE_PLUGIN_ROOT doesn't exist, and they read it from here rather than
  * from a path written into the repository, which would be one machine's truth on every machine.
  */
-export const pluginRecordPath = (): string => join(process.env.HARNESS_HOME || join(homedir(), ".harness"), "plugin.json");
+export const pluginRecordPath = (): string => join(harnessHome(), "plugin.json");
 
 /** Records the plugin's root and version, if they changed. Called by SessionStart. Never throws. */
 export function recordPluginRoot(root: string | null, version: string, now: Date = new Date()): void {

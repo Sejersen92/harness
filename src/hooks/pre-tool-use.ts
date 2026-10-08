@@ -50,7 +50,7 @@ const config = loadConfig();
 if (config.mode === "off") process.exit(0);
 
 if (touchesMarker) {
-  deny("harness: the eval pass marker (.claude/state/eval-pass.json) is written only by harness-eval. Run harness-eval instead of touching the file.");
+  deny("harness: the eval pass marker (eval-pass.json) is written only by harness-eval. Run harness-eval instead of touching the file.");
 }
 
 if (policedEdit) {
@@ -66,7 +66,7 @@ if (policedEdit) {
 
 let verdict: ReturnType<typeof checkMarker>;
 try {
-  verdict = checkMarker(config.dir, config.markerTtlMinutes);
+  verdict = checkMarker(config.dir, config.layout.markerPath, config.markerTtlMinutes);
 } catch (error) {
   process.stderr.write(`harness: commit gate could not check the marker (${messageOf(error)}); the git pre-commit hook decides\n`);
   process.exit(0);

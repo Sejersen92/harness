@@ -69,7 +69,7 @@ export function buildRecord(
   });
   if (runs.length === 0) missing.push("subagent.stopped");
 
-  const plan = planSection(config.dir, taskId);
+  const plan = planSection(config.layout.planPath, taskId);
   if (!plan) missing.push("PLAN.md section");
 
   const evalRounds = ofType("eval.completed").map((e, i): EvalRound => {

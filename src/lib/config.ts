@@ -1,10 +1,11 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { homedir } from "node:os";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 import { sha256 } from "./ids.ts";
-import type { LoadedConfig, Mode, Producer, RepoIdentity, Stage, TierEntry } from "./types.ts";
+import type { Layout, LoadedConfig, Mode, Producer, RepoIdentity, Stage, TierEntry } from "./types.ts";
 
 /** routing.yaml's shape before it is checked: every field may be missing or wrong. */
 interface RoutingYaml {
@@ -24,6 +25,29 @@ const git = (cwd: string, ...args: string[]): string | null => {
     return null;
   }
 };
+
+/** ~/.harness, or $HARNESS_HOME: everything the Harness keeps on this machine, outside any repository. */
+export const harnessHome = (): string => process.env.HARNESS_HOME || join(homedir(), ".harness");
+
+/**
+ * A path in one spelling, however it was written: resolved, forward slashes, no trailing slash, lower
+ * case. VS Code opens c:\src\x where git says C:/src/x (spike S6), and both must find the same home.
+ */
+export const normalisedPath = (dir: string): string => resolve(dir).replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+
+/**
+ * This repository's home: ~/.harness/repos/<folder name>-<8 hex of sha256(its normalised path)>.
+ * Keyed on the clone's path, not its remote, so two clones of one remote never share a plan or a
+ * marker. The readable prefix lets a person listing ~/.harness/repos tell which folder is which.
+ */
+export function repoHome(dir: string): string {
+  const key = normalisedPath(dir);
+  const name = basename(key).replace(/[^a-z0-9._-]+/g, "-") || "repo";
+  return join(harnessHome(), "repos", `${name}-${sha256(key).slice(0, 8)}`);
+}
+
+/** loadConfig's reason when a repository is set up in neither layout. */
+export const NOT_ENROLLED = "not enrolled";
 
 /** The repository the session works in: Claude Code's project dir, else git's top level, else cwd. */
 export function projectDir(cwd: string = process.cwd()): string {
@@ -75,21 +99,37 @@ export const DEFAULT_TEST_GLOBS: readonly string[] = [
 ];
 
 /**
- * routing.yaml from the project root. No file means the Harness is off for this repo.
- * config_sha256 covers this file only (C16): prompts and skills are versioned by the plugin.
+ * The repository's routing.yaml: from its home when it has one, else, for one release, from the
+ * repository root. Neither means the Harness is off for this repository. config_sha256 covers this
+ * file only (C16): prompts and skills are versioned by the plugin.
  */
 export function loadConfig(dir: string = projectDir()): LoadedConfig {
-  const path = join(dir, "routing.yaml");
-  if (!existsSync(path)) return { dir, mode: "off", reason: "no routing.yaml" };
-  const bytes = readFileSync(path);
+  const home = repoHome(dir);
+  const homed = existsSync(join(home, "routing.yaml"));
+  if (!homed && !existsSync(join(dir, "routing.yaml"))) return { dir, mode: "off", reason: NOT_ENROLLED, home };
+
+  const routingYaml = join(homed ? home : dir, "routing.yaml");
+  const bytes = readFileSync(routingYaml);
   const yaml = (parse(bytes.toString("utf8")) ?? {}) as RoutingYaml;
   const metadata = yaml.metadata ?? {};
+  // In a home, everything is the home's: metadata.dir only ever placed the spool inside a repository.
+  const layout: Layout = homed
+    ? {
+      kind: "home", root: home, routingYaml, metadataDir: home,
+      markerPath: join(home, "state", "eval-pass.json"), planPath: join(home, "PLAN.md"),
+    }
+    : {
+      kind: "repository", root: dir, routingYaml, metadataDir: join(dir, metadata.dir ?? ".harness"),
+      markerPath: join(dir, ".claude", "state", "eval-pass.json"), planPath: join(dir, "PLAN.md"),
+    };
   return {
     dir,
+    home,
+    layout,
     mode: MODES.includes(yaml.mode as Mode) ? (yaml.mode as Mode) : "off",
     tiers: yaml.tiers ?? {},
     config_sha256: sha256(bytes),
-    metadataDir: join(dir, metadata.dir ?? ".harness"),
+    metadataDir: layout.metadataDir,
     retentionDays: Number.isInteger(metadata.retention_days) ? (metadata.retention_days as number) : 30,
     includeJustifications: metadata.include_justifications !== false,
     stages: Array.isArray(yaml.eval?.stages) ? (yaml.eval.stages as Stage[]) : [],

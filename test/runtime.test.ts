@@ -219,7 +219,7 @@ test("a task's gate decisions are the ones made while it was being worked, not s
     at("2026-10-07T10:10:02Z", "task.completed", "PLAN-1.2", done),
   ];
   // Only what buildRecord reads when the events and the previous records are handed to it.
-  const config = { dir, includeJustifications: true } as Config;
+  const config = { dir, includeJustifications: true, layout: { planPath: join(dir, "PLAN.md") } } as Config;
 
   const first = buildRecord(config, "PLAN-1.1", events as never, []).record;
   const second = buildRecord(config, "PLAN-1.2", events as never, []).record;

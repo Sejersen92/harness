@@ -13,11 +13,15 @@ await readHookInput();
 recordPluginRoot(pluginRoot(), producer().version);
 const config = loadConfig();
 if (config.mode !== "off") {
-  const bin = (name: string): string => join(pluginRoot() ?? "", "bin", `${name}.mjs`).replace(/\\/g, "/");
+  const slashed = (path: string): string => path.replace(/\\/g, "/");
+  const bin = (name: string): string => slashed(join(pluginRoot() ?? "", "bin", `${name}.mjs`));
   const context = [
     `The Harness is active in this repository (mode: ${config.mode}).`,
     `Record Harness events with: node "${bin("harness-emit")}" <type> --task PLAN-n.m --data '<json>'`,
     `Run the eval on what is staged with: node "${bin("harness-eval")}" --task PLAN-n.m (a pass is what allows a commit)`,
+    // The orchestrator reads both and writes the plan. In a home they are outside the repository, so
+    // nothing else could tell it where they are.
+    `This repository's plan is ${slashed(config.layout.planPath)} and its routing config is ${slashed(config.layout.routingYaml)}.`,
     "Only the harness:orchestrator agent records plan and task events.",
   ].join("\n");
   process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: context } }));
