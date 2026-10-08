@@ -231,3 +231,70 @@ The hub track (see "One hub") runs alongside and blocks nothing:
    - (c) Publish `harness-eval` as a release asset that a workflow can download without a token, if the repository is public anyway.
 
    (b) is the simplest by far, and makes (c) unnecessary.
+
+## Briefs
+
+Each brief is written in the intake format, so it's also an example of what the gate asks for. To run one, start from a clean `main` in the repository the brief names, run `pu harness`, give the new branch a name, and paste the brief.
+
+### Brief P1: `pu update` sets up the Harness (PreviouslyUpcoming)
+
+Suggested branch: `feat/update-covers-harness`.
+
+```text
+GOAL
+`pu update` sets up the Harness on this machine, so that on a fresh PC (the work PC first)
+install.ps1 followed by `pu update` is everything needed before `pu harness`. It also stops Claude
+Code from deleting the transcripts that cost per task is read from.
+
+WHAT CHANGES
+1. Three new checks in `pu update` (Setup_ in Program.cs). Put the logic in pure functions in
+   Setup.cs or HarnessInstall.cs so it can be tested; follow the Check record's report-then-fix style.
+   a. Node: ok when `node --version` is 22 or later. Reported, never installed (like the .NET SDK).
+      Manual: winget install OpenJS.NodeJS.LTS
+   b. Harness: ok when the plugin is at HarnessInstall.ResolveTarget(null, recorded root, the PU
+      clone) and is current with its remote's default branch. Reuse Setup.ReadClone on the harness
+      checkout for "current". Found text says the version and folder, "not installed", or how far
+      behind. Fix: HarnessInstall.Run with update = already installed.
+      Place it after "Claude Code" and "PATH". The "pu build" check stays last.
+   c. Transcripts kept: ok when cleanupPeriodDays in ~/.claude/settings.json is 180 or more. Fix:
+      set it to 180 when it's missing or lower. Never lower a higher value; keep every other key;
+      back the file up first, as "hook wiring" does; leave invalid JSON alone and say so.
+2. HarnessInstall.Run returns 0 when the checkout is in place and its location is recorded,
+   whatever the doctor finds. The doctor's lines are still printed. pu harness start must no longer
+   say "The install did not finish" after a doctor warning.
+3. The hint when `git clone` of the harness fails is credential-neutral. Drop `gh auth login`. Say the
+   repository is private and git needs credentials for github.com/Sejersen92/harness, give
+   examples (Git Credential Manager, `gh auth setup-git`, or a folder-scoped includeIf in
+   ~/.gitconfig), then "run pu update again".
+4. install.ps1 installs Node LTS with winget when it's missing, as it already does for git and .NET.
+5. CONNECTING-A-WORK-PC.md: replace the stale install sections (the 0.1.0 pin, the single exe, the
+   four commands) with the current path: install.ps1 once, then pu update, then pu harness. Keep the
+   include-work and "what it does and does not carry" sections as they are.
+6. CLI version 1.17.0 and a CHANGELOG entry.
+
+SUCCESS SIGNALS (each is a test, except the last)
+- cleanupPeriodDays: missing gives 180; 30 gives 180; 365 stays 365; other keys are kept
+  byte-for-byte in value; invalid JSON is not written.
+- Node: "v22.16.0" passes; "v20.11.1" fails; no node fails.
+- Harness check: not installed, current and behind each give the right ok and found text.
+- HarnessInstall.Run returns 0, and still prints the doctor's lines, when the doctor exits 1 after a
+  good install. It still returns 1 when the clone, the pull or the location record fails.
+- The clone-failure output contains no "gh auth login" and does name credentials.
+- harness-eval passes.
+- By hand, for Mikkel: `pu update --dry-run` on the home PC lists Node, Harness and Transcripts kept.
+
+BOUNDARIES
+In scope: cli/PreviouslyUpcoming.Cli (Program.cs Setup_, Setup.cs, HarnessInstall.cs, and
+HarnessStart.cs only where item 2 needs it), its tests, install.ps1, CONNECTING-A-WORK-PC.md,
+CHANGELOG.md, and the csproj version.
+Out of scope: everything else in ANY-REPO.md. No ~/.harness/repos, no enrolment, no forget, and no
+change to how pu harness launches claude. No web, DocumentService or harness-repository changes.
+Must not touch: other keys in the user's settings.json; the rule that the "pu build" check runs
+last; any compiled-in machine path.
+
+DECISIONS
+- 180 days (Mikkel, 2026-10-07). Never lower a higher value.
+- pu update reports Node and doesn't install it; install.ps1 installs it.
+- The Harness's folder comes from ResolveTarget as it is today. No new location rules.
+- Check names and wording: the orchestrator decides, matching the existing checks.
+```
