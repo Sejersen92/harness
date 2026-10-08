@@ -6,9 +6,11 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DEFAULT_TEST_GLOBS } from "../src/lib/config.mjs";
-import { isCommit, isMarkerPath, isTestPath } from "../src/lib/gate.mjs";
-import { describe, root, validators } from "./validators.mjs";
+import { DEFAULT_TEST_GLOBS } from "../src/lib/config.ts";
+import { isCommit, isMarkerPath, isTestPath } from "../src/lib/gate.ts";
+import { describe, root, validatorFor, type Line } from "./validators.ts";
+
+type Repo = { dir: string; g: (...args: string[]) => Buffer };
 
 const SESSION = "11111111-2222-4333-8444-555555555555";
 
@@ -67,9 +69,9 @@ test("the marker is recognised however its path is spelled", () => {
 
 // ---- the hook, against a repository --------------------------------------------------------------
 
-function makeRepo({ mode = "observe" } = {}) {
+function makeRepo({ mode = "observe" }: { mode?: string } = {}): Repo {
   const dir = mkdtempSync(join(tmpdir(), "harness-gate-"));
-  const g = (...args) => execFileSync("git", ["-C", dir, "-c", "user.name=t", "-c", "user.email=t@t", "-c", "core.autocrlf=false", ...args], { stdio: ["ignore", "pipe", "pipe"] });
+  const g = (...args: string[]): Buffer => execFileSync("git", ["-C", dir, "-c", "user.name=t", "-c", "user.email=t@t", "-c", "core.autocrlf=false", ...args], { stdio: ["ignore", "pipe", "pipe"] });
   g("init", "-q");
   writeFileSync(join(dir, ".gitignore"), ".harness/\n.harness-home/\n.claude/state/\n");
   writeFileSync(join(dir, "tracked.txt"), "one\n");
@@ -88,30 +90,36 @@ function makeRepo({ mode = "observe" } = {}) {
   return { dir, g };
 }
 
-const env = (dir) => ({ ...process.env, CLAUDE_CODE_SESSION_ID: SESSION, CLAUDE_PROJECT_DIR: dir, CLAUDE_PLUGIN_ROOT: root, HARNESS_HOME: join(dir, ".harness-home") });
+const env = (dir: string): NodeJS.ProcessEnv => ({ ...process.env, CLAUDE_CODE_SESSION_ID: SESSION, CLAUDE_PROJECT_DIR: dir, CLAUDE_PLUGIN_ROOT: root, HARNESS_HOME: join(dir, ".harness-home") });
 
-const evaluate = (dir) => spawnSync("node", [join(root, "bin", "harness-eval.mjs")], { cwd: dir, env: env(dir), encoding: "utf8" });
+const evaluate = (dir: string) => spawnSync("node", [join(root, "bin", "harness-eval.mjs")], { cwd: dir, env: env(dir), encoding: "utf8" });
 
-const preToolUse = (dir, tool_name, tool_input, agent_type = undefined) => {
+const preToolUse = (dir: string, tool_name: string, tool_input: Record<string, unknown>, agent_type?: string): Line | null => {
   const result = spawnSync("node", [join(root, "bin", "hook-pre-tool-use.mjs")], {
     cwd: dir, env: env(dir), encoding: "utf8",
     input: JSON.stringify({ session_id: SESSION, hook_event_name: "PreToolUse", tool_name, tool_input, ...(agent_type ? { agent_id: "a1", agent_type } : {}) }),
   });
   assert.equal(result.status, 0, result.stderr);
-  return result.stdout ? JSON.parse(result.stdout).hookSpecificOutput : null;
+  return result.stdout ? (JSON.parse(result.stdout) as { hookSpecificOutput: Line }).hookSpecificOutput : null;
 };
 
-const commit = (dir) => preToolUse(dir, "Bash", { command: 'git commit -m "change"' });
+/** A hook output the test expects to exist: fails the test when the hook said nothing. */
+const decided = (out: Line | null): Line => {
+  assert.ok(out, "the hook made no decision");
+  return out;
+};
 
-const decisions = (dir) => {
+const commit = (dir: string): Line | null => preToolUse(dir, "Bash", { command: 'git commit -m "change"' });
+
+const decisions = (dir: string): Line[] => {
   const path = join(dir, ".harness", "events");
   if (!existsSync(path)) return [];
   return readdirSync(path)
-    .flatMap((f) => readFileSync(join(path, f), "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l)))
+    .flatMap((f) => readFileSync(join(path, f), "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l) as Line))
     .filter((e) => e.type === "gate.decision");
 };
 
-const stage = ({ dir, g }, text = "two\n") => {
+const stage = ({ dir, g }: Repo, text: string = "two\n"): void => {
   writeFileSync(join(dir, "tracked.txt"), text);
   g("add", "tracked.txt");
 };
@@ -120,13 +128,14 @@ test("a commit with no eval pass is denied, and says how to get one", () => {
   const repo = makeRepo();
   stage(repo);
 
-  const out = commit(repo.dir);
+  const out = decided(commit(repo.dir));
 
   assert.equal(out.permissionDecision, "deny");
   assert.match(out.permissionDecisionReason, /no_marker/);
   assert.match(out.permissionDecisionReason, /bin\/harness-eval\.mjs/);
   const [decision] = decisions(repo.dir);
-  assert.ok(validators[decision.schema](decision), describe(validators[decision.schema]));
+  assert.ok(decision, "no gate.decision");
+  assert.ok(validatorFor(decision)(decision), describe(validatorFor(decision)));
   assert.deepEqual(decision.data, { decision: "deny", reason: "no_marker" });
 });
 
@@ -136,7 +145,7 @@ test("a commit of exactly what the eval passed is allowed, and recorded", () => 
   assert.equal(evaluate(repo.dir).status, 0);
 
   assert.equal(commit(repo.dir), null);
-  assert.deepEqual(decisions(repo.dir).at(-1).data, { decision: "allow", reason: "pass" });
+  assert.deepEqual(decisions(repo.dir).at(-1)?.data, { decision: "allow", reason: "pass" });
 });
 
 test("staging something else after the eval is a diff_mismatch", () => {
@@ -145,7 +154,7 @@ test("staging something else after the eval is a diff_mismatch", () => {
   assert.equal(evaluate(repo.dir).status, 0);
   stage(repo, "three\n");
 
-  const out = commit(repo.dir);
+  const out = decided(commit(repo.dir));
   assert.equal(out.permissionDecision, "deny");
   assert.match(out.permissionDecisionReason, /diff_mismatch.*staged diff/);
 });
@@ -157,7 +166,7 @@ test("an unstaged edit after the eval is denied, because commit -a would take it
   assert.equal(evaluate(repo.dir).status, 0);
   writeFileSync(join(repo.dir, "tracked.txt"), "edited later\n");
 
-  const out = preToolUse(repo.dir, "Bash", { command: 'git commit -am "change"' });
+  const out = decided(preToolUse(repo.dir, "Bash", { command: 'git commit -am "change"' }));
   assert.equal(out.permissionDecision, "deny");
   assert.match(out.permissionDecisionReason, /unstaged/);
 });
@@ -173,7 +182,7 @@ test("a pass on another HEAD is a diff_mismatch", () => {
   marker.diff_sha256 = execFileSync("node", ["-e", "const c=require('crypto');process.stdout.write(c.createHash('sha256').update(require('child_process').execFileSync('git',['diff','--cached','--binary'])).digest('hex'))"], { cwd: repo.dir, encoding: "utf8" });
   writeFileSync(join(repo.dir, ".claude", "state", "eval-pass.json"), JSON.stringify(marker));
 
-  const out = commit(repo.dir);
+  const out = decided(commit(repo.dir));
   assert.equal(out.permissionDecision, "deny");
   assert.match(out.permissionDecisionReason, /HEAD has moved/);
 });
@@ -187,7 +196,7 @@ test("an old pass is a stale_marker", () => {
   marker.passed_at = new Date(Date.now() - 31 * 60_000).toISOString().replace(/\.\d{3}Z$/, "Z");
   writeFileSync(path, JSON.stringify(marker));
 
-  const out = commit(repo.dir);
+  const out = decided(commit(repo.dir));
   assert.equal(out.permissionDecision, "deny");
   assert.match(out.permissionDecisionReason, /stale_marker/);
 });
@@ -207,8 +216,8 @@ test("the marker can't be written by a tool call, only by harness-eval", () => {
     ["Write", { file_path: marker, content: "{}" }],
     ["Edit", { file_path: marker.replace(/\//g, "\\"), old_string: "a", new_string: "b" }],
     ["Bash", { command: `echo {} > .claude/state/eval-pass.json` }],
-  ]) {
-    const out = preToolUse(repo.dir, tool, input);
+  ] as [string, Record<string, unknown>][]) {
+    const out = decided(preToolUse(repo.dir, tool, input));
     assert.equal(out?.permissionDecision, "deny", `${tool} was let through`);
     assert.match(out.permissionDecisionReason, /only by harness-eval/);
   }

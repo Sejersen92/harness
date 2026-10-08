@@ -7367,27 +7367,27 @@ var require_dist = __commonJS({
   }
 });
 
-// src/lib/config.mjs
+// src/lib/config.ts
 var import_yaml = __toESM(require_dist(), 1);
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// src/lib/ids.mjs
+// src/lib/ids.ts
 import { createHash, randomBytes } from "node:crypto";
 var CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 function ulid(ms = Date.now()) {
   let time = "";
   let t = BigInt(ms);
   for (let i = 0; i < 10; i++) {
-    time = CROCKFORD[Number(t % 32n)] + time;
+    time = CROCKFORD.charAt(Number(t % 32n)) + time;
     t /= 32n;
   }
   let rand = BigInt("0x" + randomBytes(10).toString("hex"));
   let tail = "";
   for (let i = 0; i < 16; i++) {
-    tail = CROCKFORD[Number(rand % 32n)] + tail;
+    tail = CROCKFORD.charAt(Number(rand % 32n)) + tail;
     rand /= 32n;
   }
   return time + tail;
@@ -7397,7 +7397,8 @@ var utcNow = (date = /* @__PURE__ */ new Date()) => date.toISOString().replace(/
 var TASK_ID = /PLAN-\d+(?:\.\d+)+/g;
 var taskIdsIn = (text) => [...new Set(String(text ?? "").match(TASK_ID) ?? [])];
 
-// src/lib/config.mjs
+// src/lib/config.ts
+var MODES = ["off", "observe", "route"];
 var git = (cwd, ...args) => {
   try {
     return execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
@@ -7411,7 +7412,7 @@ function projectDir(cwd = process.cwd()) {
 function repoIdentity(dir) {
   const remote = git(dir, "remote", "get-url", "origin");
   const normalised = remote?.trim().toLowerCase().replace(/\/+$/, "").replace(/\.git$/, "");
-  const name = (normalised ? normalised.split(/[/:]/).pop() : basename(dir)).toLowerCase();
+  const name = ((normalised ? normalised.split(/[/:]/).pop() : void 0) ?? basename(dir)).toLowerCase();
   return { name, remote_sha256: sha256(normalised ?? `local:${dir.toLowerCase()}`) };
 }
 function pluginRoot() {
@@ -7426,7 +7427,9 @@ function pluginRoot() {
 }
 function producer() {
   try {
-    const { version } = JSON.parse(readFileSync(join(pluginRoot(), ".claude-plugin", "plugin.json"), "utf8"));
+    const root = pluginRoot();
+    if (!root) throw new Error("no plugin root");
+    const { version } = JSON.parse(readFileSync(join(root, ".claude-plugin", "plugin.json"), "utf8"));
     return { name: "harness", version };
   } catch {
     return { name: "harness", version: "0.0.0-unknown" };
@@ -7451,22 +7454,29 @@ function loadConfig(dir = projectDir()) {
   const metadata = yaml.metadata ?? {};
   return {
     dir,
-    mode: ["off", "observe", "route"].includes(yaml.mode) ? yaml.mode : "off",
+    mode: MODES.includes(yaml.mode) ? yaml.mode : "off",
     tiers: yaml.tiers ?? {},
     config_sha256: sha256(bytes),
     metadataDir: join(dir, metadata.dir ?? ".harness"),
     retentionDays: Number.isInteger(metadata.retention_days) ? metadata.retention_days : 30,
     includeJustifications: metadata.include_justifications !== false,
     stages: Array.isArray(yaml.eval?.stages) ? yaml.eval.stages : [],
-    testGlobs: Array.isArray(yaml.eval?.tests) && yaml.eval.tests.length ? yaml.eval.tests.map(String) : DEFAULT_TEST_GLOBS,
-    markerTtlMinutes: Number.isInteger(yaml.gate?.marker_ttl_minutes) ? yaml.gate.marker_ttl_minutes : 30
+    testGlobs: Array.isArray(yaml.eval?.tests) && yaml.eval.tests.length ? yaml.eval.tests.map(String) : [...DEFAULT_TEST_GLOBS],
+    markerTtlMinutes: Number.isInteger(yaml.gate?.marker_ttl_minutes) ? yaml.gate?.marker_ttl_minutes : 30
   };
 }
 
-// src/lib/spool.mjs
+// src/lib/spool.ts
 import { appendFileSync, existsSync as existsSync2, mkdirSync, readdirSync, readFileSync as readFileSync2, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join as join2, resolve } from "node:path";
+
+// src/lib/types.ts
+var EFFORTS = ["low", "medium", "high", "xhigh", "max"];
+var isEffort = (value) => EFFORTS.includes(value);
+var messageOf = (error) => error instanceof Error ? error.message : String(error);
+
+// src/lib/spool.ts
 var MAX_LINE_BYTES = 4096;
 var registryPath = () => join2(process.env.HARNESS_HOME || join2(homedir(), ".harness"), "spools.json");
 function registerSpool(config2, now = /* @__PURE__ */ new Date()) {
@@ -7480,7 +7490,7 @@ function registerSpool(config2, now = /* @__PURE__ */ new Date()) {
     writeFileSync(`${path}.tmp`, JSON.stringify(registry, null, 2) + "\n");
     renameSync(`${path}.tmp`, path);
   } catch (error) {
-    recordFailure(config2, `spool registry: ${error.message}`);
+    recordFailure(config2, `spool registry: ${messageOf(error)}`);
   }
 }
 function recordFailure(config2, why) {
@@ -7508,7 +7518,7 @@ function appendLine(config2, file, record) {
     if (firstLineInFile) registerSpool(config2);
     return true;
   } catch (error) {
-    recordFailure(config2, error.message);
+    recordFailure(config2, messageOf(error));
     return false;
   }
 }
@@ -7518,7 +7528,8 @@ function sweep(config2, now) {
   try {
     if (existsSync2(marker) && readFileSync2(marker, "utf8").trim() === today) return;
     const cutoff = new Date(now.getTime() - config2.retentionDays * 864e5).toISOString().slice(0, 10);
-    for (const [folder, toDate] of [["events", (n) => n.slice(0, 10)], ["routing-log", (n) => `${n.slice(0, 7)}-31`]]) {
+    const folders = [["events", (n) => n.slice(0, 10)], ["routing-log", (n) => `${n.slice(0, 7)}-31`]];
+    for (const [folder, toDate] of folders) {
       const dir = join2(config2.metadataDir, folder);
       if (!existsSync2(dir)) continue;
       for (const name of readdirSync(dir).filter((n) => n.endsWith(".jsonl"))) {
@@ -7528,7 +7539,7 @@ function sweep(config2, now) {
     mkdirSync(join2(config2.metadataDir, "state"), { recursive: true });
     writeFileSync(marker, today);
   } catch (error) {
-    recordFailure(config2, `retention sweep: ${error.message}`);
+    recordFailure(config2, `retention sweep: ${messageOf(error)}`);
   }
 }
 function emitEvent(config2, type2, fields = {}, data2 = {}, now = /* @__PURE__ */ new Date()) {
@@ -7539,7 +7550,7 @@ function emitEvent(config2, type2, fields = {}, data2 = {}, now = /* @__PURE__ *
     recordFailure(config2, `${type2}: no session id (not running inside Claude Code?)`);
     return null;
   }
-  const event2 = {
+  const envelope = {
     schema: "harness.events/v1",
     event_id: ulid(now.getTime()),
     ts: utcNow(now),
@@ -7551,24 +7562,24 @@ function emitEvent(config2, type2, fields = {}, data2 = {}, now = /* @__PURE__ *
     config_sha256: config2.config_sha256
   };
   for (const key of ["prompt_id", "agent_id", "agent_type", "plan_id", "task_id"]) {
-    if (fields[key]) event2[key] = fields[key];
+    const value = fields[key];
+    if (value) envelope[key] = value;
   }
-  event2.data = data2;
+  const event2 = { ...envelope, data: data2 };
   const file = join2(config2.metadataDir, "events", `${event2.ts.slice(0, 10)}.jsonl`);
   if (!appendLine(config2, file, event2)) return null;
   snapshotConfig(config2, event2.repo, now);
   return event2;
 }
 var TIERS = ["T1", "T2", "T3", "T4"];
-var EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 function snapshotConfig(config2, repo, now = /* @__PURE__ */ new Date()) {
   const path = join2(config2.metadataDir, "configs", `${config2.config_sha256}.json`);
   if (existsSync2(path)) return;
   const tiers = {};
   for (const tier of TIERS) {
-    const t = config2.tiers?.[tier];
+    const t = config2.tiers[tier];
     if (!t || !Number.isInteger(t.max_score) || typeof t.agent !== "string" || typeof t.model !== "string") continue;
-    tiers[tier] = { max_score: t.max_score, agent: t.agent, model: t.model, ...EFFORTS.includes(t.effort) ? { effort: t.effort } : {} };
+    tiers[tier] = { max_score: t.max_score, agent: t.agent, model: t.model, ...isEffort(t.effort) ? { effort: t.effort } : {} };
   }
   const snapshot = {
     schema: "harness.config/v1",
@@ -7578,7 +7589,7 @@ function snapshotConfig(config2, repo, now = /* @__PURE__ */ new Date()) {
     repo,
     mode: config2.mode,
     tiers,
-    eval: { stages: config2.stages.map((s) => s?.name).filter((n) => typeof n === "string" && n) },
+    eval: { stages: config2.stages.map((s) => s?.name).filter((n) => typeof n === "string" && n.length > 0) },
     gate: { marker_ttl_minutes: config2.markerTtlMinutes }
   };
   try {
@@ -7586,7 +7597,7 @@ function snapshotConfig(config2, repo, now = /* @__PURE__ */ new Date()) {
     writeFileSync(`${path}.tmp`, JSON.stringify(snapshot, null, 2) + "\n");
     renameSync(`${path}.tmp`, path);
   } catch (error) {
-    recordFailure(config2, `config snapshot: ${error.message}`);
+    recordFailure(config2, `config snapshot: ${messageOf(error)}`);
   }
 }
 function writeRoutingLog(config2, record) {
@@ -7621,7 +7632,7 @@ function readRoutingLog(config2) {
   });
 }
 
-// src/lib/plan.mjs
+// src/lib/plan.ts
 import { existsSync as existsSync3, readFileSync as readFileSync3 } from "node:fs";
 import { join as join3 } from "node:path";
 var DIMENSIONS = ["ambiguity", "blast", "coupling", "novelty", "reversibility", "verification"];
@@ -7648,7 +7659,7 @@ function planSection(dir, taskId2) {
   const justifications = {};
   for (const item of listUnder("Justifications")) {
     const [name, ...reason] = item.split(":");
-    const key = name.trim().toLowerCase();
+    const key = (name ?? "").trim().toLowerCase();
     if (DIMENSIONS.includes(key) && reason.join(":").trim()) justifications[key] = reason.join(":").trim().slice(0, 200);
   }
   return {
@@ -7660,7 +7671,8 @@ function planSection(dir, taskId2) {
   };
 }
 
-// src/lib/tasklog.mjs
+// src/lib/tasklog.ts
+var dataOf = (event2) => event2.data;
 var seconds = (from, to) => Math.max(0, Math.round((Date.parse(to) - Date.parse(from)) / 1e3));
 var last = (items) => items[items.length - 1];
 function buildRecord(config2, taskId2, events = readEvents(config2), previous = readRoutingLog(config2)) {
@@ -7676,15 +7688,19 @@ function buildRecord(config2, taskId2, events = readEvents(config2), previous = 
   if (dispatched.length === 0) missing.push("task.dispatched");
   const startedById = new Map(events.filter((e) => e.type === "subagent.started").map((e) => [e.agent_id, e.ts]));
   const runs = ofType("subagent.stopped").map((stop) => {
+    const data2 = dataOf(stop);
     const run = {
       agent_type: stop.agent_type,
       agent_id: stop.agent_id,
-      started: startedById.get(stop.agent_id) ?? new Date(Date.parse(stop.ts) - (stop.data.duration_ms ?? 0)).toISOString().replace(/\.\d{3}Z$/, "Z"),
+      started: startedById.get(stop.agent_id) ?? new Date(Date.parse(stop.ts) - (data2.duration_ms ?? 0)).toISOString().replace(/\.\d{3}Z$/, "Z"),
       ended: stop.ts,
-      report: stop.data.report,
-      partial: stop.data.partial
+      report: data2.report,
+      partial: data2.partial
     };
-    for (const key of ["model_requested", "model", "effort"]) if (stop.data[key]) run[key] = stop.data[key];
+    for (const key of ["model_requested", "model", "effort"]) {
+      const value = data2[key];
+      if (value) run[key] = value;
+    }
     if (!startedById.has(stop.agent_id)) missing.push(`subagent.started:${stop.agent_id}`);
     return run;
   });
@@ -7692,22 +7708,28 @@ function buildRecord(config2, taskId2, events = readEvents(config2), previous = 
   const plan = planSection(config2.dir, taskId2);
   if (!plan) missing.push("PLAN.md section");
   const evalRounds = ofType("eval.completed").map((e, i) => {
-    const round = { round: i + 1, result: e.data.result, failed_acs: e.data.failed_acs.filter((ac) => ac.startsWith(`${taskId2}/`)), stages: e.data.stages };
-    if (e.data.attribution) round.attribution = e.data.attribution;
+    const data2 = dataOf(e);
+    const round = { round: i + 1, result: data2.result, failed_acs: data2.failed_acs.filter((ac) => ac.startsWith(`${taskId2}/`)), stages: data2.stages };
+    if (data2.attribution) round.attribution = data2.attribution;
     return round;
   });
-  const opened = [dispatched[0]?.ts, ...runs.map((r) => r.started)].filter((ts) => ts && ts >= scored.ts).sort()[0] ?? scored.ts;
+  const opened = [dispatched[0]?.ts, ...runs.map((r) => r.started)].filter((ts) => ts !== void 0 && ts >= scored.ts).sort()[0] ?? scored.ts;
   const window = (e) => e.session_id === completed.session_id && e.ts >= opened && e.ts <= completed.ts;
   const gates = events.filter((e) => e.type === "gate.decision" && window(e));
   const commit = last(ofType("commit.created"));
+  const score = dataOf(scored);
   const rubric = {
-    scores: scored.data.scores,
-    total: scored.data.total,
-    score_band: scored.data.score_band,
-    overrides: scored.data.overrides,
-    tier_planned: scored.data.tier_planned
+    scores: score.scores,
+    total: score.total,
+    score_band: score.score_band,
+    overrides: score.overrides,
+    tier_planned: score.tier_planned
   };
   if (config2.includeJustifications && plan && Object.keys(plan.justifications).length) rubric.justifications = plan.justifications;
+  const lastDispatch = last(dispatched);
+  const dispatch = lastDispatch ? dataOf(lastDispatch) : void 0;
+  const done = dataOf(completed);
+  const commitData = commit ? dataOf(commit) : null;
   const record = {
     schema: "harness.routing-log/v1",
     task_id: taskId2,
@@ -7722,24 +7744,27 @@ function buildRecord(config2, taskId2, events = readEvents(config2), previous = 
     rubric,
     scope: {
       declared_files: plan?.declaredFiles ?? 0,
-      ...plan?.parallelGroup ?? last(dispatched)?.data.group ? { parallel_group: plan?.parallelGroup ?? last(dispatched).data.group } : {},
-      isolation: last(dispatched)?.data.isolation ?? "none",
+      ...plan?.parallelGroup ?? dispatch?.group ? { parallel_group: plan?.parallelGroup ?? dispatch?.group } : {},
+      isolation: dispatch?.isolation ?? "none",
       depends_on: plan?.dependsOn ?? []
     },
     acceptance: { criteria: plan?.criteria ?? 0 },
     runs,
     eval_rounds: evalRounds,
-    escalations: ofType("escalation.triggered").map((e) => ({ trigger: e.data.trigger, at: e.ts })),
-    redispatches: ofType("task.redispatched").map((e) => ({ reason: e.data.reason, tier: e.data.tier, at: e.ts })),
+    escalations: ofType("escalation.triggered").map((e) => ({ trigger: dataOf(e).trigger, at: e.ts })),
+    redispatches: ofType("task.redispatched").map((e) => {
+      const { reason, tier } = dataOf(e);
+      return { reason, tier, at: e.ts };
+    }),
     gate: {
       denials: gates.filter((g) => g.data.decision === "deny").length,
       denial_reasons: gates.filter((g) => g.data.decision === "deny").map((g) => g.data.reason),
       allowed: gates.filter((g) => g.data.decision === "allow").length
     },
-    commit: commit ? { sha: commit.data.commit_sha, files_changed: commit.data.files_changed, lines_added: commit.data.lines_added, lines_removed: commit.data.lines_removed } : null,
+    commit: commitData ? { sha: commitData.commit_sha, files_changed: commitData.files_changed, lines_added: commitData.lines_added, lines_removed: commitData.lines_removed } : null,
     human_interventions: ofType("human.intervention").length,
-    outcome: completed.data.outcome,
-    final_tier: completed.data.final_tier,
+    outcome: done.outcome,
+    final_tier: done.final_tier,
     wall_clock_s: seconds(opened, completed.ts),
     complete: missing.length === 0
   };
@@ -7748,17 +7773,17 @@ function buildRecord(config2, taskId2, events = readEvents(config2), previous = 
 }
 function writeTaskRecord(config2, taskId2) {
   const { record, error } = buildRecord(config2, taskId2);
-  if (error) {
+  if (error !== void 0 || !record) {
     recordFailure(config2, `routing log: ${error}`);
     return null;
   }
   return writeRoutingLog(config2, record) ? record : null;
 }
 
-// src/cli/harness-emit.mjs
+// src/cli/harness-emit.ts
 var [type, ...rest] = process.argv.slice(2);
 var flags = {};
-for (let i = 0; i < rest.length; i += 2) flags[rest[i].replace(/^--/, "")] = rest[i + 1];
+for (let i = 0; i < rest.length; i += 2) flags[(rest[i] ?? "").replace(/^--/, "")] = rest[i + 1];
 var config = loadConfig();
 if (config.mode === "off") {
   process.stdout.write(`harness: off (${config.reason ?? "mode: off"}), nothing recorded
@@ -7772,10 +7797,11 @@ if (!type || !/^[a-z]+(\.[a-z_]+)+$/.test(type)) {
 var data = {};
 if (flags.data !== void 0) {
   try {
-    data = JSON.parse(flags.data);
-    if (data === null || typeof data !== "object" || Array.isArray(data)) throw new Error("--data must be a JSON object");
+    const parsed = JSON.parse(flags.data);
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("--data must be a JSON object");
+    data = parsed;
   } catch (error) {
-    recordFailure(config, `harness-emit ${type}: ${error.message}`);
+    recordFailure(config, `harness-emit ${type}: ${messageOf(error)}`);
     process.exit(0);
   }
 }

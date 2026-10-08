@@ -7367,18 +7367,19 @@ var require_dist = __commonJS({
   }
 });
 
-// src/lib/config.mjs
+// src/lib/config.ts
 var import_yaml = __toESM(require_dist(), 1);
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// src/lib/ids.mjs
+// src/lib/ids.ts
 import { createHash, randomBytes } from "node:crypto";
 var sha256 = (data) => createHash("sha256").update(data).digest("hex");
 
-// src/lib/config.mjs
+// src/lib/config.ts
+var MODES = ["off", "observe", "route"];
 var git = (cwd, ...args) => {
   try {
     return execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
@@ -7418,30 +7419,35 @@ function loadConfig(dir2 = projectDir()) {
   const metadata = yaml.metadata ?? {};
   return {
     dir: dir2,
-    mode: ["off", "observe", "route"].includes(yaml.mode) ? yaml.mode : "off",
+    mode: MODES.includes(yaml.mode) ? yaml.mode : "off",
     tiers: yaml.tiers ?? {},
     config_sha256: sha256(bytes),
     metadataDir: join(dir2, metadata.dir ?? ".harness"),
     retentionDays: Number.isInteger(metadata.retention_days) ? metadata.retention_days : 30,
     includeJustifications: metadata.include_justifications !== false,
     stages: Array.isArray(yaml.eval?.stages) ? yaml.eval.stages : [],
-    testGlobs: Array.isArray(yaml.eval?.tests) && yaml.eval.tests.length ? yaml.eval.tests.map(String) : DEFAULT_TEST_GLOBS,
-    markerTtlMinutes: Number.isInteger(yaml.gate?.marker_ttl_minutes) ? yaml.gate.marker_ttl_minutes : 30
+    testGlobs: Array.isArray(yaml.eval?.tests) && yaml.eval.tests.length ? yaml.eval.tests.map(String) : [...DEFAULT_TEST_GLOBS],
+    markerTtlMinutes: Number.isInteger(yaml.gate?.marker_ttl_minutes) ? yaml.gate?.marker_ttl_minutes : 30
   };
 }
 
-// src/lib/setup.mjs
+// src/lib/setup.ts
 var import_yaml2 = __toESM(require_dist(), 1);
 import { execFileSync as execFileSync2 } from "node:child_process";
 import { chmodSync, copyFileSync, existsSync as existsSync2, mkdirSync, readFileSync as readFileSync2, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join as join3, resolve as resolve2 } from "node:path";
 
-// src/lib/spool.mjs
+// src/lib/spool.ts
 import { homedir } from "node:os";
 import { join as join2, resolve } from "node:path";
+
+// src/lib/types.ts
+var messageOf = (error) => error instanceof Error ? error.message : String(error);
+
+// src/lib/spool.ts
 var pluginRecordPath = () => join2(process.env.HARNESS_HOME || join2(homedir(), ".harness"), "plugin.json");
 
-// src/lib/setup.mjs
+// src/lib/setup.ts
 var MIN_CLAUDE_CODE = [2, 1, 284];
 var MIN_NODE = 22;
 var DENY = [
@@ -7487,13 +7493,15 @@ var readJson = (path) => {
 var settingsPath = (dir2) => join3(dir2, ".claude", "settings.json");
 var version = (text) => (String(text).match(/(\d+)\.(\d+)\.(\d+)/) ?? []).slice(1).map(Number);
 var atLeast = (have, want) => {
-  for (let i = 0; i < want.length; i++) if ((have[i] ?? 0) !== want[i]) return (have[i] ?? 0) > want[i];
+  for (let i = 0; i < want.length; i++) if ((have[i] ?? 0) !== (want[i] ?? 0)) return (have[i] ?? 0) > (want[i] ?? 0);
   return true;
 };
 function checks(dir2, { pluginRoot: pluginRoot2, claudeVersion = readClaudeVersion() } = {}) {
   const config = loadConfig(dir2);
   const results2 = [];
-  const add = (name, status, detail) => results2.push({ name, status, detail });
+  const add = (name, status, detail) => {
+    results2.push({ name, status, detail });
+  };
   const node = version(process.versions.node);
   add("node", atLeast(node, [MIN_NODE]) ? "pass" : "fail", `Node ${process.versions.node} (needs ${MIN_NODE}+)`);
   if (!claudeVersion) add("claude-code", "warn", "the claude CLI is not on PATH, so its version can't be checked");
@@ -7518,7 +7526,7 @@ function checks(dir2, { pluginRoot: pluginRoot2, claudeVersion = readClaudeVersi
     rmSync(probe);
     add("spool-writable", "pass", config.metadataDir ?? join3(dir2, ".harness"));
   } catch (error) {
-    add("spool-writable", "fail", error.message);
+    add("spool-writable", "fail", messageOf(error));
   }
   const hooksPath = git2(dir2, "config", "core.hooksPath");
   const missingHooks = HOOKS.filter((h) => !existsSync2(join3(dir2, ".githooks", h)));
@@ -7552,7 +7560,7 @@ function checks(dir2, { pluginRoot: pluginRoot2, claudeVersion = readClaudeVersi
     else if (real.toLowerCase() === spelled.toLowerCase()) add("path-casing", "warn", `the working directory is spelled ${spelled}, the disk says ${real}; Claude Code refused a worktree for this (S6)`);
     else add("path-casing", "pass", `${spelled} (reached through a link to ${real})`);
   } catch (error) {
-    add("path-casing", "warn", error.message);
+    add("path-casing", "warn", messageOf(error));
   }
   const failures = Number.parseInt(readSafely(join3(config.metadataDir ?? join3(dir2, ".harness"), "emit-failures")), 10) || 0;
   add("emit-failures", failures ? "warn" : "pass", failures ? `${failures} metadata write(s) failed; see stderr from the hooks` : "none");
@@ -7661,19 +7669,24 @@ function settingsDiff(before, after) {
   const added = (after.permissions?.deny ?? []).filter((rule) => !had.has(rule));
   if (added.length) lines.push(`permissions.deny gains ${added.length} rule(s):`, ...added.map((rule) => `    + ${rule}`));
   const shown = (value) => value === void 0 ? "(not set)" : JSON.stringify(value);
-  for (const [label, from, to] of [
+  const changes = [
     ["attribution.commit", before.attribution?.commit, after.attribution?.commit],
     ["worktree.baseRef", before.worktree?.baseRef, after.worktree?.baseRef]
-  ]) {
+  ];
+  for (const [label, from, to] of changes) {
     if (from !== to) lines.push(`${label}: ${shown(from)} -> ${shown(to)}`);
   }
   return lines;
 }
 
-// src/cli/harness-init.mjs
+// src/cli/harness-init.ts
 var apply = process.argv.includes("--apply");
 var dir = projectDir();
 var root = pluginRoot();
+if (!root) {
+  process.stdout.write("harness-init: can't find the plugin's own folder, so there is no template to set up from\n");
+  process.exit(1);
+}
 var { steps, settingsBefore, settingsAfter } = initPlan(dir, root);
 var say = (line = "") => process.stdout.write(line + "\n");
 say(`harness-init: ${dir}${apply ? "" : " (dry run: nothing is changed)"}`);

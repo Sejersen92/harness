@@ -1,0 +1,9 @@
+{
+  // The tests take every strict setting from the root config but one: an index read that may be
+  // undefined. In src that guards real paths; in a test, a missing element already fails the test.
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "noUncheckedIndexedAccess": false
+  },
+  "include": ["**/*.ts"]
+}

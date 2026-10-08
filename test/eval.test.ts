@@ -7,16 +7,18 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, root, validators } from "./validators.mjs";
+import { describe, root, validatorFor, type Line } from "./validators.ts";
+
+type Repo = { dir: string; g: (...args: string[]) => Buffer };
 
 const SESSION = "11111111-2222-4333-8444-555555555555";
 
-const pass = (name) => `    - { name: ${name}, run: 'node -e "process.exit(0)"' }`;
-const fail = (name, text = "") => `    - { name: ${name}, run: 'node -e "console.log(\\"${text}\\"); process.exit(1)"' }`;
+const pass = (name: string): string => `    - { name: ${name}, run: 'node -e "process.exit(0)"' }`;
+const fail = (name: string, text: string = ""): string => `    - { name: ${name}, run: 'node -e "console.log(\\"${text}\\"); process.exit(1)"' }`;
 
-function makeRepo(stageLines, { mode = "observe" } = {}) {
+function makeRepo(stageLines: string[], { mode = "observe" }: { mode?: string } = {}): Repo {
   const dir = mkdtempSync(join(tmpdir(), "harness-eval-"));
-  const g = (...args) => execFileSync("git", ["-C", dir, "-c", "user.name=t", "-c", "user.email=t@t", "-c", "core.autocrlf=false", ...args], { stdio: ["ignore", "pipe", "pipe"] });
+  const g = (...args: string[]): Buffer => execFileSync("git", ["-C", dir, "-c", "user.name=t", "-c", "user.email=t@t", "-c", "core.autocrlf=false", ...args], { stdio: ["ignore", "pipe", "pipe"] });
   g("init", "-q");
   writeFileSync(join(dir, ".gitignore"), ".harness/\n.harness-home/\n.claude/state/\n");
   writeFileSync(join(dir, "routing.yaml"), [
@@ -32,30 +34,31 @@ function makeRepo(stageLines, { mode = "observe" } = {}) {
   return { dir, g };
 }
 
-const run = (dir, args = [], { session = true } = {}) => {
-  const env = { ...process.env, CLAUDE_PROJECT_DIR: dir, CLAUDE_PLUGIN_ROOT: root, HARNESS_HOME: join(dir, ".harness-home") };
+const run = (dir: string, args: string[] = [], { session = true }: { session?: boolean } = {}) => {
+  const env: NodeJS.ProcessEnv = { ...process.env, CLAUDE_PROJECT_DIR: dir, CLAUDE_PLUGIN_ROOT: root, HARNESS_HOME: join(dir, ".harness-home") };
   delete env.CLAUDE_CODE_SESSION_ID;
   if (session) env.CLAUDE_CODE_SESSION_ID = SESSION;
   return spawnSync("node", [join(root, "bin", "harness-eval.mjs"), ...args], { cwd: dir, env, encoding: "utf8" });
 };
 
-const stageChange = ({ dir, g }, name = "a.txt", text = "hello\n") => {
+const stageChange = ({ dir, g }: Repo, name: string = "a.txt", text: string = "hello\n"): void => {
   writeFileSync(join(dir, name), text);
   g("add", name);
 };
 
-const marker = (dir) => join(dir, ".claude", "state", "eval-pass.json");
+const marker = (dir: string): string => join(dir, ".claude", "state", "eval-pass.json");
 
-const events = (dir) => {
+const events = (dir: string): Line[] => {
   const path = join(dir, ".harness", "events");
   if (!existsSync(path)) return [];
-  return readdirSync(path).flatMap((f) => readFileSync(join(path, f), "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l)));
+  return readdirSync(path).flatMap((f) => readFileSync(join(path, f), "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l) as Line));
 };
 
-const assertValid = (event) => {
-  const validate = validators[event.schema];
+function assertValid(event: Line | undefined): asserts event is Line {
+  assert.ok(event, "the line is missing");
+  const validate = validatorFor(event);
   assert.ok(validate(event), `${event.type} does not match its schema:\n  ${describe(validate)}`);
-};
+}
 
 test("a pass writes the marker with the staged diff's hash and HEAD, and records both events", () => {
   const repo = makeRepo([pass("build"), pass("unit")]);
@@ -78,7 +81,7 @@ test("a pass writes the marker with the staged diff's hash and HEAD, and records
   assert.equal(completed.type, "eval.completed");
   assert.equal(completed.task_id, "PLAN-1.1");
   assert.equal(completed.data.result, "pass");
-  assert.deepEqual(completed.data.stages.map((s) => [s.name, s.status]), [["build", "pass"], ["unit", "pass"]]);
+  assert.deepEqual(completed.data.stages.map((s: Line) => [s.name, s.status]), [["build", "pass"], ["unit", "pass"]]);
 });
 
 test("a failing stage stops the run: later stages are skipped, AC ids are collected, and the old pass is revoked", () => {
@@ -99,7 +102,7 @@ test("a failing stage stops the run: later stages are skipped, AC ids are collec
   const completed = events(repo.dir).find((e) => e.type === "eval.completed");
   assertValid(completed);
   assert.equal(completed.data.result, "fail");
-  assert.deepEqual(completed.data.stages.map((s) => [s.name, s.status]), [["build", "pass"], ["unit", "fail"], ["lint", "skipped"]]);
+  assert.deepEqual(completed.data.stages.map((s: Line) => [s.name, s.status]), [["build", "pass"], ["unit", "fail"], ["lint", "skipped"]]);
   assert.deepEqual(completed.data.failed_acs, ["PLAN-1.1/AC-2"]);
   assert.equal(completed.data.attribution, "task");
 });
@@ -162,7 +165,7 @@ test("--ci evaluates the checkout as it is and writes no marker", () => {
   const result = run(repo.dir, ["--ci"]);
   assert.equal(result.status, 0, result.stdout + result.stderr);
   assert.equal(existsSync(marker(repo.dir)), false);
-  const started = events(repo.dir).find((e) => e.type === "eval.started");
+  const started = events(repo.dir).find((e) => e.type === "eval.started")!;
   assert.equal(started.data.ci, true);
 });
 

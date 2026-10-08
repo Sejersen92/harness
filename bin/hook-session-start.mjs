@@ -7367,22 +7367,23 @@ var require_dist = __commonJS({
   }
 });
 
-// src/hooks/session-start.mjs
+// src/hooks/session-start.ts
 import { join as join3 } from "node:path";
 
-// src/lib/config.mjs
+// src/lib/config.ts
 var import_yaml = __toESM(require_dist(), 1);
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// src/lib/ids.mjs
+// src/lib/ids.ts
 import { createHash, randomBytes } from "node:crypto";
 var sha256 = (data) => createHash("sha256").update(data).digest("hex");
 var utcNow = (date = /* @__PURE__ */ new Date()) => date.toISOString().replace(/\.\d{3}Z$/, "Z");
 
-// src/lib/config.mjs
+// src/lib/config.ts
+var MODES = ["off", "observe", "route"];
 var git = (cwd, ...args) => {
   try {
     return execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
@@ -7405,7 +7406,9 @@ function pluginRoot() {
 }
 function producer() {
   try {
-    const { version } = JSON.parse(readFileSync(join(pluginRoot(), ".claude-plugin", "plugin.json"), "utf8"));
+    const root = pluginRoot();
+    if (!root) throw new Error("no plugin root");
+    const { version } = JSON.parse(readFileSync(join(root, ".claude-plugin", "plugin.json"), "utf8"));
     return { name: "harness", version };
   } catch {
     return { name: "harness", version: "0.0.0-unknown" };
@@ -7430,22 +7433,27 @@ function loadConfig(dir = projectDir()) {
   const metadata = yaml.metadata ?? {};
   return {
     dir,
-    mode: ["off", "observe", "route"].includes(yaml.mode) ? yaml.mode : "off",
+    mode: MODES.includes(yaml.mode) ? yaml.mode : "off",
     tiers: yaml.tiers ?? {},
     config_sha256: sha256(bytes),
     metadataDir: join(dir, metadata.dir ?? ".harness"),
     retentionDays: Number.isInteger(metadata.retention_days) ? metadata.retention_days : 30,
     includeJustifications: metadata.include_justifications !== false,
     stages: Array.isArray(yaml.eval?.stages) ? yaml.eval.stages : [],
-    testGlobs: Array.isArray(yaml.eval?.tests) && yaml.eval.tests.length ? yaml.eval.tests.map(String) : DEFAULT_TEST_GLOBS,
-    markerTtlMinutes: Number.isInteger(yaml.gate?.marker_ttl_minutes) ? yaml.gate.marker_ttl_minutes : 30
+    testGlobs: Array.isArray(yaml.eval?.tests) && yaml.eval.tests.length ? yaml.eval.tests.map(String) : [...DEFAULT_TEST_GLOBS],
+    markerTtlMinutes: Number.isInteger(yaml.gate?.marker_ttl_minutes) ? yaml.gate?.marker_ttl_minutes : 30
   };
 }
 
-// src/lib/spool.mjs
+// src/lib/spool.ts
 import { appendFileSync, existsSync as existsSync2, mkdirSync, readdirSync, readFileSync as readFileSync2, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join as join2, resolve } from "node:path";
+
+// src/lib/types.ts
+var messageOf = (error) => error instanceof Error ? error.message : String(error);
+
+// src/lib/spool.ts
 var pluginRecordPath = () => join2(process.env.HARNESS_HOME || join2(homedir(), ".harness"), "plugin.json");
 function recordPluginRoot(root, version, now = /* @__PURE__ */ new Date()) {
   if (!root) return;
@@ -7457,12 +7465,12 @@ function recordPluginRoot(root, version, now = /* @__PURE__ */ new Date()) {
     writeFileSync(`${path}.tmp`, JSON.stringify({ root: resolve(root), version, recorded: utcNow(now) }, null, 2) + "\n");
     renameSync(`${path}.tmp`, path);
   } catch (error) {
-    process.stderr.write(`harness: could not record the plugin's location in ${path}: ${error.message}
+    process.stderr.write(`harness: could not record the plugin's location in ${path}: ${messageOf(error)}
 `);
   }
 }
 
-// src/hooks/input.mjs
+// src/hooks/input.ts
 async function readHookInput() {
   const chunks = [];
   for await (const chunk of process.stdin) chunks.push(chunk);
@@ -7473,12 +7481,12 @@ async function readHookInput() {
   }
 }
 
-// src/hooks/session-start.mjs
+// src/hooks/session-start.ts
 await readHookInput();
 recordPluginRoot(pluginRoot(), producer().version);
 var config = loadConfig();
 if (config.mode !== "off") {
-  const bin = (name) => join3(pluginRoot(), "bin", `${name}.mjs`).replace(/\\/g, "/");
+  const bin = (name) => join3(pluginRoot() ?? "", "bin", `${name}.mjs`).replace(/\\/g, "/");
   const context = [
     `The Harness is active in this repository (mode: ${config.mode}).`,
     `Record Harness events with: node "${bin("harness-emit")}" <type> --task PLAN-n.m --data '<json>'`,

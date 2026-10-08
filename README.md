@@ -27,13 +27,14 @@ Without a `routing.yaml`, the plugin does nothing in that repository.
 
 ## Building
 
-The scripts are written in `src/` and bundled into self-contained files in `bin/` by `npm run build`, so the plugin runs from a plain checkout with no `npm install`. `bin/` is committed, and CI fails if it is out of date (`npm run check:bin`).
+The scripts are written in TypeScript in `src/` and bundled into self-contained JavaScript files in `bin/` by `npm run build` (esbuild), so the plugin runs from a plain checkout with no `npm install` and no compile step. `bin/` is committed, and CI fails if it is out of date (`npm run check:bin`).
 
 ## Tests
 
 ```sh
 npm ci
-npm test
+npm run typecheck   # tsc, strict, for src/ and test/
+npm test            # Node runs the .ts tests directly (type stripping)
 ```
 
-`npm test` validates every example in `docs/*.md` against the JSON Schemas in [`schema/`](schema/). It also checks that each design fix is enforced, by confirming that deliberately broken records are rejected. CI runs it on every pull request.
+`npm test` validates every example in `docs/*.md` against the JSON Schemas in [`schema/`](schema/). It also checks that each design fix is enforced, by confirming that deliberately broken records are rejected. CI runs the typecheck and the tests on every pull request.

@@ -3,7 +3,14 @@
 // this path the pass marker.
 import { execFileSync } from "node:child_process";
 import { isAbsolute, relative, resolve } from "node:path";
-import { head, readMarker, stagedDiffSha256 } from "./eval.mjs";
+import { head, readMarker, stagedDiffSha256 } from "./eval.ts";
+
+/** A gate.decision: allow or deny, why (one of the event's reason values), and the reason in words. */
+export interface GateVerdict {
+  decision: "allow" | "deny";
+  reason: "pass" | "no_marker" | "stale_marker" | "diff_mismatch";
+  detail: string;
+}
 
 // Where a command can start: the beginning, a new line, after ; & | ( or a backtick (which covers
 // &&, || and $( ), or just inside an opening quote (bash -c "git commit"). Then any VAR=value
@@ -17,19 +24,19 @@ const COMMAND_GIT = /(?:^|[\n;&|(`"'\\/])\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*(?
 const TAKES_VALUE = new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--super-prefix", "--config-env", "--exec-path"]);
 
 /** The words after a match, honouring quotes so `-C "a path"` is one word. */
-const words = (text) => (text.match(/"[^"]*"|'[^']*'|[^\s"']+["']?/g) ?? []).map((w) => w.replace(/^["']|["']$/g, ""));
+const words = (text: string): string[] => (text.match(/"[^"]*"|'[^']*'|[^\s"']+["']?/g) ?? []).map((w) => w.replace(/^["']|["']$/g, ""));
 
 /**
  * Whether a shell command runs `git commit` (C2). It errs towards yes: `echo "git commit"` counts,
  * which is harmless, because the gate only denies when there is no eval pass. `git commit-tree` does
  * not count; permission rules deny it instead.
  */
-export function isCommit(command) {
+export function isCommit(command: unknown): boolean {
   if (typeof command !== "string" || !command.includes("commit")) return false;
   for (const match of command.matchAll(COMMAND_GIT)) {
     const rest = words(command.slice(match.index + match[0].length));
     for (let i = 0; i < rest.length; i++) {
-      const word = rest[i];
+      const word = rest[i] ?? "";
       if (TAKES_VALUE.has(word)) {
         i++;
         continue;
@@ -44,7 +51,7 @@ export function isCommit(command) {
 }
 
 /** A glob as a regular expression: ** spans folders, * and ? stay inside one. Case-insensitive, as Windows paths are. */
-const globToRegExp = (glob) => new RegExp(`^${glob
+const globToRegExp = (glob: string): RegExp => new RegExp(`^${glob
   .replace(/[.+^${}()|[\]\\]/g, "\\$&")
   .replace(/\*\*\//g, "\u0000")
   .replace(/\*\*/g, "\u0001")
@@ -57,7 +64,7 @@ const globToRegExp = (glob) => new RegExp(`^${glob
  * Whether a file is a test, by the repository's eval.tests globs. The path is made relative to the
  * repository first; a file outside it is never a test of this repository.
  */
-export function isTestPath(file, dir, globs) {
+export function isTestPath(file: unknown, dir: string, globs: readonly string[]): boolean {
   if (!file) return false;
   const rel = relative(dir, resolve(dir, String(file))).replace(/\\/g, "/");
   if (!rel || rel.startsWith("../") || isAbsolute(rel)) return false;
@@ -69,18 +76,18 @@ const AI_TRAILER = /^\s*co-authored-by:.*\b(claude|anthropic|copilot|chatgpt|ope
 const AI_FOOTER = /^.*generated (with|by) \[?claude( code)?\]?.*$/i;
 
 /** A commit message without AI attribution trailers, or null when it had none (the commit-msg hook). */
-export function stripAttribution(message) {
+export function stripAttribution(message: string): string | null {
   const lines = message.split(/\r?\n/);
   const kept = lines.filter((line) => !AI_TRAILER.test(line) && !AI_FOOTER.test(line));
   if (kept.length === lines.length) return null;
-  while (kept.length && !kept.at(-1).trim()) kept.pop();
+  while (kept.length && !kept.at(-1)?.trim()) kept.pop();
   return kept.join("\n") + "\n";
 }
 
 /** Whether a file path is the pass marker (or its temp file), however it is spelled. */
-export const isMarkerPath = (path) => /\.claude[\\/]+state[\\/]+eval-pass\.json/i.test(String(path ?? ""));
+export const isMarkerPath = (path: unknown): boolean => /\.claude[\\/]+state[\\/]+eval-pass\.json/i.test(String(path ?? ""));
 
-const unstagedTracked = (dir) =>
+const unstagedTracked = (dir: string): boolean =>
   execFileSync("git", ["-C", dir, "diff", "--name-only"], { stdio: ["ignore", "pipe", "ignore"] }).toString().trim().length > 0;
 
 /**
@@ -89,11 +96,11 @@ const unstagedTracked = (dir) =>
  * `git commit -a` would sweep in without an eval). Returns { decision, reason, detail }, where reason
  * is one of gate.decision's values.
  */
-export function checkMarker(dir, ttlMinutes, now = new Date()) {
+export function checkMarker(dir: string, ttlMinutes: number, now: Date = new Date()): GateVerdict {
   const marker = readMarker(dir);
   if (!marker?.diff_sha256) return { decision: "deny", reason: "no_marker", detail: "there is no eval pass" };
 
-  const ageMinutes = (now.getTime() - Date.parse(marker.passed_at)) / 60_000;
+  const ageMinutes = (now.getTime() - Date.parse(marker.passed_at ?? "")) / 60_000;
   if (!(ageMinutes <= ttlMinutes)) {
     return { decision: "deny", reason: "stale_marker", detail: `the eval pass is ${Math.round(ageMinutes)} minutes old, over the ${ttlMinutes}-minute limit` };
   }

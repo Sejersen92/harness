@@ -41,7 +41,7 @@ It also adds the **intake gate**: the orchestrator doesn't start a task until it
 
 ### How everything finds the home
 
-One function, `repoHome(dir)` in `lib/config.mjs`, computes the name from the git top level. It replaces every place that builds a path from the repository root today:
+One function, `repoHome(dir)` in `lib/config.ts`, computes the name from the git top level. It replaces every place that builds a path from the repository root today:
 
 | Today | Moves to |
 |---|---|
@@ -93,7 +93,7 @@ claude --plugin-dir <plugin> --agent harness:orchestrator
 - `--settings` adds the deny rules to this session only. Ordinary Claude Code sessions in the same repository (VS Code, say) don't get them. They don't load the plugin either, so the Harness isn't active there anyway.
 - `--add-dir` lets the orchestrator write `PLAN.md` in the home without a permission prompt.
 
-The rules are today's list (`DENY` in `lib/setup.mjs`), with the guardrail paths moved to the home:
+The rules are today's list (`DENY` in `lib/setup.ts`), with the guardrail paths moved to the home:
 
 ```text
 Edit(~/.harness/repos/*/state/**)

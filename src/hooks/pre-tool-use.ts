@@ -3,7 +3,7 @@
 // its cost.
 //
 // - commit-gate: a Bash command that commits is denied unless harness-eval passed for exactly what is
-//   staged (lib/gate.mjs). Every decision is recorded as gate.decision.
+//   staged (lib/gate.ts). Every decision is recorded as gate.decision.
 // - marker-guard: nothing but harness-eval may write the pass marker, so no tool call may touch it.
 // - protect-tests: an implementer (harness:impl-t*) may not edit a test file.
 // - tests-only: the evaluator (harness:evaluator) may edit nothing but test files.
@@ -14,22 +14,23 @@
 // and lets the call through (S8). Anything this script can't decide, it allows: an unreadable input
 // or a broken repository is not a reason to stop all work, and the git pre-commit hook still stands.
 import { join } from "node:path";
-import { loadConfig, pluginRoot } from "../lib/config.mjs";
-import { checkMarker, isCommit, isMarkerPath, isTestPath } from "../lib/gate.mjs";
-import { emitEvent } from "../lib/spool.mjs";
-import { readHookInput } from "./input.mjs";
+import { loadConfig, pluginRoot } from "../lib/config.ts";
+import { checkMarker, isCommit, isMarkerPath, isTestPath } from "../lib/gate.ts";
+import { emitEvent } from "../lib/spool.ts";
+import { messageOf } from "../lib/types.ts";
+import { readHookInput } from "./input.ts";
 
 const EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
 
-const deny = (reason) => {
+const deny = (reason: string): never => {
   process.stdout.write(JSON.stringify({
     hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: reason },
   }));
-  process.exit(0);
+  return process.exit(0);
 };
 
 const input = await readHookInput();
-const tool = input.tool_name;
+const tool = input.tool_name ?? "";
 const args = input.tool_input ?? {};
 const command = tool === "Bash" ? String(args.command ?? "") : "";
 
@@ -63,11 +64,11 @@ if (policedEdit) {
   process.exit(0);
 }
 
-let verdict;
+let verdict: ReturnType<typeof checkMarker>;
 try {
   verdict = checkMarker(config.dir, config.markerTtlMinutes);
 } catch (error) {
-  process.stderr.write(`harness: commit gate could not check the marker (${error.message}); the git pre-commit hook decides\n`);
+  process.stderr.write(`harness: commit gate could not check the marker (${messageOf(error)}); the git pre-commit hook decides\n`);
   process.exit(0);
 }
 
@@ -75,7 +76,7 @@ emitEvent(config, "gate.decision", { session_id: input.session_id, prompt_id: in
   { decision: verdict.decision, reason: verdict.reason });
 
 if (verdict.decision === "deny") {
-  const evalPath = join(pluginRoot(), "bin", "harness-eval.mjs").replace(/\\/g, "/");
+  const evalPath = join(pluginRoot() ?? "", "bin", "harness-eval.mjs").replace(/\\/g, "/");
   deny(`harness: commit denied (${verdict.reason}): ${verdict.detail}. Stage exactly what you mean to commit, run node "${evalPath}" --task PLAN-n.m, and commit once it passes.`);
 }
 process.exit(0);

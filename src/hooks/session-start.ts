@@ -5,15 +5,15 @@
 // It also records where the plugin lives (~/.harness/plugin.json), whatever the mode, so a
 // repository's git hooks can find it when a commit is made outside Claude Code.
 import { join } from "node:path";
-import { loadConfig, pluginRoot, producer } from "../lib/config.mjs";
-import { recordPluginRoot } from "../lib/spool.mjs";
-import { readHookInput } from "./input.mjs";
+import { loadConfig, pluginRoot, producer } from "../lib/config.ts";
+import { recordPluginRoot } from "../lib/spool.ts";
+import { readHookInput } from "./input.ts";
 
 await readHookInput();
 recordPluginRoot(pluginRoot(), producer().version);
 const config = loadConfig();
 if (config.mode !== "off") {
-  const bin = (name) => join(pluginRoot(), "bin", `${name}.mjs`).replace(/\\/g, "/");
+  const bin = (name: string): string => join(pluginRoot() ?? "", "bin", `${name}.mjs`).replace(/\\/g, "/");
   const context = [
     `The Harness is active in this repository (mode: ${config.mode}).`,
     `Record Harness events with: node "${bin("harness-emit")}" <type> --task PLAN-n.m --data '<json>'`,

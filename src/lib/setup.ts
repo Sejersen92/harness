@@ -5,8 +5,30 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { stringify } from "yaml";
-import { loadConfig } from "./config.mjs";
-import { pluginRecordPath } from "./spool.mjs";
+import { loadConfig } from "./config.ts";
+import { pluginRecordPath } from "./spool.ts";
+import { messageOf } from "./types.ts";
+
+/** One doctor check. */
+export interface CheckResult {
+  name: string;
+  status: "pass" | "warn" | "fail";
+  detail: string;
+}
+
+/** One change init would make: what it is, in words, and the function that makes it. */
+export interface InitStep {
+  what: string;
+  apply: () => void;
+}
+
+/** The parts of a Claude Code settings file init and the doctor read. Everything else is kept as it is. */
+export interface Settings {
+  permissions?: { deny?: string[]; [key: string]: unknown };
+  attribution?: { commit?: string; [key: string]: unknown };
+  worktree?: { baseRef?: string; [key: string]: unknown };
+  [key: string]: unknown;
+}
 
 export const MIN_CLAUDE_CODE = [2, 1, 284];
 export const MIN_NODE = 22;
@@ -34,7 +56,7 @@ export const DENY = [
 export const GITIGNORE = [".harness/", ".claude/state/", "/PLAN.md"];
 export const HOOKS = ["harness", "pre-commit", "commit-msg", "post-commit"];
 
-const git = (dir, ...args) => {
+const git = (dir: string, ...args: string[]): string | null => {
   try {
     return execFileSync("git", ["-C", dir, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
   } catch {
@@ -42,28 +64,32 @@ const git = (dir, ...args) => {
   }
 };
 
-const readJson = (path) => {
+const readJson = <T>(path: string): T | null => {
   try {
-    return JSON.parse(readFileSync(path, "utf8"));
+    return JSON.parse(readFileSync(path, "utf8")) as T;
   } catch {
     return null;
   }
 };
 
-const settingsPath = (dir) => join(dir, ".claude", "settings.json");
-const version = (text) => (String(text).match(/(\d+)\.(\d+)\.(\d+)/) ?? []).slice(1).map(Number);
-const atLeast = (have, want) => {
-  for (let i = 0; i < want.length; i++) if ((have[i] ?? 0) !== want[i]) return (have[i] ?? 0) > want[i];
+const settingsPath = (dir: string): string => join(dir, ".claude", "settings.json");
+const version = (text: unknown): number[] => (String(text).match(/(\d+)\.(\d+)\.(\d+)/) ?? []).slice(1).map(Number);
+const atLeast = (have: readonly number[], want: readonly number[]): boolean => {
+  for (let i = 0; i < want.length; i++) if ((have[i] ?? 0) !== (want[i] ?? 0)) return (have[i] ?? 0) > (want[i] ?? 0);
   return true;
 };
 
 // ---- checks ---------------------------------------------------------------------------------
 
 /** Every check, in the order doctor prints them: { name, status: pass|warn|fail, detail }. */
-export function checks(dir, { pluginRoot, claudeVersion = readClaudeVersion() } = {}) {
+export function checks(
+  dir: string, { pluginRoot, claudeVersion = readClaudeVersion() }: { pluginRoot?: string | null; claudeVersion?: string | null } = {},
+): CheckResult[] {
   const config = loadConfig(dir);
-  const results = [];
-  const add = (name, status, detail) => results.push({ name, status, detail });
+  const results: CheckResult[] = [];
+  const add = (name: string, status: CheckResult["status"], detail: string): void => {
+    results.push({ name, status, detail });
+  };
 
   const node = version(process.versions.node);
   add("node", atLeast(node, [MIN_NODE]) ? "pass" : "fail", `Node ${process.versions.node} (needs ${MIN_NODE}+)`);
@@ -71,7 +97,7 @@ export function checks(dir, { pluginRoot, claudeVersion = readClaudeVersion() } 
   if (!claudeVersion) add("claude-code", "warn", "the claude CLI is not on PATH, so its version can't be checked");
   else add("claude-code", atLeast(version(claudeVersion), MIN_CLAUDE_CODE) ? "pass" : "fail", `Claude Code ${claudeVersion} (needs ${MIN_CLAUDE_CODE.join(".")}+)`);
 
-  const recorded = readJson(pluginRecordPath());
+  const recorded = readJson<{ root?: string; version?: string }>(pluginRecordPath());
   if (!recorded?.root) add("plugin-recorded", "fail", `${pluginRecordPath()} is missing: start Claude Code once with the plugin so git hooks can find it`);
   else if (!existsSync(join(recorded.root, "bin", "harness-git-hook.mjs"))) add("plugin-recorded", "fail", `${pluginRecordPath()} points at ${recorded.root}, which has no bin/harness-git-hook.mjs`);
   else if (pluginRoot && realpathSync.native(recorded.root).toLowerCase() !== realpathSync.native(pluginRoot).toLowerCase()) add("plugin-recorded", "warn", `git hooks use ${recorded.root}, not this copy (${pluginRoot})`);
@@ -93,7 +119,7 @@ export function checks(dir, { pluginRoot, claudeVersion = readClaudeVersion() } 
     rmSync(probe);
     add("spool-writable", "pass", config.metadataDir ?? join(dir, ".harness"));
   } catch (error) {
-    add("spool-writable", "fail", error.message);
+    add("spool-writable", "fail", messageOf(error));
   }
 
   const hooksPath = git(dir, "config", "core.hooksPath");
@@ -105,7 +131,7 @@ export function checks(dir, { pluginRoot, claudeVersion = readClaudeVersion() } 
   const notIgnored = GITIGNORE.filter((p) => git(dir, "check-ignore", "-q", "--no-index", p.replace(/^\//, "").replace(/\/$/, "/x")) === null);
   add("gitignore", notIgnored.length ? "warn" : "pass", notIgnored.length ? `not ignored: ${notIgnored.join(", ")}` : GITIGNORE.join(", "));
 
-  const settings = readJson(settingsPath(dir)) ?? {};
+  const settings = readJson<Settings>(settingsPath(dir)) ?? {};
   add("attribution-off", settings.attribution?.commit === "" ? "pass" : "warn",
     settings.attribution?.commit === "" ? "Claude Code adds no attribution to commits" : "attribution.commit is not \"\" in .claude/settings.json; the commit-msg hook strips it anyway");
 
@@ -125,7 +151,7 @@ export function checks(dir, { pluginRoot, claudeVersion = readClaudeVersion() } 
     else if (real.toLowerCase() === spelled.toLowerCase()) add("path-casing", "warn", `the working directory is spelled ${spelled}, the disk says ${real}; Claude Code refused a worktree for this (S6)`);
     else add("path-casing", "pass", `${spelled} (reached through a link to ${real})`);
   } catch (error) {
-    add("path-casing", "warn", error.message);
+    add("path-casing", "warn", messageOf(error));
   }
 
   const failures = Number.parseInt(readSafely(join(config.metadataDir ?? join(dir, ".harness"), "emit-failures")), 10) || 0;
@@ -134,7 +160,7 @@ export function checks(dir, { pluginRoot, claudeVersion = readClaudeVersion() } 
   return results;
 }
 
-function readSafely(path) {
+function readSafely(path: string): string {
   try {
     return readFileSync(path, "utf8");
   } catch {
@@ -142,7 +168,7 @@ function readSafely(path) {
   }
 }
 
-export function readClaudeVersion() {
+export function readClaudeVersion(): string | null {
   try {
     return execFileSync("claude", ["--version"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 15_000, shell: process.platform === "win32" }).trim();
   } catch {
@@ -153,8 +179,8 @@ export function readClaudeVersion() {
 // ---- init -----------------------------------------------------------------------------------
 
 /** Eval stages for a new routing.yaml, from what the repository has: npm scripts and .NET projects. */
-export function detectStages(dir) {
-  const stages = [];
+export function detectStages(dir: string): { name: string; run: string; cwd?: string }[] {
+  const stages: { name: string; run: string; cwd?: string }[] = [];
   const shallow = [".", ...readdirSync(dir, { withFileTypes: true })
     .filter((e) => e.isDirectory() && !e.name.startsWith(".") && e.name !== "node_modules")
     .map((e) => e.name)];
@@ -172,7 +198,7 @@ export function detectStages(dir) {
       stages.push({ name: `${sub === "." ? "" : `${sub}-`}build`, run: `dotnet build ${where} --nologo -v q` });
       stages.push({ name: `${sub === "." ? "" : `${sub}-`}test`, run: `dotnet test ${where} --no-build --nologo` });
     }
-    const pkg = readJson(join(root, "package.json"));
+    const pkg = readJson<{ scripts?: Record<string, string> }>(join(root, "package.json"));
     for (const script of ["lint", "test", "build"]) {
       if (!pkg?.scripts?.[script]) continue;
       stages.push({ name: `${sub === "." ? "" : `${sub}-`}${script}`.replace(/^-/, ""), run: `npm run ${script}`, ...(sub === "." ? {} : { cwd: sub }) });
@@ -185,8 +211,8 @@ export function detectStages(dir) {
  * What init would change, without changing it: [{ what, apply }], plus the settings file before and
  * after so the person can see the diff first (S7). Each step leaves what is already right alone.
  */
-export function initPlan(dir, pluginRoot) {
-  const steps = [];
+export function initPlan(dir: string, pluginRoot: string): { steps: InitStep[]; settingsBefore: Settings; settingsAfter: Settings } {
+  const steps: InitStep[] = [];
 
   if (!existsSync(join(dir, "routing.yaml"))) {
     const template = readFileSync(join(pluginRoot, "templates", "routing.yaml"), "utf8");
@@ -234,7 +260,7 @@ export function initPlan(dir, pluginRoot) {
     steps.push({ what: "git config core.hooksPath .githooks (this clone)", apply: () => execFileSync("git", ["-C", dir, "config", "core.hooksPath", ".githooks"]) });
   }
 
-  const before = readJson(settingsPath(dir)) ?? {};
+  const before = readJson<Settings>(settingsPath(dir)) ?? {};
   const after = structuredClone(before);
   after.permissions ??= {};
   after.permissions.deny = [...new Set([...(after.permissions.deny ?? []), ...DENY])];
@@ -258,16 +284,17 @@ export function initPlan(dir, pluginRoot) {
  * each setting that changes from what to what. Init only ever adds rules and sets these two values, so
  * that is the whole change; nothing else in the file is touched.
  */
-export function settingsDiff(before, after) {
-  const lines = [];
+export function settingsDiff(before: Settings, after: Settings): string[] {
+  const lines: string[] = [];
   const had = new Set(before.permissions?.deny ?? []);
   const added = (after.permissions?.deny ?? []).filter((rule) => !had.has(rule));
   if (added.length) lines.push(`permissions.deny gains ${added.length} rule(s):`, ...added.map((rule) => `    + ${rule}`));
-  const shown = (value) => (value === undefined ? "(not set)" : JSON.stringify(value));
-  for (const [label, from, to] of [
+  const shown = (value: unknown): string => (value === undefined ? "(not set)" : JSON.stringify(value));
+  const changes: [string, unknown, unknown][] = [
     ["attribution.commit", before.attribution?.commit, after.attribution?.commit],
     ["worktree.baseRef", before.worktree?.baseRef, after.worktree?.baseRef],
-  ]) {
+  ];
+  for (const [label, from, to] of changes) {
     if (from !== to) lines.push(`${label}: ${shown(from)} -> ${shown(to)}`);
   }
   return lines;
