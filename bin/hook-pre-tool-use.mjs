@@ -7368,13 +7368,14 @@ var require_dist = __commonJS({
 });
 
 // src/hooks/pre-tool-use.ts
-import { join as join4 } from "node:path";
+import { join as join3 } from "node:path";
 
 // src/lib/config.ts
 var import_yaml = __toESM(require_dist(), 1);
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { homedir } from "node:os";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // src/lib/ids.ts
@@ -7407,6 +7408,14 @@ var git = (cwd, ...args2) => {
     return null;
   }
 };
+var harnessHome = () => process.env.HARNESS_HOME || join(homedir(), ".harness");
+var normalisedPath = (dir) => resolve(dir).replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+function repoHome(dir) {
+  const key = normalisedPath(dir);
+  const name = basename(key).replace(/[^a-z0-9._-]+/g, "-") || "repo";
+  return join(harnessHome(), "repos", `${name}-${sha256(key).slice(0, 8)}`);
+}
+var NOT_ENROLLED = "not enrolled";
 function projectDir(cwd = process.cwd()) {
   return process.env.CLAUDE_PROJECT_DIR || git(cwd, "rev-parse", "--show-toplevel") || cwd;
 }
@@ -7448,17 +7457,36 @@ var DEFAULT_TEST_GLOBS = [
   "**/*Tests.cs"
 ];
 function loadConfig(dir = projectDir()) {
-  const path = join(dir, "routing.yaml");
-  if (!existsSync(path)) return { dir, mode: "off", reason: "no routing.yaml" };
-  const bytes = readFileSync(path);
+  const home = repoHome(dir);
+  const homed = existsSync(join(home, "routing.yaml"));
+  if (!homed && !existsSync(join(dir, "routing.yaml"))) return { dir, mode: "off", reason: NOT_ENROLLED, home };
+  const routingYaml = join(homed ? home : dir, "routing.yaml");
+  const bytes = readFileSync(routingYaml);
   const yaml = (0, import_yaml.parse)(bytes.toString("utf8")) ?? {};
   const metadata = yaml.metadata ?? {};
+  const layout = homed ? {
+    kind: "home",
+    root: home,
+    routingYaml,
+    metadataDir: home,
+    markerPath: join(home, "state", "eval-pass.json"),
+    planPath: join(home, "PLAN.md")
+  } : {
+    kind: "repository",
+    root: dir,
+    routingYaml,
+    metadataDir: join(dir, metadata.dir ?? ".harness"),
+    markerPath: join(dir, ".claude", "state", "eval-pass.json"),
+    planPath: join(dir, "PLAN.md")
+  };
   return {
     dir,
+    home,
+    layout,
     mode: MODES.includes(yaml.mode) ? yaml.mode : "off",
     tiers: yaml.tiers ?? {},
     config_sha256: sha256(bytes),
-    metadataDir: join(dir, metadata.dir ?? ".harness"),
+    metadataDir: layout.metadataDir,
     retentionDays: Number.isInteger(metadata.retention_days) ? metadata.retention_days : 30,
     includeJustifications: metadata.include_justifications !== false,
     stages: Array.isArray(yaml.eval?.stages) ? yaml.eval.stages : [],
@@ -7474,7 +7502,6 @@ import { isAbsolute, relative, resolve as resolve2 } from "node:path";
 // src/lib/eval.ts
 import { spawnSync, execFileSync as execFileSync2 } from "node:child_process";
 import { mkdirSync, readFileSync as readFileSync2, renameSync, rmSync, writeFileSync } from "node:fs";
-import { join as join2, resolve } from "node:path";
 var git2 = (dir, ...args2) => execFileSync2("git", ["-C", dir, ...args2], { maxBuffer: 1 << 30, stdio: ["ignore", "pipe", "ignore"] });
 var stagedDiffSha256 = (dir) => sha256(git2(dir, "diff", "--cached", "--binary"));
 function head(dir) {
@@ -7484,10 +7511,9 @@ function head(dir) {
     return null;
   }
 }
-var markerPath = (dir) => join2(dir, ".claude", "state", "eval-pass.json");
-function readMarker(dir) {
+function readMarker(path) {
   try {
-    return JSON.parse(readFileSync2(markerPath(dir), "utf8"));
+    return JSON.parse(readFileSync2(path, "utf8"));
   } catch {
     return null;
   }
@@ -7521,10 +7547,10 @@ function isTestPath(file, dir, globs) {
   if (!rel || rel.startsWith("../") || isAbsolute(rel)) return false;
   return globs.some((glob) => globToRegExp(glob).test(rel));
 }
-var isMarkerPath = (path) => /\.claude[\\/]+state[\\/]+eval-pass\.json/i.test(String(path ?? ""));
+var isMarkerPath = (path) => /(?:^|[\\/])state[\\/]+eval-pass\.json/i.test(String(path ?? ""));
 var unstagedTracked = (dir) => execFileSync3("git", ["-C", dir, "diff", "--name-only"], { stdio: ["ignore", "pipe", "ignore"] }).toString().trim().length > 0;
-function checkMarker(dir, ttlMinutes, now = /* @__PURE__ */ new Date()) {
-  const marker = readMarker(dir);
+function checkMarker(dir, markerPath, ttlMinutes, now = /* @__PURE__ */ new Date()) {
+  const marker = readMarker(markerPath);
   if (!marker?.diff_sha256) return { decision: "deny", reason: "no_marker", detail: "there is no eval pass" };
   const ageMinutes = (now.getTime() - Date.parse(marker.passed_at ?? "")) / 6e4;
   if (!(ageMinutes <= ttlMinutes)) {
@@ -7544,8 +7570,7 @@ function checkMarker(dir, ttlMinutes, now = /* @__PURE__ */ new Date()) {
 
 // src/lib/spool.ts
 import { appendFileSync, existsSync as existsSync3, mkdirSync as mkdirSync2, readdirSync, readFileSync as readFileSync3, renameSync as renameSync2, rmSync as rmSync2, writeFileSync as writeFileSync2 } from "node:fs";
-import { homedir } from "node:os";
-import { join as join3, resolve as resolve3 } from "node:path";
+import { join as join2, resolve as resolve3 } from "node:path";
 
 // src/lib/types.ts
 var EFFORTS = ["low", "medium", "high", "xhigh", "max"];
@@ -7554,7 +7579,7 @@ var messageOf = (error) => error instanceof Error ? error.message : String(error
 
 // src/lib/spool.ts
 var MAX_LINE_BYTES = 4096;
-var registryPath = () => join3(process.env.HARNESS_HOME || join3(homedir(), ".harness"), "spools.json");
+var registryPath = () => join2(harnessHome(), "spools.json");
 function registerSpool(config2, now = /* @__PURE__ */ new Date()) {
   const path = registryPath();
   const metadataDir = resolve3(config2.metadataDir);
@@ -7562,7 +7587,7 @@ function registerSpool(config2, now = /* @__PURE__ */ new Date()) {
     const registry = existsSync3(path) ? JSON.parse(readFileSync3(path, "utf8")) : { version: 1, spools: [] };
     if (registry.spools.some((s) => s.metadata_dir.toLowerCase() === metadataDir.toLowerCase())) return;
     registry.spools.push({ repo_dir: resolve3(config2.dir), metadata_dir: metadataDir, first_seen: utcNow(now) });
-    mkdirSync2(join3(path, ".."), { recursive: true });
+    mkdirSync2(join2(path, ".."), { recursive: true });
     writeFileSync2(`${path}.tmp`, JSON.stringify(registry, null, 2) + "\n");
     renameSync2(`${path}.tmp`, path);
   } catch (error) {
@@ -7574,7 +7599,7 @@ function recordFailure(config2, why) {
 `);
   try {
     mkdirSync2(config2.metadataDir, { recursive: true });
-    const file = join3(config2.metadataDir, "emit-failures");
+    const file = join2(config2.metadataDir, "emit-failures");
     const count = existsSync3(file) ? Number.parseInt(readFileSync3(file, "utf8"), 10) || 0 : 0;
     writeFileSync2(file, `${count + 1}
 `);
@@ -7589,7 +7614,7 @@ function appendLine(config2, file, record) {
   }
   try {
     const firstLineInFile = !existsSync3(file);
-    mkdirSync2(join3(file, ".."), { recursive: true });
+    mkdirSync2(join2(file, ".."), { recursive: true });
     appendFileSync(file, line + "\n", { flag: "a" });
     if (firstLineInFile) registerSpool(config2);
     return true;
@@ -7600,19 +7625,19 @@ function appendLine(config2, file, record) {
 }
 function sweep(config2, now) {
   const today = utcNow(now).slice(0, 10);
-  const marker = join3(config2.metadataDir, "state", "swept");
+  const marker = join2(config2.metadataDir, "state", "swept");
   try {
     if (existsSync3(marker) && readFileSync3(marker, "utf8").trim() === today) return;
     const cutoff = new Date(now.getTime() - config2.retentionDays * 864e5).toISOString().slice(0, 10);
     const folders = [["events", (n) => n.slice(0, 10)], ["routing-log", (n) => `${n.slice(0, 7)}-31`]];
     for (const [folder, toDate] of folders) {
-      const dir = join3(config2.metadataDir, folder);
+      const dir = join2(config2.metadataDir, folder);
       if (!existsSync3(dir)) continue;
       for (const name of readdirSync(dir).filter((n) => n.endsWith(".jsonl"))) {
-        if (toDate(name) < cutoff) rmSync2(join3(dir, name));
+        if (toDate(name) < cutoff) rmSync2(join2(dir, name));
       }
     }
-    mkdirSync2(join3(config2.metadataDir, "state"), { recursive: true });
+    mkdirSync2(join2(config2.metadataDir, "state"), { recursive: true });
     writeFileSync2(marker, today);
   } catch (error) {
     recordFailure(config2, `retention sweep: ${messageOf(error)}`);
@@ -7642,14 +7667,14 @@ function emitEvent(config2, type, fields = {}, data = {}, now = /* @__PURE__ */ 
     if (value) envelope[key] = value;
   }
   const event = { ...envelope, data };
-  const file = join3(config2.metadataDir, "events", `${event.ts.slice(0, 10)}.jsonl`);
+  const file = join2(config2.metadataDir, "events", `${event.ts.slice(0, 10)}.jsonl`);
   if (!appendLine(config2, file, event)) return null;
   snapshotConfig(config2, event.repo, now);
   return event;
 }
 var TIERS = ["T1", "T2", "T3", "T4"];
 function snapshotConfig(config2, repo, now = /* @__PURE__ */ new Date()) {
-  const path = join3(config2.metadataDir, "configs", `${config2.config_sha256}.json`);
+  const path = join2(config2.metadataDir, "configs", `${config2.config_sha256}.json`);
   if (existsSync3(path)) return;
   const tiers = {};
   for (const tier of TIERS) {
@@ -7669,7 +7694,7 @@ function snapshotConfig(config2, repo, now = /* @__PURE__ */ new Date()) {
     gate: { marker_ttl_minutes: config2.markerTtlMinutes }
   };
   try {
-    mkdirSync2(join3(path, ".."), { recursive: true });
+    mkdirSync2(join2(path, ".."), { recursive: true });
     writeFileSync2(`${path}.tmp`, JSON.stringify(snapshot, null, 2) + "\n");
     renameSync2(`${path}.tmp`, path);
   } catch (error) {
@@ -7710,7 +7735,7 @@ if (!touchesMarker && !commits && !policedEdit) process.exit(0);
 var config = loadConfig();
 if (config.mode === "off") process.exit(0);
 if (touchesMarker) {
-  deny("harness: the eval pass marker (.claude/state/eval-pass.json) is written only by harness-eval. Run harness-eval instead of touching the file.");
+  deny("harness: the eval pass marker (eval-pass.json) is written only by harness-eval. Run harness-eval instead of touching the file.");
 }
 if (policedEdit) {
   const test = isTestPath(edited, config.dir, config.testGlobs);
@@ -7724,7 +7749,7 @@ if (policedEdit) {
 }
 var verdict;
 try {
-  verdict = checkMarker(config.dir, config.markerTtlMinutes);
+  verdict = checkMarker(config.dir, config.layout.markerPath, config.markerTtlMinutes);
 } catch (error) {
   process.stderr.write(`harness: commit gate could not check the marker (${messageOf(error)}); the git pre-commit hook decides
 `);
@@ -7737,7 +7762,7 @@ emitEvent(
   { decision: verdict.decision, reason: verdict.reason }
 );
 if (verdict.decision === "deny") {
-  const evalPath = join4(pluginRoot() ?? "", "bin", "harness-eval.mjs").replace(/\\/g, "/");
+  const evalPath = join3(pluginRoot() ?? "", "bin", "harness-eval.mjs").replace(/\\/g, "/");
   deny(`harness: commit denied (${verdict.reason}): ${verdict.detail}. Stage exactly what you mean to commit, run node "${evalPath}" --task PLAN-n.m, and commit once it passes.`);
 }
 process.exit(0);

@@ -29,7 +29,8 @@ test("doctor on a bare repository fails what the Harness needs and says why", ()
   const result = run("harness-doctor");
 
   assert.equal(result.status, 1);
-  assert.match(result.stdout, /fail\s+routing-yaml\s+no routing\.yaml/);
+  assert.match(result.stdout, /fail\s+routing-yaml\s+not enrolled: there is no \S+routing\.yaml/);
+  assert.match(result.stdout, /warn\s+spool-writable\s+not enrolled/);
   assert.match(result.stdout, /fail\s+git-hooks\s+core\.hooksPath is not set/);
   assert.match(result.stdout, /warn\s+permissions\s+19 deny rule\(s\) missing/);
 });
@@ -76,7 +77,9 @@ test("init --apply leaves a repository doctor passes, and running it again has n
   assert.match(readFileSync(join(dir, ".gitattributes"), "utf8"), /\.githooks\/\* text eol=lf/);
 
   const results = checks(dir, { pluginRoot: root, claudeVersion: "2.1.285 (Claude Code)" });
-  assert.deepEqual(results.filter((r) => r.status !== "pass").map((r) => r.name), [], JSON.stringify(results, null, 1));
+  // init still sets a repository up in the repository itself, the layout from before homes, which the
+  // doctor names as a warning. That one goes when init enrols into the home instead (ANY-REPO.md, H2).
+  assert.deepEqual(results.filter((r) => r.status !== "pass").map((r) => r.name), ["layout"], JSON.stringify(results, null, 1));
 
   const again = run("harness-init");
   assert.match(again.stdout, /nothing to do/);

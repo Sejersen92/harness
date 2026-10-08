@@ -7368,13 +7368,14 @@ var require_dist = __commonJS({
 });
 
 // src/cli/harness-eval.ts
-import { join as join4, relative } from "node:path";
+import { isAbsolute, join as join4, relative } from "node:path";
 
 // src/lib/config.ts
 var import_yaml = __toESM(require_dist(), 1);
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { homedir } from "node:os";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // src/lib/ids.ts
@@ -7407,6 +7408,14 @@ var git = (cwd, ...args2) => {
     return null;
   }
 };
+var harnessHome = () => process.env.HARNESS_HOME || join(homedir(), ".harness");
+var normalisedPath = (dir) => resolve(dir).replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+function repoHome(dir) {
+  const key = normalisedPath(dir);
+  const name = basename(key).replace(/[^a-z0-9._-]+/g, "-") || "repo";
+  return join(harnessHome(), "repos", `${name}-${sha256(key).slice(0, 8)}`);
+}
+var NOT_ENROLLED = "not enrolled";
 function projectDir(cwd = process.cwd()) {
   return process.env.CLAUDE_PROJECT_DIR || git(cwd, "rev-parse", "--show-toplevel") || cwd;
 }
@@ -7448,17 +7457,36 @@ var DEFAULT_TEST_GLOBS = [
   "**/*Tests.cs"
 ];
 function loadConfig(dir = projectDir()) {
-  const path = join(dir, "routing.yaml");
-  if (!existsSync(path)) return { dir, mode: "off", reason: "no routing.yaml" };
-  const bytes = readFileSync(path);
+  const home = repoHome(dir);
+  const homed = existsSync(join(home, "routing.yaml"));
+  if (!homed && !existsSync(join(dir, "routing.yaml"))) return { dir, mode: "off", reason: NOT_ENROLLED, home };
+  const routingYaml = join(homed ? home : dir, "routing.yaml");
+  const bytes = readFileSync(routingYaml);
   const yaml = (0, import_yaml.parse)(bytes.toString("utf8")) ?? {};
   const metadata = yaml.metadata ?? {};
+  const layout = homed ? {
+    kind: "home",
+    root: home,
+    routingYaml,
+    metadataDir: home,
+    markerPath: join(home, "state", "eval-pass.json"),
+    planPath: join(home, "PLAN.md")
+  } : {
+    kind: "repository",
+    root: dir,
+    routingYaml,
+    metadataDir: join(dir, metadata.dir ?? ".harness"),
+    markerPath: join(dir, ".claude", "state", "eval-pass.json"),
+    planPath: join(dir, "PLAN.md")
+  };
   return {
     dir,
+    home,
+    layout,
     mode: MODES.includes(yaml.mode) ? yaml.mode : "off",
     tiers: yaml.tiers ?? {},
     config_sha256: sha256(bytes),
-    metadataDir: join(dir, metadata.dir ?? ".harness"),
+    metadataDir: layout.metadataDir,
     retentionDays: Number.isInteger(metadata.retention_days) ? metadata.retention_days : 30,
     includeJustifications: metadata.include_justifications !== false,
     stages: Array.isArray(yaml.eval?.stages) ? yaml.eval.stages : [],
@@ -7470,7 +7498,7 @@ function loadConfig(dir = projectDir()) {
 // src/lib/eval.ts
 import { spawnSync, execFileSync as execFileSync2 } from "node:child_process";
 import { mkdirSync, readFileSync as readFileSync2, renameSync, rmSync, writeFileSync } from "node:fs";
-import { join as join2, resolve } from "node:path";
+import { join as join2, resolve as resolve2 } from "node:path";
 var git2 = (dir, ...args2) => execFileSync2("git", ["-C", dir, ...args2], { maxBuffer: 1 << 30, stdio: ["ignore", "pipe", "ignore"] });
 var stagedDiffSha256 = (dir) => sha256(git2(dir, "diff", "--cached", "--binary"));
 var hasStagedChanges = (dir) => git2(dir, "diff", "--cached", "--name-only").length > 0;
@@ -7486,14 +7514,12 @@ function unstaged(dir) {
   const untracked = git2(dir, "ls-files", "--others", "--exclude-standard").toString().split("\n").filter(Boolean);
   return [...modified.map((f) => `modified: ${f}`), ...untracked.map((f) => `untracked: ${f}`)];
 }
-var markerPath = (dir) => join2(dir, ".claude", "state", "eval-pass.json");
-function writeMarker(dir, marker) {
-  const path = markerPath(dir);
+function writeMarker(path, marker) {
   mkdirSync(join2(path, ".."), { recursive: true });
   writeFileSync(`${path}.tmp`, JSON.stringify(marker, null, 2) + "\n");
   renameSync(`${path}.tmp`, path);
 }
-var clearMarker = (dir) => rmSync(markerPath(dir), { force: true });
+var clearMarker = (path) => rmSync(path, { force: true });
 function stageProblems(stages) {
   if (!stages.length) return "routing.yaml has no eval.stages, so there is nothing to evaluate";
   const names = /* @__PURE__ */ new Set();
@@ -7519,7 +7545,7 @@ function runStages(dir, stages, logDir2, { onStage = () => {
     onStage(stage);
     const started = Date.now();
     const run = spawnSync(stage.run, {
-      cwd: resolve(dir, stage.cwd ?? "."),
+      cwd: resolve2(dir, stage.cwd ?? "."),
       env: { ...process.env, ...Object.fromEntries(Object.entries(stage.env ?? {}).map(([k, v]) => [k, String(v)])) },
       shell: true,
       windowsHide: true,
@@ -7551,8 +7577,7 @@ var passMarker = (dir, { diffSha256: diffSha2562, taskIds: taskIds2, configSha25
 
 // src/lib/spool.ts
 import { appendFileSync, existsSync as existsSync3, mkdirSync as mkdirSync2, readdirSync, readFileSync as readFileSync3, renameSync as renameSync2, rmSync as rmSync2, writeFileSync as writeFileSync2 } from "node:fs";
-import { homedir } from "node:os";
-import { join as join3, resolve as resolve2 } from "node:path";
+import { join as join3, resolve as resolve3 } from "node:path";
 
 // src/lib/types.ts
 var EFFORTS = ["low", "medium", "high", "xhigh", "max"];
@@ -7561,14 +7586,14 @@ var messageOf = (error) => error instanceof Error ? error.message : String(error
 
 // src/lib/spool.ts
 var MAX_LINE_BYTES = 4096;
-var registryPath = () => join3(process.env.HARNESS_HOME || join3(homedir(), ".harness"), "spools.json");
+var registryPath = () => join3(harnessHome(), "spools.json");
 function registerSpool(config2, now = /* @__PURE__ */ new Date()) {
   const path = registryPath();
-  const metadataDir = resolve2(config2.metadataDir);
+  const metadataDir = resolve3(config2.metadataDir);
   try {
     const registry = existsSync3(path) ? JSON.parse(readFileSync3(path, "utf8")) : { version: 1, spools: [] };
     if (registry.spools.some((s) => s.metadata_dir.toLowerCase() === metadataDir.toLowerCase())) return;
-    registry.spools.push({ repo_dir: resolve2(config2.dir), metadata_dir: metadataDir, first_seen: utcNow(now) });
+    registry.spools.push({ repo_dir: resolve3(config2.dir), metadata_dir: metadataDir, first_seen: utcNow(now) });
     mkdirSync2(join3(path, ".."), { recursive: true });
     writeFileSync2(`${path}.tmp`, JSON.stringify(registry, null, 2) + "\n");
     renameSync2(`${path}.tmp`, path);
@@ -7700,13 +7725,17 @@ if (config.mode === "off") {
   say(`harness-eval: the Harness is off here (${config.reason ?? "mode: off"}), so no eval is needed`);
   process.exit(0);
 }
+var shown = (path) => {
+  const inside = relative(config.dir, path);
+  return inside.startsWith("..") || isAbsolute(inside) ? path : inside;
+};
 var problem = stageProblems(config.stages);
 if (problem) refuse(problem);
 if (!ci) {
   if (!hasStagedChanges(config.dir)) refuse("nothing is staged. Stage the change to commit (git add), then run harness-eval");
   const loose = unstaged(config.dir);
   if (loose.length) refuse("the working tree has changes that are not staged. Stage them or set them aside, so the eval tests exactly what will be committed:", loose);
-  clearMarker(config.dir);
+  clearMarker(config.layout.markerPath);
 }
 var diffSha256 = stagedDiffSha256(config.dir);
 var sessionId = process.env.CLAUDE_CODE_SESSION_ID;
@@ -7735,7 +7764,7 @@ emit("eval.completed", {
 if (outcome.failed) {
   const tail = outcome.failed.output.trimEnd().split(/\r?\n/).slice(-60);
   say();
-  say(`--- ${outcome.failed.stage}: last ${tail.length} lines (full log: ${relative(config.dir, join4(logDir, `${outcome.failed.stage}.log`))}) ---`);
+  say(`--- ${outcome.failed.stage}: last ${tail.length} lines (full log: ${shown(join4(logDir, `${outcome.failed.stage}.log`))}) ---`);
   for (const line of tail) say(line);
   say("---");
   if (outcome.failed_acs.length) say(`failing acceptance criteria: ${outcome.failed_acs.join(", ")}`);
@@ -7750,6 +7779,6 @@ if (stagedDiffSha256(config.dir) !== diffSha256 || unstaged(config.dir).length) 
   say("harness-eval: FAIL - the staged diff or the working tree changed while the eval ran, so this pass would vouch for something else. Run it again.");
   process.exit(1);
 }
-writeMarker(config.dir, passMarker(config.dir, { diffSha256, taskIds, configSha256: config.config_sha256 }));
-say(`harness-eval: PASS - ${relative(config.dir, markerPath(config.dir))} written; a commit of this staged diff is allowed for ${config.markerTtlMinutes} minutes`);
+writeMarker(config.layout.markerPath, passMarker(config.dir, { diffSha256, taskIds, configSha256: config.config_sha256 }));
+say(`harness-eval: PASS - ${shown(config.layout.markerPath)} written; a commit of this staged diff is allowed for ${config.markerTtlMinutes} minutes`);
 process.exit(0);

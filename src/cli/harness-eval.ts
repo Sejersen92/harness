@@ -10,10 +10,10 @@
 // no marker.
 //
 // Exit 0 pass, 1 fail, 2 refused (nothing to evaluate, or not a state worth evaluating).
-import { join, relative } from "node:path";
+import { isAbsolute, join, relative } from "node:path";
 import { loadConfig } from "../lib/config.ts";
 import {
-  clearMarker, hasStagedChanges, markerPath, passMarker, runStages, stagedDiffSha256, stageProblems, unstaged, writeMarker,
+  clearMarker, hasStagedChanges, passMarker, runStages, stagedDiffSha256, stageProblems, unstaged, writeMarker,
 } from "../lib/eval.ts";
 import { emitEvent } from "../lib/spool.ts";
 
@@ -35,6 +35,12 @@ if (config.mode === "off") {
   process.exit(0);
 }
 
+/** A path as a person reads it: relative inside the repository, whole when it is in the repository's home. */
+const shown = (path: string): string => {
+  const inside = relative(config.dir, path);
+  return inside.startsWith("..") || isAbsolute(inside) ? path : inside;
+};
+
 const problem = stageProblems(config.stages);
 if (problem) refuse(problem);
 
@@ -43,7 +49,7 @@ if (!ci) {
   const loose = unstaged(config.dir);
   if (loose.length) refuse("the working tree has changes that are not staged. Stage them or set them aside, so the eval tests exactly what will be committed:", loose);
   // A run that starts revokes the last pass: an eval that fails now must not leave an older pass behind.
-  clearMarker(config.dir);
+  clearMarker(config.layout.markerPath);
 }
 
 const diffSha256 = stagedDiffSha256(config.dir);
@@ -80,7 +86,7 @@ emit("eval.completed", {
 if (outcome.failed) {
   const tail = outcome.failed.output.trimEnd().split(/\r?\n/).slice(-60);
   say();
-  say(`--- ${outcome.failed.stage}: last ${tail.length} lines (full log: ${relative(config.dir, join(logDir, `${outcome.failed.stage}.log`))}) ---`);
+  say(`--- ${outcome.failed.stage}: last ${tail.length} lines (full log: ${shown(join(logDir, `${outcome.failed.stage}.log`))}) ---`);
   for (const line of tail) say(line);
   say("---");
   if (outcome.failed_acs.length) say(`failing acceptance criteria: ${outcome.failed_acs.join(", ")}`);
@@ -100,6 +106,6 @@ if (stagedDiffSha256(config.dir) !== diffSha256 || unstaged(config.dir).length) 
   process.exit(1);
 }
 
-writeMarker(config.dir, passMarker(config.dir, { diffSha256, taskIds, configSha256: config.config_sha256 }));
-say(`harness-eval: PASS - ${relative(config.dir, markerPath(config.dir))} written; a commit of this staged diff is allowed for ${config.markerTtlMinutes} minutes`);
+writeMarker(config.layout.markerPath, passMarker(config.dir, { diffSha256, taskIds, configSha256: config.config_sha256 }));
+say(`harness-eval: PASS - ${shown(config.layout.markerPath)} written; a commit of this staged diff is allowed for ${config.markerTtlMinutes} minutes`);
 process.exit(0);

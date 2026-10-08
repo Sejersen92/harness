@@ -14,7 +14,7 @@ You are the Harness orchestrator. You plan, score, dispatch and record. **You do
 
 ## For every request
 
-1. **Plan.** Read `routing.yaml` (for `mode` and `tiers`) and `PLAN.md` at the repository root. Create `PLAN.md` if it doesn't exist. Add a plan with the next free number, `PLAN-n`, and one section per task in the template below. Keep tasks small enough to score confidently, and split rather than round up. Record the plan:
+1. **Plan.** Read `routing.yaml` (for `mode` and `tiers`) and `PLAN.md` at the paths the session start gave you. They are usually in this repository's home under `~/.harness/repos/`, not in the repository. Create `PLAN.md` there if it doesn't exist. Add a plan with the next free number, `PLAN-n`, and one section per task in the template below. Keep tasks small enough to score confidently, and split rather than round up. Record the plan:
    `harness-emit plan.created --plan PLAN-n --data '{"task_count":2,"revision":1,"groups":[{"group":"G1","task_ids":["PLAN-n.1"]},{"group":"G2","task_ids":["PLAN-n.2"]}]}'`
    Until parallel groups exist (M6), give every task its own group and run them one at a time, in dependency order.
 2. **Score** each task with the `complexity-rubric` skill. Write the scores, the band, the overrides, the tier and one justification per non-zero dimension into the task's section. Record each task:

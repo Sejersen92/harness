@@ -7371,7 +7371,8 @@ var require_dist = __commonJS({
 var import_yaml = __toESM(require_dist(), 1);
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { homedir } from "node:os";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // src/lib/ids.ts
@@ -7404,6 +7405,14 @@ var git = (cwd, ...args) => {
     return null;
   }
 };
+var harnessHome = () => process.env.HARNESS_HOME || join(homedir(), ".harness");
+var normalisedPath = (dir2) => resolve(dir2).replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+function repoHome(dir2) {
+  const key = normalisedPath(dir2);
+  const name = basename(key).replace(/[^a-z0-9._-]+/g, "-") || "repo";
+  return join(harnessHome(), "repos", `${name}-${sha256(key).slice(0, 8)}`);
+}
+var NOT_ENROLLED = "not enrolled";
 function projectDir(cwd = process.cwd()) {
   return process.env.CLAUDE_PROJECT_DIR || git(cwd, "rev-parse", "--show-toplevel") || cwd;
 }
@@ -7445,17 +7454,36 @@ var DEFAULT_TEST_GLOBS = [
   "**/*Tests.cs"
 ];
 function loadConfig(dir2 = projectDir()) {
-  const path = join(dir2, "routing.yaml");
-  if (!existsSync(path)) return { dir: dir2, mode: "off", reason: "no routing.yaml" };
-  const bytes = readFileSync(path);
+  const home = repoHome(dir2);
+  const homed = existsSync(join(home, "routing.yaml"));
+  if (!homed && !existsSync(join(dir2, "routing.yaml"))) return { dir: dir2, mode: "off", reason: NOT_ENROLLED, home };
+  const routingYaml = join(homed ? home : dir2, "routing.yaml");
+  const bytes = readFileSync(routingYaml);
   const yaml = (0, import_yaml.parse)(bytes.toString("utf8")) ?? {};
   const metadata = yaml.metadata ?? {};
+  const layout = homed ? {
+    kind: "home",
+    root: home,
+    routingYaml,
+    metadataDir: home,
+    markerPath: join(home, "state", "eval-pass.json"),
+    planPath: join(home, "PLAN.md")
+  } : {
+    kind: "repository",
+    root: dir2,
+    routingYaml,
+    metadataDir: join(dir2, metadata.dir ?? ".harness"),
+    markerPath: join(dir2, ".claude", "state", "eval-pass.json"),
+    planPath: join(dir2, "PLAN.md")
+  };
   return {
     dir: dir2,
+    home,
+    layout,
     mode: MODES.includes(yaml.mode) ? yaml.mode : "off",
     tiers: yaml.tiers ?? {},
     config_sha256: sha256(bytes),
-    metadataDir: join(dir2, metadata.dir ?? ".harness"),
+    metadataDir: layout.metadataDir,
     retentionDays: Number.isInteger(metadata.retention_days) ? metadata.retention_days : 30,
     includeJustifications: metadata.include_justifications !== false,
     stages: Array.isArray(yaml.eval?.stages) ? yaml.eval.stages : [],
@@ -7468,12 +7496,11 @@ function loadConfig(dir2 = projectDir()) {
 var import_yaml2 = __toESM(require_dist(), 1);
 import { execFileSync as execFileSync2 } from "node:child_process";
 import { chmodSync, copyFileSync, existsSync as existsSync3, mkdirSync as mkdirSync2, readFileSync as readFileSync3, readdirSync as readdirSync2, realpathSync, rmSync as rmSync2, writeFileSync as writeFileSync2 } from "node:fs";
-import { join as join3, resolve as resolve2 } from "node:path";
+import { join as join3, resolve as resolve3 } from "node:path";
 
 // src/lib/spool.ts
 import { appendFileSync, existsSync as existsSync2, mkdirSync, readdirSync, readFileSync as readFileSync2, renameSync, rmSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join as join2, resolve } from "node:path";
+import { join as join2, resolve as resolve2 } from "node:path";
 
 // src/lib/types.ts
 var EFFORTS = ["low", "medium", "high", "xhigh", "max"];
@@ -7482,15 +7509,15 @@ var messageOf = (error) => error instanceof Error ? error.message : String(error
 
 // src/lib/spool.ts
 var MAX_LINE_BYTES = 4096;
-var registryPath = () => join2(process.env.HARNESS_HOME || join2(homedir(), ".harness"), "spools.json");
-var pluginRecordPath = () => join2(process.env.HARNESS_HOME || join2(homedir(), ".harness"), "plugin.json");
+var registryPath = () => join2(harnessHome(), "spools.json");
+var pluginRecordPath = () => join2(harnessHome(), "plugin.json");
 function registerSpool(config2, now = /* @__PURE__ */ new Date()) {
   const path = registryPath();
-  const metadataDir = resolve(config2.metadataDir);
+  const metadataDir = resolve2(config2.metadataDir);
   try {
     const registry = existsSync2(path) ? JSON.parse(readFileSync2(path, "utf8")) : { version: 1, spools: [] };
     if (registry.spools.some((s) => s.metadata_dir.toLowerCase() === metadataDir.toLowerCase())) return;
-    registry.spools.push({ repo_dir: resolve(config2.dir), metadata_dir: metadataDir, first_seen: utcNow(now) });
+    registry.spools.push({ repo_dir: resolve2(config2.dir), metadata_dir: metadataDir, first_seen: utcNow(now) });
     mkdirSync(join2(path, ".."), { recursive: true });
     writeFileSync(`${path}.tmp`, JSON.stringify(registry, null, 2) + "\n");
     renameSync(`${path}.tmp`, path);
@@ -7671,21 +7698,26 @@ function checks(dir2, { pluginRoot: pluginRoot2, claudeVersion = readClaudeVersi
   else if (pluginRoot2 && realpathSync.native(recorded.root).toLowerCase() !== realpathSync.native(pluginRoot2).toLowerCase()) add("plugin-recorded", "warn", `git hooks use ${recorded.root}, not this copy (${pluginRoot2})`);
   else add("plugin-recorded", "pass", `git hooks use ${recorded.root} (${recorded.version})`);
   if (config2.mode === "off") {
-    add("routing-yaml", "fail", config2.reason === "no routing.yaml" ? "no routing.yaml: the Harness is off here (harness-init writes one)" : "mode is off or not recognised");
+    add("routing-yaml", "fail", config2.reason === NOT_ENROLLED ? `not enrolled: there is no ${join3(config2.home, "routing.yaml")} (harness-init sets one up)` : "mode is off or not recognised");
   } else {
     const tiers = ["T1", "T2", "T3", "T4"].filter((t) => Number.isInteger(config2.tiers?.[t]?.max_score) && typeof config2.tiers?.[t]?.model === "string");
     if (tiers.length < 4) add("routing-yaml", "fail", `tiers ${["T1", "T2", "T3", "T4"].filter((t) => !tiers.includes(t)).join(", ")} are missing or malformed`);
     else if (!config2.stages.length) add("routing-yaml", "fail", "eval.stages is empty, so no eval can pass and no commit can be made");
     else add("routing-yaml", "pass", `mode ${config2.mode}, ${config2.stages.length} eval stage(s)`);
   }
-  try {
-    mkdirSync2(config2.metadataDir ?? join3(dir2, ".harness"), { recursive: true });
-    const probe = join3(config2.metadataDir ?? join3(dir2, ".harness"), `.doctor-${process.pid}`);
-    writeFileSync2(probe, "");
-    rmSync2(probe);
-    add("spool-writable", "pass", config2.metadataDir ?? join3(dir2, ".harness"));
-  } catch (error) {
-    add("spool-writable", "fail", messageOf(error));
+  if (config2.layout?.kind === "home") add("layout", "pass", `nothing in the repository; its files are in ${config2.layout.root}`);
+  else if (config2.layout) add("layout", "warn", `routing.yaml is in the repository, the layout from before homes; it still works, and enrolling moves it to ${config2.home}`);
+  if (!config2.metadataDir) add("spool-writable", "warn", "not enrolled, so there is no spool yet");
+  else {
+    try {
+      mkdirSync2(config2.metadataDir, { recursive: true });
+      const probe = join3(config2.metadataDir, `.doctor-${process.pid}`);
+      writeFileSync2(probe, "");
+      rmSync2(probe);
+      add("spool-writable", "pass", config2.metadataDir);
+    } catch (error) {
+      add("spool-writable", "fail", messageOf(error));
+    }
   }
   const hooksPath = git2(dir2, "config", "core.hooksPath");
   const missingHooks = HOOKS.filter((h) => !existsSync3(join3(dir2, ".githooks", h)));
@@ -7713,7 +7745,7 @@ function checks(dir2, { pluginRoot: pluginRoot2, claudeVersion = readClaudeVersi
     settings.worktree?.baseRef === "head" ? "worktrees start from HEAD" : 'worktree.baseRef is not "head" (needed only for parallel groups, M6)'
   );
   try {
-    const spelled = resolve2(dir2);
+    const spelled = resolve3(dir2);
     const real = realpathSync.native(spelled);
     if (real === spelled) add("path-casing", "pass", spelled);
     else if (real.toLowerCase() === spelled.toLowerCase()) add("path-casing", "warn", `the working directory is spelled ${spelled}, the disk says ${real}; Claude Code refused a worktree for this (S6)`);
@@ -7721,7 +7753,7 @@ function checks(dir2, { pluginRoot: pluginRoot2, claudeVersion = readClaudeVersi
   } catch (error) {
     add("path-casing", "warn", messageOf(error));
   }
-  const failures = Number.parseInt(readSafely(join3(config2.metadataDir ?? join3(dir2, ".harness"), "emit-failures")), 10) || 0;
+  const failures = Number.parseInt(readSafely(join3(config2.metadataDir ?? config2.home, "emit-failures")), 10) || 0;
   add("emit-failures", failures ? "warn" : "pass", failures ? `${failures} metadata write(s) failed; see stderr from the hooks` : "none");
   return results2;
 }

@@ -50,24 +50,24 @@ export function unstaged(dir: string): string[] {
 
 // ---- the marker --------------------------------------------------------------------------------
 
-export const markerPath = (dir: string): string => join(dir, ".claude", "state", "eval-pass.json");
+// Where the marker is comes from the repository's layout (config.layout.markerPath): in its home, or
+// in .claude/state/ for a repository still set up the old way.
 
-export function readMarker(dir: string): Partial<Marker> | null {
+export function readMarker(path: string): Partial<Marker> | null {
   try {
-    return JSON.parse(readFileSync(markerPath(dir), "utf8")) as Partial<Marker>;
+    return JSON.parse(readFileSync(path, "utf8")) as Partial<Marker>;
   } catch {
     return null;
   }
 }
 
-export function writeMarker(dir: string, marker: Marker): void {
-  const path = markerPath(dir);
+export function writeMarker(path: string, marker: Marker): void {
   mkdirSync(join(path, ".."), { recursive: true });
   writeFileSync(`${path}.tmp`, JSON.stringify(marker, null, 2) + "\n");
   renameSync(`${path}.tmp`, path);
 }
 
-export const clearMarker = (dir: string): void => rmSync(markerPath(dir), { force: true });
+export const clearMarker = (path: string): void => rmSync(path, { force: true });
 
 // ---- stages ------------------------------------------------------------------------------------
 

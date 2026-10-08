@@ -84,8 +84,12 @@ export function stripAttribution(message: string): string | null {
   return kept.join("\n") + "\n";
 }
 
-/** Whether a file path is the pass marker (or its temp file), however it is spelled. */
-export const isMarkerPath = (path: unknown): boolean => /\.claude[\\/]+state[\\/]+eval-pass\.json/i.test(String(path ?? ""));
+/**
+ * Whether a file path is a pass marker (or its temp file), however it is spelled: state/eval-pass.json in a
+ * repository's home, or .claude/state/eval-pass.json in a repository set up the old way. Any state folder's
+ * eval-pass.json counts; a false yes only denies an edit to a file no one else should write.
+ */
+export const isMarkerPath = (path: unknown): boolean => /(?:^|[\\/])state[\\/]+eval-pass\.json/i.test(String(path ?? ""));
 
 const unstagedTracked = (dir: string): boolean =>
   execFileSync("git", ["-C", dir, "diff", "--name-only"], { stdio: ["ignore", "pipe", "ignore"] }).toString().trim().length > 0;
@@ -96,8 +100,8 @@ const unstagedTracked = (dir: string): boolean =>
  * `git commit -a` would sweep in without an eval). Returns { decision, reason, detail }, where reason
  * is one of gate.decision's values.
  */
-export function checkMarker(dir: string, ttlMinutes: number, now: Date = new Date()): GateVerdict {
-  const marker = readMarker(dir);
+export function checkMarker(dir: string, markerPath: string, ttlMinutes: number, now: Date = new Date()): GateVerdict {
+  const marker = readMarker(markerPath);
   if (!marker?.diff_sha256) return { decision: "deny", reason: "no_marker", detail: "there is no eval pass" };
 
   const ageMinutes = (now.getTime() - Date.parse(marker.passed_at ?? "")) / 60_000;

@@ -25,11 +25,30 @@ export interface Stage {
   timeout_minutes?: number;
 }
 
-/** No routing.yaml: the Harness is off here. The optional fields say so, so callers can read them safely. */
+/**
+ * Where a repository's Harness files are. "home": its own folder under ~/.harness/repos/, so nothing is
+ * in the repository at all (ANY-REPO.md). "repository": routing.yaml, PLAN.md, .harness/ and
+ * .claude/state/ in the repository itself, still read for one release so a repository set up that way
+ * keeps working until it moves.
+ */
+export interface Layout {
+  kind: "home" | "repository";
+  /** The folder holding routing.yaml: the home, or the repository. */
+  root: string;
+  routingYaml: string;
+  metadataDir: string;
+  markerPath: string;
+  planPath: string;
+}
+
+/** Not enrolled: no home and no routing.yaml in the repository. The optional fields say so, so callers can read them safely. */
 export interface OffConfig {
   dir: string;
   mode: "off";
   reason: string;
+  /** Where this repository's home would be, for messages that say how to set it up. */
+  home: string;
+  layout?: undefined;
   tiers?: undefined;
   metadataDir?: undefined;
   stages?: undefined;
@@ -40,6 +59,8 @@ export interface Config {
   dir: string;
   mode: Mode;
   reason?: undefined;
+  home: string;
+  layout: Layout;
   tiers: Record<string, TierEntry | undefined>;
   config_sha256: string;
   metadataDir: string;

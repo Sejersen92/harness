@@ -7370,13 +7370,14 @@ var require_dist = __commonJS({
 // src/cli/harness-git-hook.ts
 import { execFileSync as execFileSync4, spawnSync as spawnSync2 } from "node:child_process";
 import { readFileSync as readFileSync4, writeFileSync as writeFileSync3 } from "node:fs";
-import { join as join4 } from "node:path";
+import { join as join3 } from "node:path";
 
 // src/lib/config.ts
 var import_yaml = __toESM(require_dist(), 1);
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { homedir } from "node:os";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // src/lib/ids.ts
@@ -7409,6 +7410,14 @@ var git = (cwd, ...args) => {
     return null;
   }
 };
+var harnessHome = () => process.env.HARNESS_HOME || join(homedir(), ".harness");
+var normalisedPath = (dir2) => resolve(dir2).replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+function repoHome(dir2) {
+  const key = normalisedPath(dir2);
+  const name = basename(key).replace(/[^a-z0-9._-]+/g, "-") || "repo";
+  return join(harnessHome(), "repos", `${name}-${sha256(key).slice(0, 8)}`);
+}
+var NOT_ENROLLED = "not enrolled";
 function projectDir(cwd = process.cwd()) {
   return process.env.CLAUDE_PROJECT_DIR || git(cwd, "rev-parse", "--show-toplevel") || cwd;
 }
@@ -7450,17 +7459,36 @@ var DEFAULT_TEST_GLOBS = [
   "**/*Tests.cs"
 ];
 function loadConfig(dir2 = projectDir()) {
-  const path = join(dir2, "routing.yaml");
-  if (!existsSync(path)) return { dir: dir2, mode: "off", reason: "no routing.yaml" };
-  const bytes = readFileSync(path);
+  const home = repoHome(dir2);
+  const homed = existsSync(join(home, "routing.yaml"));
+  if (!homed && !existsSync(join(dir2, "routing.yaml"))) return { dir: dir2, mode: "off", reason: NOT_ENROLLED, home };
+  const routingYaml = join(homed ? home : dir2, "routing.yaml");
+  const bytes = readFileSync(routingYaml);
   const yaml = (0, import_yaml.parse)(bytes.toString("utf8")) ?? {};
   const metadata = yaml.metadata ?? {};
+  const layout = homed ? {
+    kind: "home",
+    root: home,
+    routingYaml,
+    metadataDir: home,
+    markerPath: join(home, "state", "eval-pass.json"),
+    planPath: join(home, "PLAN.md")
+  } : {
+    kind: "repository",
+    root: dir2,
+    routingYaml,
+    metadataDir: join(dir2, metadata.dir ?? ".harness"),
+    markerPath: join(dir2, ".claude", "state", "eval-pass.json"),
+    planPath: join(dir2, "PLAN.md")
+  };
   return {
     dir: dir2,
+    home,
+    layout,
     mode: MODES.includes(yaml.mode) ? yaml.mode : "off",
     tiers: yaml.tiers ?? {},
     config_sha256: sha256(bytes),
-    metadataDir: join(dir2, metadata.dir ?? ".harness"),
+    metadataDir: layout.metadataDir,
     retentionDays: Number.isInteger(metadata.retention_days) ? metadata.retention_days : 30,
     includeJustifications: metadata.include_justifications !== false,
     stages: Array.isArray(yaml.eval?.stages) ? yaml.eval.stages : [],
@@ -7472,7 +7500,6 @@ function loadConfig(dir2 = projectDir()) {
 // src/lib/eval.ts
 import { spawnSync, execFileSync as execFileSync2 } from "node:child_process";
 import { mkdirSync, readFileSync as readFileSync2, renameSync, rmSync, writeFileSync } from "node:fs";
-import { join as join2, resolve } from "node:path";
 var git2 = (dir2, ...args) => execFileSync2("git", ["-C", dir2, ...args], { maxBuffer: 1 << 30, stdio: ["ignore", "pipe", "ignore"] });
 var stagedDiffSha256 = (dir2) => sha256(git2(dir2, "diff", "--cached", "--binary"));
 function head(dir2) {
@@ -7482,10 +7509,9 @@ function head(dir2) {
     return null;
   }
 }
-var markerPath = (dir2) => join2(dir2, ".claude", "state", "eval-pass.json");
-function readMarker(dir2) {
+function readMarker(path) {
   try {
-    return JSON.parse(readFileSync2(markerPath(dir2), "utf8"));
+    return JSON.parse(readFileSync2(path, "utf8"));
   } catch {
     return null;
   }
@@ -7503,8 +7529,8 @@ function stripAttribution(message) {
   return kept.join("\n") + "\n";
 }
 var unstagedTracked = (dir2) => execFileSync3("git", ["-C", dir2, "diff", "--name-only"], { stdio: ["ignore", "pipe", "ignore"] }).toString().trim().length > 0;
-function checkMarker(dir2, ttlMinutes, now = /* @__PURE__ */ new Date()) {
-  const marker = readMarker(dir2);
+function checkMarker(dir2, markerPath, ttlMinutes, now = /* @__PURE__ */ new Date()) {
+  const marker = readMarker(markerPath);
   if (!marker?.diff_sha256) return { decision: "deny", reason: "no_marker", detail: "there is no eval pass" };
   const ageMinutes = (now.getTime() - Date.parse(marker.passed_at ?? "")) / 6e4;
   if (!(ageMinutes <= ttlMinutes)) {
@@ -7524,8 +7550,7 @@ function checkMarker(dir2, ttlMinutes, now = /* @__PURE__ */ new Date()) {
 
 // src/lib/spool.ts
 import { appendFileSync, existsSync as existsSync3, mkdirSync as mkdirSync2, readdirSync, readFileSync as readFileSync3, renameSync as renameSync2, rmSync as rmSync2, writeFileSync as writeFileSync2 } from "node:fs";
-import { homedir } from "node:os";
-import { join as join3, resolve as resolve2 } from "node:path";
+import { join as join2, resolve as resolve2 } from "node:path";
 
 // src/lib/types.ts
 var EFFORTS = ["low", "medium", "high", "xhigh", "max"];
@@ -7534,7 +7559,7 @@ var messageOf = (error) => error instanceof Error ? error.message : String(error
 
 // src/lib/spool.ts
 var MAX_LINE_BYTES = 4096;
-var registryPath = () => join3(process.env.HARNESS_HOME || join3(homedir(), ".harness"), "spools.json");
+var registryPath = () => join2(harnessHome(), "spools.json");
 function registerSpool(config2, now = /* @__PURE__ */ new Date()) {
   const path = registryPath();
   const metadataDir = resolve2(config2.metadataDir);
@@ -7542,7 +7567,7 @@ function registerSpool(config2, now = /* @__PURE__ */ new Date()) {
     const registry = existsSync3(path) ? JSON.parse(readFileSync3(path, "utf8")) : { version: 1, spools: [] };
     if (registry.spools.some((s) => s.metadata_dir.toLowerCase() === metadataDir.toLowerCase())) return;
     registry.spools.push({ repo_dir: resolve2(config2.dir), metadata_dir: metadataDir, first_seen: utcNow(now) });
-    mkdirSync2(join3(path, ".."), { recursive: true });
+    mkdirSync2(join2(path, ".."), { recursive: true });
     writeFileSync2(`${path}.tmp`, JSON.stringify(registry, null, 2) + "\n");
     renameSync2(`${path}.tmp`, path);
   } catch (error) {
@@ -7554,7 +7579,7 @@ function recordFailure(config2, why) {
 `);
   try {
     mkdirSync2(config2.metadataDir, { recursive: true });
-    const file = join3(config2.metadataDir, "emit-failures");
+    const file = join2(config2.metadataDir, "emit-failures");
     const count = existsSync3(file) ? Number.parseInt(readFileSync3(file, "utf8"), 10) || 0 : 0;
     writeFileSync2(file, `${count + 1}
 `);
@@ -7569,7 +7594,7 @@ function appendLine(config2, file, record) {
   }
   try {
     const firstLineInFile = !existsSync3(file);
-    mkdirSync2(join3(file, ".."), { recursive: true });
+    mkdirSync2(join2(file, ".."), { recursive: true });
     appendFileSync(file, line + "\n", { flag: "a" });
     if (firstLineInFile) registerSpool(config2);
     return true;
@@ -7580,19 +7605,19 @@ function appendLine(config2, file, record) {
 }
 function sweep(config2, now) {
   const today = utcNow(now).slice(0, 10);
-  const marker = join3(config2.metadataDir, "state", "swept");
+  const marker = join2(config2.metadataDir, "state", "swept");
   try {
     if (existsSync3(marker) && readFileSync3(marker, "utf8").trim() === today) return;
     const cutoff = new Date(now.getTime() - config2.retentionDays * 864e5).toISOString().slice(0, 10);
     const folders = [["events", (n) => n.slice(0, 10)], ["routing-log", (n) => `${n.slice(0, 7)}-31`]];
     for (const [folder, toDate] of folders) {
-      const dir2 = join3(config2.metadataDir, folder);
+      const dir2 = join2(config2.metadataDir, folder);
       if (!existsSync3(dir2)) continue;
       for (const name of readdirSync(dir2).filter((n) => n.endsWith(".jsonl"))) {
-        if (toDate(name) < cutoff) rmSync2(join3(dir2, name));
+        if (toDate(name) < cutoff) rmSync2(join2(dir2, name));
       }
     }
-    mkdirSync2(join3(config2.metadataDir, "state"), { recursive: true });
+    mkdirSync2(join2(config2.metadataDir, "state"), { recursive: true });
     writeFileSync2(marker, today);
   } catch (error) {
     recordFailure(config2, `retention sweep: ${messageOf(error)}`);
@@ -7622,14 +7647,14 @@ function emitEvent(config2, type, fields = {}, data = {}, now = /* @__PURE__ */ 
     if (value) envelope[key] = value;
   }
   const event = { ...envelope, data };
-  const file = join3(config2.metadataDir, "events", `${event.ts.slice(0, 10)}.jsonl`);
+  const file = join2(config2.metadataDir, "events", `${event.ts.slice(0, 10)}.jsonl`);
   if (!appendLine(config2, file, event)) return null;
   snapshotConfig(config2, event.repo, now);
   return event;
 }
 var TIERS = ["T1", "T2", "T3", "T4"];
 function snapshotConfig(config2, repo, now = /* @__PURE__ */ new Date()) {
-  const path = join3(config2.metadataDir, "configs", `${config2.config_sha256}.json`);
+  const path = join2(config2.metadataDir, "configs", `${config2.config_sha256}.json`);
   if (existsSync3(path)) return;
   const tiers = {};
   for (const tier of TIERS) {
@@ -7649,7 +7674,7 @@ function snapshotConfig(config2, repo, now = /* @__PURE__ */ new Date()) {
     gate: { marker_ttl_minutes: config2.markerTtlMinutes }
   };
   try {
-    mkdirSync2(join3(path, ".."), { recursive: true });
+    mkdirSync2(join2(path, ".."), { recursive: true });
     writeFileSync2(`${path}.tmp`, JSON.stringify(snapshot, null, 2) + "\n");
     renameSync2(`${path}.tmp`, path);
   } catch (error) {
@@ -7682,15 +7707,15 @@ if (hook === "commit-msg") {
 }
 if (config.mode === "off") process.exit(0);
 if (hook === "pre-commit") {
-  const first = checkMarker(dir, config.markerTtlMinutes);
+  const first = checkMarker(dir, config.layout.markerPath, config.markerTtlMinutes);
   if (first.decision === "allow") process.exit(0);
   say(`harness: no eval pass for this commit (${first.detail}), so running harness-eval now.`);
-  const run = spawnSync2("node", [join4(pluginRoot() ?? "", "bin", "harness-eval.mjs")], {
+  const run = spawnSync2("node", [join3(pluginRoot() ?? "", "bin", "harness-eval.mjs")], {
     cwd: dir,
     env: { ...process.env, CLAUDE_PROJECT_DIR: dir },
     stdio: ["ignore", "inherit", "inherit"]
   });
-  const second = run.status === 0 ? checkMarker(dir, config.markerTtlMinutes) : null;
+  const second = run.status === 0 ? checkMarker(dir, config.layout.markerPath, config.markerTtlMinutes) : null;
   if (second?.decision === "allow") process.exit(0);
   say(`harness: commit stopped - ${second ? second.detail : "harness-eval did not pass"}. (git commit --no-verify skips this check.)`);
   process.exit(1);
@@ -7706,7 +7731,7 @@ if (hook === "post-commit") {
       added += Number.parseInt(a ?? "", 10) || 0;
       removed += Number.parseInt(r ?? "", 10) || 0;
     }
-    const taskIds = readMarker(dir)?.task_ids ?? [];
+    const taskIds = readMarker(config.layout.markerPath)?.task_ids ?? [];
     const onlyTask = taskIds.length === 1 ? taskIds[0] : void 0;
     emitEvent(
       config,

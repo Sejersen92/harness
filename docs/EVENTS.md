@@ -2,7 +2,7 @@
 
 The Harness writes two metadata outputs. Scripts and hooks write them; a model never does. They are the only contract between the Harness and anything that reads it, PU included.
 
-| Output | File (under `metadata.dir`, default `.harness/`) | One line per | De-duplicate on | Schema |
+| Output | File (in the repository's home; in the old layout, under `metadata.dir`, default `.harness/`) | One line per | De-duplicate on | Schema |
 |---|---|---|---|---|
 | **Harness Events v1** | `events/YYYY-MM-DD.jsonl` (UTC date) | event | `event_id` | [`schema/harness.events.v1.json`](../schema/harness.events.v1.json) |
 | **Routing log v1** | `routing-log/YYYY-MM.jsonl` | completed task (per revision) | `task_id` + highest `revision` | [`schema/routing-log.v1.json`](../schema/routing-log.v1.json) |

@@ -7371,7 +7371,8 @@ var require_dist = __commonJS({
 var import_yaml = __toESM(require_dist(), 1);
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { homedir } from "node:os";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // src/lib/ids.ts
@@ -7406,6 +7407,14 @@ var git = (cwd, ...args) => {
     return null;
   }
 };
+var harnessHome = () => process.env.HARNESS_HOME || join(homedir(), ".harness");
+var normalisedPath = (dir) => resolve(dir).replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+function repoHome(dir) {
+  const key = normalisedPath(dir);
+  const name = basename(key).replace(/[^a-z0-9._-]+/g, "-") || "repo";
+  return join(harnessHome(), "repos", `${name}-${sha256(key).slice(0, 8)}`);
+}
+var NOT_ENROLLED = "not enrolled";
 function projectDir(cwd = process.cwd()) {
   return process.env.CLAUDE_PROJECT_DIR || git(cwd, "rev-parse", "--show-toplevel") || cwd;
 }
@@ -7447,17 +7456,36 @@ var DEFAULT_TEST_GLOBS = [
   "**/*Tests.cs"
 ];
 function loadConfig(dir = projectDir()) {
-  const path = join(dir, "routing.yaml");
-  if (!existsSync(path)) return { dir, mode: "off", reason: "no routing.yaml" };
-  const bytes = readFileSync(path);
+  const home = repoHome(dir);
+  const homed = existsSync(join(home, "routing.yaml"));
+  if (!homed && !existsSync(join(dir, "routing.yaml"))) return { dir, mode: "off", reason: NOT_ENROLLED, home };
+  const routingYaml = join(homed ? home : dir, "routing.yaml");
+  const bytes = readFileSync(routingYaml);
   const yaml = (0, import_yaml.parse)(bytes.toString("utf8")) ?? {};
   const metadata = yaml.metadata ?? {};
+  const layout = homed ? {
+    kind: "home",
+    root: home,
+    routingYaml,
+    metadataDir: home,
+    markerPath: join(home, "state", "eval-pass.json"),
+    planPath: join(home, "PLAN.md")
+  } : {
+    kind: "repository",
+    root: dir,
+    routingYaml,
+    metadataDir: join(dir, metadata.dir ?? ".harness"),
+    markerPath: join(dir, ".claude", "state", "eval-pass.json"),
+    planPath: join(dir, "PLAN.md")
+  };
   return {
     dir,
+    home,
+    layout,
     mode: MODES.includes(yaml.mode) ? yaml.mode : "off",
     tiers: yaml.tiers ?? {},
     config_sha256: sha256(bytes),
-    metadataDir: join(dir, metadata.dir ?? ".harness"),
+    metadataDir: layout.metadataDir,
     retentionDays: Number.isInteger(metadata.retention_days) ? metadata.retention_days : 30,
     includeJustifications: metadata.include_justifications !== false,
     stages: Array.isArray(yaml.eval?.stages) ? yaml.eval.stages : [],
@@ -7468,8 +7496,7 @@ function loadConfig(dir = projectDir()) {
 
 // src/lib/spool.ts
 import { appendFileSync, existsSync as existsSync2, mkdirSync, readdirSync, readFileSync as readFileSync2, renameSync, rmSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join as join2, resolve } from "node:path";
+import { join as join2, resolve as resolve2 } from "node:path";
 
 // src/lib/types.ts
 var EFFORTS = ["low", "medium", "high", "xhigh", "max"];
@@ -7478,14 +7505,14 @@ var messageOf = (error) => error instanceof Error ? error.message : String(error
 
 // src/lib/spool.ts
 var MAX_LINE_BYTES = 4096;
-var registryPath = () => join2(process.env.HARNESS_HOME || join2(homedir(), ".harness"), "spools.json");
+var registryPath = () => join2(harnessHome(), "spools.json");
 function registerSpool(config2, now = /* @__PURE__ */ new Date()) {
   const path = registryPath();
-  const metadataDir = resolve(config2.metadataDir);
+  const metadataDir = resolve2(config2.metadataDir);
   try {
     const registry = existsSync2(path) ? JSON.parse(readFileSync2(path, "utf8")) : { version: 1, spools: [] };
     if (registry.spools.some((s) => s.metadata_dir.toLowerCase() === metadataDir.toLowerCase())) return;
-    registry.spools.push({ repo_dir: resolve(config2.dir), metadata_dir: metadataDir, first_seen: utcNow(now) });
+    registry.spools.push({ repo_dir: resolve2(config2.dir), metadata_dir: metadataDir, first_seen: utcNow(now) });
     mkdirSync(join2(path, ".."), { recursive: true });
     writeFileSync(`${path}.tmp`, JSON.stringify(registry, null, 2) + "\n");
     renameSync(`${path}.tmp`, path);
@@ -7634,10 +7661,8 @@ function readRoutingLog(config2) {
 
 // src/lib/plan.ts
 import { existsSync as existsSync3, readFileSync as readFileSync3 } from "node:fs";
-import { join as join3 } from "node:path";
 var DIMENSIONS = ["ambiguity", "blast", "coupling", "novelty", "reversibility", "verification"];
-function planSection(dir, taskId2) {
-  const path = join3(dir, "PLAN.md");
+function planSection(path, taskId2) {
   if (!existsSync3(path)) return null;
   const lines = readFileSync3(path, "utf8").replace(/\r\n/g, "\n").split("\n");
   const start = lines.findIndex((l) => new RegExp(`^#{2,4}\\s+${taskId2.replace(".", "\\.")}\\b`).test(l));
@@ -7705,7 +7730,7 @@ function buildRecord(config2, taskId2, events = readEvents(config2), previous = 
     return run;
   });
   if (runs.length === 0) missing.push("subagent.stopped");
-  const plan = planSection(config2.dir, taskId2);
+  const plan = planSection(config2.layout.planPath, taskId2);
   if (!plan) missing.push("PLAN.md section");
   const evalRounds = ofType("eval.completed").map((e, i) => {
     const data2 = dataOf(e);
