@@ -7595,7 +7595,10 @@ function intakeVerdict(planId, maxAmbiguity, events) {
     detail: `${planId}'s brief still scores ambiguity ${String(data.ambiguity)}, over the ${maxAmbiguity} routing.yaml allows: ask the person the open questions, update the brief, score it again and record the new round (or record their overrule, with their reason)`
   };
 }
-var plansIn = (prompt) => [...new Set(taskIdsIn(prompt).map(planOf))];
+var plansIn = (prompt) => {
+  const header = String(prompt ?? "").split(/\r?\n/).find((line) => line.trim()) ?? "";
+  return [...new Set(taskIdsIn(header).map(planOf))];
+};
 
 // src/lib/spool.ts
 import { appendFileSync, existsSync as existsSync3, mkdirSync as mkdirSync2, readdirSync, readFileSync as readFileSync3, renameSync as renameSync2, rmSync as rmSync2, writeFileSync as writeFileSync2 } from "node:fs";
@@ -7791,7 +7794,7 @@ if (touchesMarker) {
 }
 if (harnessDispatch) {
   const plans = plansIn(args.prompt);
-  if (!plans.length) deny(`harness: a ${dispatched} dispatch must name its task (e.g. "WRITE-TESTS: PLAN-n.m"), so the intake gate can tell which plan it is for.`);
+  if (!plans.length) deny(`harness: a ${dispatched} dispatch must start with its header line naming the task (WRITE-TESTS:, IMPLEMENT: or EVALUATE: PLAN-n.m), so the intake gate can tell which plan it is for.`);
   const events = readEvents(config);
   for (const plan of plans) {
     const verdict2 = intakeVerdict(plan, config.intakeMaxAmbiguity, events);

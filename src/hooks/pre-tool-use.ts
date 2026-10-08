@@ -62,7 +62,7 @@ if (touchesMarker) {
 
 if (harnessDispatch) {
   const plans = plansIn(args.prompt);
-  if (!plans.length) deny(`harness: a ${dispatched} dispatch must name its task (e.g. "WRITE-TESTS: PLAN-n.m"), so the intake gate can tell which plan it is for.`);
+  if (!plans.length) deny(`harness: a ${dispatched} dispatch must start with its header line naming the task (WRITE-TESTS:, IMPLEMENT: or EVALUATE: PLAN-n.m), so the intake gate can tell which plan it is for.`);
   const events = readEvents(config);
   for (const plan of plans) {
     const verdict = intakeVerdict(plan, config.intakeMaxAmbiguity, events);
