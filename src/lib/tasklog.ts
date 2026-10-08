@@ -7,7 +7,7 @@ import type { Config, HarnessEvent } from "./types.ts";
 
 // The data of each event type this reads, as harness-emit and the hooks write it (schema/ has the
 // contract). An event read back from the spool is typed by its type, the way JSON is read into a model.
-interface ScoredData { scores: Record<string, number>; total: number; score_band: string; overrides: string[]; tier_planned: string }
+interface ScoredData { scores: Record<string, number>; total: number; score_band: string; overrides: string[]; tier_planned: string; review?: Record<string, unknown> }
 interface StoppedData { report: string; partial: boolean; duration_ms?: number; model_requested?: string; model?: string; effort?: string }
 interface EvalCompletedData { result: string; failed_acs: string[]; stages: unknown[]; attribution?: string }
 interface DispatchedData { group?: string; isolation?: string }
@@ -99,6 +99,8 @@ export function buildRecord(
     score_band: score.score_band,
     overrides: score.overrides,
     tier_planned: score.tier_planned,
+    // The person's agreement or overrule, with the orchestrator's original estimate (H4).
+    ...(score.review ? { review: score.review } : {}),
   };
   if (config.includeJustifications && plan && Object.keys(plan.justifications).length) rubric.justifications = plan.justifications;
 

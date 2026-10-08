@@ -45,8 +45,9 @@ Every event has the same envelope; type-specific fields live under `data`.
 
 | Type | Written by | When | `data` |
 |---|---|---|---|
+| `plan.intake` | orchestrator | One round of the intake gate (H4) | `round`, `ambiguity` (0-2), `max_ambiguity`, `questions`, `settled`, `review?` (only when the person overruled the gate: `verdict` `overruled`, `by` `human`, `reason`) |
 | `plan.created` | orchestrator | A plan is written or rewritten | `task_count`, `revision`, `groups[{group, task_ids}]` |
-| `task.scored` | orchestrator | A task gets rubric scores | `scores{ambiguity, blast, coupling, novelty, reversibility, verification}`, `total`, `score_band`, `overrides[]`, `tier_planned` |
+| `task.scored` | orchestrator | A task gets rubric scores | `scores{ambiguity, blast, coupling, novelty, reversibility, verification}`, `total`, `score_band`, `overrides[]`, `tier_planned`, `review?` (H4: `agreed`, or `overruled` with `reason` and the orchestrator's `original` scores; absent when not reviewed) |
 | `task.dispatched` | orchestrator | A task is handed to an implementer | `tier`, `agent_type`, `model_requested`, `effort?`, `group?`, `isolation` |
 | `task.redispatched` | orchestrator | A task is rerun | `reason` (`merge_conflict`, `replan`, `eval_fail`), `tier` |
 | `subagent.started` | SubagentStart hook | Any Harness subagent starts | `model_requested?` |
@@ -63,6 +64,17 @@ Every event has the same envelope; type-specific fields live under `data`.
 | `harness.doctor` | `/harness:doctor` | A health check runs | `checks[{name, status}]`, `emit_failures` |
 
 **Cost is deliberately absent.** Token usage lives in Claude Code's transcripts. A consumer prices each subagent run from `subagents/agent-<agent_id>.jsonl`; the day-1 spike S1 showed that `agent_id` matches it exactly. Duplicating cost here would create a second source of truth.
+
+### Example: intake, and a score the person overruled (H4)
+
+PLAN-7's brief scores ambiguity 1 at first. Three questions later it scores 0, and only then may an agent start. The person then raises PLAN-7.1's score: the orchestrator's estimate stays in `original`. PLAN-8 starts above the threshold because the person overruled the gate, with their reason.
+
+```jsonl
+{"schema":"harness.events/v1","event_id":"01M4QNZ5X0BKW8D7QJ6N4R3T2A","ts":"2026-10-12T09:08:00Z","type":"plan.intake","producer":{"name":"harness","version":"0.7.0"},"repo":{"name":"previouslyupcoming","remote_sha256":"8870c7e3b16d6d10f365ee183b8906cfe8c76d6a9fd8229e1990e0247877a6e3"},"mode":"observe","session_id":"8d2c4e1a-5b7f-4c3e-9a10-2f6b8e4d7c91","config_sha256":"9f811fd217cfa016d705daa56a07b63e731424ff9223514e5091e4d7802bdff5","plan_id":"PLAN-7","data":{"round":1,"ambiguity":1,"max_ambiguity":0,"questions":3,"settled":false}}
+{"schema":"harness.events/v1","event_id":"01M4QP0A00J3VZ9X8M2N5K7Q4C","ts":"2026-10-12T09:09:30Z","type":"plan.intake","producer":{"name":"harness","version":"0.7.0"},"repo":{"name":"previouslyupcoming","remote_sha256":"8870c7e3b16d6d10f365ee183b8906cfe8c76d6a9fd8229e1990e0247877a6e3"},"mode":"observe","session_id":"8d2c4e1a-5b7f-4c3e-9a10-2f6b8e4d7c91","config_sha256":"9f811fd217cfa016d705daa56a07b63e731424ff9223514e5091e4d7802bdff5","plan_id":"PLAN-7","data":{"round":2,"ambiguity":0,"max_ambiguity":0,"questions":0,"settled":true}}
+{"schema":"harness.events/v1","event_id":"01M4QP7XVRV57Q4AKK7WJ8J8N7","ts":"2026-10-12T09:14:04Z","type":"task.scored","producer":{"name":"harness","version":"0.7.0"},"repo":{"name":"previouslyupcoming","remote_sha256":"8870c7e3b16d6d10f365ee183b8906cfe8c76d6a9fd8229e1990e0247877a6e3"},"mode":"observe","session_id":"8d2c4e1a-5b7f-4c3e-9a10-2f6b8e4d7c91","config_sha256":"9f811fd217cfa016d705daa56a07b63e731424ff9223514e5091e4d7802bdff5","plan_id":"PLAN-7","task_id":"PLAN-7.1","data":{"scores":{"ambiguity":0,"blast":2,"coupling":2,"novelty":0,"reversibility":1,"verification":1},"total":6,"score_band":"T2","overrides":[],"tier_planned":"T3","review":{"verdict":"overruled","by":"human","reason":"It touches the payment flow; it needs more than T2","original":{"scores":{"ambiguity":0,"blast":1,"coupling":1,"novelty":0,"reversibility":0,"verification":1},"total":3,"score_band":"T2","tier_planned":"T2"}}}}
+{"schema":"harness.events/v1","event_id":"01M4QQ0B00HCP2W3E4R5T6Y7V8","ts":"2026-10-13T10:00:00Z","type":"plan.intake","producer":{"name":"harness","version":"0.7.0"},"repo":{"name":"previouslyupcoming","remote_sha256":"8870c7e3b16d6d10f365ee183b8906cfe8c76d6a9fd8229e1990e0247877a6e3"},"mode":"observe","session_id":"8d2c4e1a-5b7f-4c3e-9a10-2f6b8e4d7c91","config_sha256":"9f811fd217cfa016d705daa56a07b63e731424ff9223514e5091e4d7802bdff5","plan_id":"PLAN-8","data":{"round":1,"ambiguity":1,"max_ambiguity":0,"questions":2,"settled":true,"review":{"verdict":"overruled","by":"human","reason":"A spike: the open questions are what it is for"}}}
+```
 
 ### Example: one task in observe mode
 

@@ -7493,7 +7493,9 @@ function loadConfig(dir = projectDir()) {
     markerTtlMinutes: Number.isInteger(yaml.gate?.marker_ttl_minutes) ? yaml.gate?.marker_ttl_minutes : 30,
     // Whether a commit may say an AI helped is the repository's call, not the Harness's: a home leaves
     // messages alone unless routing.yaml asks. The old layout always stripped, and keeps doing so.
-    stripAiAttribution: typeof yaml.commits?.strip_ai_attribution === "boolean" ? yaml.commits.strip_ai_attribution : !homed
+    stripAiAttribution: typeof yaml.commits?.strip_ai_attribution === "boolean" ? yaml.commits.strip_ai_attribution : !homed,
+    // 0 unless routing.yaml says 1 or 2: a brief with decisions left open doesn't start by default.
+    intakeMaxAmbiguity: [0, 1, 2].includes(yaml.intake?.max_ambiguity) ? yaml.intake?.max_ambiguity : 0
   };
 }
 
@@ -7755,7 +7757,9 @@ function buildRecord(config2, taskId2, events = readEvents(config2), previous = 
     total: score.total,
     score_band: score.score_band,
     overrides: score.overrides,
-    tier_planned: score.tier_planned
+    tier_planned: score.tier_planned,
+    // The person's agreement or overrule, with the orchestrator's original estimate (H4).
+    ...score.review ? { review: score.review } : {}
   };
   if (config2.includeJustifications && plan && Object.keys(plan.justifications).length) rubric.justifications = plan.justifications;
   const lastDispatch = last(dispatched);

@@ -42,7 +42,8 @@
         "total": { "type": "integer", "minimum": 0, "maximum": 12 },
         "score_band": { "$ref": "harness.events.v1.json#/$defs/tier" },
         "overrides": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
-        "tier_planned": { "$ref": "harness.events.v1.json#/$defs/tier" }
+        "tier_planned": { "$ref": "harness.events.v1.json#/$defs/tier" },
+        "review": { "description": "The person's review of the score, copied from task.scored (H4).", "$ref": "harness.events.v1.json#/$defs/data/task.scored/properties/review" }
       }
     },
     "scope": {

@@ -7494,7 +7494,9 @@ function loadConfig(dir = projectDir()) {
     markerTtlMinutes: Number.isInteger(yaml.gate?.marker_ttl_minutes) ? yaml.gate?.marker_ttl_minutes : 30,
     // Whether a commit may say an AI helped is the repository's call, not the Harness's: a home leaves
     // messages alone unless routing.yaml asks. The old layout always stripped, and keeps doing so.
-    stripAiAttribution: typeof yaml.commits?.strip_ai_attribution === "boolean" ? yaml.commits.strip_ai_attribution : !homed
+    stripAiAttribution: typeof yaml.commits?.strip_ai_attribution === "boolean" ? yaml.commits.strip_ai_attribution : !homed,
+    // 0 unless routing.yaml says 1 or 2: a brief with decisions left open doesn't start by default.
+    intakeMaxAmbiguity: [0, 1, 2].includes(yaml.intake?.max_ambiguity) ? yaml.intake?.max_ambiguity : 0
   };
 }
 
