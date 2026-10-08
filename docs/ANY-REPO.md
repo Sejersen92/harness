@@ -96,14 +96,14 @@ claude --plugin-dir <plugin> --agent harness:orchestrator
 The rules are today's list (`DENY` in `lib/setup.mjs`), with the guardrail paths moved to the home:
 
 ```text
-Edit(~/.harness/repos/*/state/**)      Write(~/.harness/repos/*/state/**)
+Edit(~/.harness/repos/*/state/**)
 Edit(~/.harness/repos/*/routing.yaml)  Edit(~/.harness/repos/*/settings.json)
-Edit(~/.harness/githooks/**)           Write(~/.harness/githooks/**)
+Edit(~/.harness/githooks/**)
 Edit(.github/workflows/**)
 ...plus the git and gh rules, unchanged
 ```
 
-`PLAN.md` stays writable, because the orchestrator writes it. The session-start hook tells the session where the home and its `PLAN.md` are, the same way it hands over the `harness-emit` path today.
+Only `Edit(...)` rules: S9 showed that `Write(path)` rules are never matched, and that `Edit` rules cover every file tool. `PLAN.md` stays writable, because the orchestrator writes it. `settings.json` also carries `worktree.baseRef: "head"` (S6). The session-start hook tells the session where the home and its `PLAN.md` are, the same way it hands over the `harness-emit` path today.
 
 `attribution.commit: ""` is no longer set by the Harness. Whether a repository's commits carry an AI trailer is that repository's choice. PU's committed `.claude/settings.json` keeps it, and the commit-msg hook still strips trailers in PU.
 
@@ -195,7 +195,7 @@ This doesn't block anything else in this design. It's its own track, R1 to R3 in
 
 | | Where | What | Depends on |
 |---|---|---|---|
-| **S9** | harness, by hand | Spike. Do `--settings` deny rules with `~/` and `*` paths apply, and add to the user's own settings rather than replacing them? Can `--add-dir` let the orchestrator write in the home with no prompt? Does Git for Windows accept a `core.hooksPath` outside the repository? Can the dispatcher chain to `.husky/`? | none |
+| **S9** | harness, by hand | **Done 2026-10-08, passed** ([spikes.md](spikes.md#s9-the-harness-with-nothing-in-the-repository-2026-10-08)). Spike. Do `--settings` deny rules with `~/` and `*` paths apply, and add to the user's own settings rather than replacing them? Can `--add-dir` let the orchestrator write in the home with no prompt? Does Git for Windows accept a `core.hooksPath` outside the repository? Can the dispatcher chain to `.husky/`? | none |
 | **P1** | PU CLI | `pu update` installs the Harness when it's missing and runs `--update` when it's present. It sets `cleanupPeriodDays` to at least 180 (never lowering a higher value), replaces the `gh auth login` hint with a credential-neutral one, and doesn't let a failed doctor check make `start` report the install as unfinished. Refresh CONNECTING-A-WORK-PC.md. | none, so it can run alongside S9 |
 | **H1** | harness | `repoHome()`, with every path in the table above moved to it, plus the one-release fallback. | S9 |
 | **H2** | harness | `harness-enrol` and `harness-forget`; the doctor checks the home and reports orphans. | H1 |
@@ -231,3 +231,70 @@ The hub track (see "One hub") runs alongside and blocks nothing:
    - (c) Publish `harness-eval` as a release asset that a workflow can download without a token, if the repository is public anyway.
 
    (b) is the simplest by far, and makes (c) unnecessary.
+
+## Briefs
+
+Each brief is written in the intake format, so it's also an example of what the gate asks for. To run one, start from a clean `main` in the repository the brief names, run `pu harness`, give the new branch a name, and paste the brief.
+
+### Brief P1: `pu update` sets up the Harness (PreviouslyUpcoming)
+
+Suggested branch: `feat/update-covers-harness`.
+
+```text
+GOAL
+`pu update` sets up the Harness on this machine, so that on a fresh PC (the work PC first)
+install.ps1 followed by `pu update` is everything needed before `pu harness`. It also stops Claude
+Code from deleting the transcripts that cost per task is read from.
+
+WHAT CHANGES
+1. Three new checks in `pu update` (Setup_ in Program.cs). Put the logic in pure functions in
+   Setup.cs or HarnessInstall.cs so it can be tested; follow the Check record's report-then-fix style.
+   a. Node: ok when `node --version` is 22 or later. Reported, never installed (like the .NET SDK).
+      Manual: winget install OpenJS.NodeJS.LTS
+   b. Harness: ok when the plugin is at HarnessInstall.ResolveTarget(null, recorded root, the PU
+      clone) and is current with its remote's default branch. Reuse Setup.ReadClone on the harness
+      checkout for "current". Found text says the version and folder, "not installed", or how far
+      behind. Fix: HarnessInstall.Run with update = already installed.
+      Place it after "Claude Code" and "PATH". The "pu build" check stays last.
+   c. Transcripts kept: ok when cleanupPeriodDays in ~/.claude/settings.json is 180 or more. Fix:
+      set it to 180 when it's missing or lower. Never lower a higher value; keep every other key;
+      back the file up first, as "hook wiring" does; leave invalid JSON alone and say so.
+2. HarnessInstall.Run returns 0 when the checkout is in place and its location is recorded,
+   whatever the doctor finds. The doctor's lines are still printed. pu harness start must no longer
+   say "The install did not finish" after a doctor warning.
+3. The hint when `git clone` of the harness fails is credential-neutral. Drop `gh auth login`. Say the
+   repository is private and git needs credentials for github.com/Sejersen92/harness, give
+   examples (Git Credential Manager, `gh auth setup-git`, or a folder-scoped includeIf in
+   ~/.gitconfig), then "run pu update again".
+4. install.ps1 installs Node LTS with winget when it's missing, as it already does for git and .NET.
+5. CONNECTING-A-WORK-PC.md: replace the stale install sections (the 0.1.0 pin, the single exe, the
+   four commands) with the current path: install.ps1 once, then pu update, then pu harness. Keep the
+   include-work and "what it does and does not carry" sections as they are.
+6. CLI version 1.17.0 and a CHANGELOG entry.
+
+SUCCESS SIGNALS (each is a test, except the last)
+- cleanupPeriodDays: missing gives 180; 30 gives 180; 365 stays 365; other keys are kept
+  byte-for-byte in value; invalid JSON is not written.
+- Node: "v22.16.0" passes; "v20.11.1" fails; no node fails.
+- Harness check: not installed, current and behind each give the right ok and found text.
+- HarnessInstall.Run returns 0, and still prints the doctor's lines, when the doctor exits 1 after a
+  good install. It still returns 1 when the clone, the pull or the location record fails.
+- The clone-failure output contains no "gh auth login" and does name credentials.
+- harness-eval passes.
+- By hand, for Mikkel: `pu update --dry-run` on the home PC lists Node, Harness and Transcripts kept.
+
+BOUNDARIES
+In scope: cli/PreviouslyUpcoming.Cli (Program.cs Setup_, Setup.cs, HarnessInstall.cs, and
+HarnessStart.cs only where item 2 needs it), its tests, install.ps1, CONNECTING-A-WORK-PC.md,
+CHANGELOG.md, and the csproj version.
+Out of scope: everything else in ANY-REPO.md. No ~/.harness/repos, no enrolment, no forget, and no
+change to how pu harness launches claude. No web, DocumentService or harness-repository changes.
+Must not touch: other keys in the user's settings.json; the rule that the "pu build" check runs
+last; any compiled-in machine path.
+
+DECISIONS
+- 180 days (Mikkel, 2026-10-07). Never lower a higher value.
+- pu update reports Node and doesn't install it; install.ps1 installs it.
+- The Harness's folder comes from ResolveTarget as it is today. No new location rules.
+- Check names and wording: the orchestrator decides, matching the existing checks.
+```
