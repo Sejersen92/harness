@@ -4,6 +4,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { CI_CONFIG, CI_WORKFLOW, readCiStages, sameStages } from "./ci.ts";
 import { loadConfig, NOT_ENROLLED } from "./config.ts";
 import { GIT_DENY, githooksDir, HARNESS_HOOKS, harnessBranches, homeDeny, hooksState, orphans, ownHooks } from "./home.ts";
 import { pluginRecordPath } from "./spool.ts";
@@ -116,6 +117,16 @@ export function checks(
 
   if (config.layout?.kind === "home") homeChecks(dir, config.layout.root, add);
   else if (config.layout) repositoryChecks(dir, add);
+
+  // The stages are written twice in a repository with the CI files (C1): the two copies must agree, or
+  // CI checks something the local gate doesn't.
+  const ciConfig = join(dir, CI_CONFIG);
+  if (config.layout && (existsSync(ciConfig) || existsSync(join(dir, CI_WORKFLOW)))) {
+    const read = readCiStages(ciConfig);
+    if ("problem" in read) add("ci", "warn", `${CI_WORKFLOW} runs the stages in ${CI_CONFIG}, but ${read.problem} (harness-init --ci writes it)`);
+    else if (sameStages(read.stages, config.stages)) add("ci", "pass", `${CI_CONFIG} has the same ${read.stages.length} stage(s) as ${config.layout.routingYaml}`);
+    else add("ci", "warn", `the stages in ${CI_CONFIG} differ from those in ${config.layout.routingYaml}; change both together, or CI checks something the local gate doesn't`);
+  }
 
   try {
     // resolve() first: git reports C:/src/x, the disk C:\src\x, and only the letters' case is the question.

@@ -1507,7 +1507,7 @@ var require_stringify = __commonJS({
         props.push(doc.directives.tagString(tag));
       return props.join(" ");
     }
-    function stringify2(item, ctx, onComment, onChompKeep) {
+    function stringify3(item, ctx, onComment, onChompKeep) {
       if (identity.isPair(item))
         return item.toString(ctx, onComment, onChompKeep);
       if (identity.isAlias(item)) {
@@ -1536,7 +1536,7 @@ var require_stringify = __commonJS({
 ${ctx.indent}${str}`;
     }
     exports.createStringifyContext = createStringifyContext;
-    exports.stringify = stringify2;
+    exports.stringify = stringify3;
   }
 });
 
@@ -1546,7 +1546,7 @@ var require_stringifyPair = __commonJS({
     "use strict";
     var identity = require_identity();
     var Scalar = require_Scalar();
-    var stringify2 = require_stringify();
+    var stringify3 = require_stringify();
     var stringifyComment = require_stringifyComment();
     function stringifyPair({ key, value }, ctx, onComment, onChompKeep) {
       const { allNullValues, doc, indent, indentStep, options: { commentString, indentSeq, simpleKeys } } = ctx;
@@ -1568,7 +1568,7 @@ var require_stringifyPair = __commonJS({
       });
       let keyCommentDone = false;
       let chompKeep = false;
-      let str = stringify2.stringify(key, ctx, () => keyCommentDone = true, () => chompKeep = true);
+      let str = stringify3.stringify(key, ctx, () => keyCommentDone = true, () => chompKeep = true);
       if (!explicitKey && !ctx.inFlow && str.length > 1024) {
         if (simpleKeys)
           throw new Error("With simple keys, single line scalar must not span more than 1024 characters");
@@ -1620,7 +1620,7 @@ ${indent}:`;
         ctx.indent = ctx.indent.substring(2);
       }
       let valueCommentDone = false;
-      const valueStr = stringify2.stringify(value, ctx, () => valueCommentDone = true, () => chompKeep = true);
+      const valueStr = stringify3.stringify(value, ctx, () => valueCommentDone = true, () => chompKeep = true);
       let ws = " ";
       if (keyComment || vsb || vcb) {
         ws = vsb ? "\n" : "";
@@ -1761,7 +1761,7 @@ var require_addPairToJSMap = __commonJS({
     "use strict";
     var log = require_log();
     var merge = require_merge();
-    var stringify2 = require_stringify();
+    var stringify3 = require_stringify();
     var identity = require_identity();
     var toJS = require_toJS();
     function addPairToJSMap(ctx, map, { key, value }) {
@@ -1797,7 +1797,7 @@ var require_addPairToJSMap = __commonJS({
       if (typeof jsKey !== "object")
         return String(jsKey);
       if (identity.isNode(key) && ctx?.doc) {
-        const strCtx = stringify2.createStringifyContext(ctx.doc, {});
+        const strCtx = stringify3.createStringifyContext(ctx.doc, {});
         strCtx.anchors = /* @__PURE__ */ new Set();
         for (const node of ctx.anchors.keys())
           strCtx.anchors.add(node.anchor);
@@ -1864,12 +1864,12 @@ var require_stringifyCollection = __commonJS({
   "node_modules/yaml/dist/stringify/stringifyCollection.js"(exports) {
     "use strict";
     var identity = require_identity();
-    var stringify2 = require_stringify();
+    var stringify3 = require_stringify();
     var stringifyComment = require_stringifyComment();
     function stringifyCollection(collection, ctx, options) {
       const flow = ctx.inFlow ?? collection.flow;
-      const stringify3 = flow ? stringifyFlowCollection : stringifyBlockCollection;
-      return stringify3(collection, ctx, options);
+      const stringify4 = flow ? stringifyFlowCollection : stringifyBlockCollection;
+      return stringify4(collection, ctx, options);
     }
     function stringifyBlockCollection({ comment, items }, ctx, { blockItemPrefix, flowChars, itemIndent, onChompKeep, onComment }) {
       const { indent, options: { commentString } } = ctx;
@@ -1894,7 +1894,7 @@ var require_stringifyCollection = __commonJS({
           }
         }
         chompKeep = false;
-        let str2 = stringify2.stringify(item, itemCtx, () => comment2 = null, () => chompKeep = true);
+        let str2 = stringify3.stringify(item, itemCtx, () => comment2 = null, () => chompKeep = true);
         if (comment2)
           str2 += stringifyComment.lineComment(str2, itemIndent, commentString(comment2));
         if (chompKeep && comment2)
@@ -1961,7 +1961,7 @@ ${indent}${line}` : "\n";
         }
         if (comment)
           reqNewline = true;
-        let str = stringify2.stringify(item, itemCtx, () => comment = null);
+        let str = stringify3.stringify(item, itemCtx, () => comment = null);
         reqNewline || (reqNewline = lines.length > linesAtValue || str.includes("\n"));
         if (i < items.length - 1) {
           str += ",";
@@ -3322,7 +3322,7 @@ var require_stringifyDocument = __commonJS({
   "node_modules/yaml/dist/stringify/stringifyDocument.js"(exports) {
     "use strict";
     var identity = require_identity();
-    var stringify2 = require_stringify();
+    var stringify3 = require_stringify();
     var stringifyComment = require_stringifyComment();
     function stringifyDocument(doc, options) {
       const lines = [];
@@ -3337,7 +3337,7 @@ var require_stringifyDocument = __commonJS({
       }
       if (hasDirectives)
         lines.push("---");
-      const ctx = stringify2.createStringifyContext(doc, options);
+      const ctx = stringify3.createStringifyContext(doc, options);
       const { commentString } = ctx.options;
       if (doc.commentBefore) {
         if (lines.length !== 1)
@@ -3359,7 +3359,7 @@ var require_stringifyDocument = __commonJS({
           contentComment = doc.contents.comment;
         }
         const onChompKeep = contentComment ? void 0 : () => chompKeep = true;
-        let body = stringify2.stringify(doc.contents, ctx, () => contentComment = null, onChompKeep);
+        let body = stringify3.stringify(doc.contents, ctx, () => contentComment = null, onChompKeep);
         if (contentComment)
           body += stringifyComment.lineComment(body, "", commentString(contentComment));
         if ((body[0] === "|" || body[0] === ">") && lines[lines.length - 1] === "---") {
@@ -3367,7 +3367,7 @@ var require_stringifyDocument = __commonJS({
         } else
           lines.push(body);
       } else {
-        lines.push(stringify2.stringify(doc.contents, ctx));
+        lines.push(stringify3.stringify(doc.contents, ctx));
       }
       if (doc.directives?.docEnd) {
         if (doc.comment) {
@@ -5503,7 +5503,7 @@ var require_cst_scalar = __commonJS({
 var require_cst_stringify = __commonJS({
   "node_modules/yaml/dist/parse/cst-stringify.js"(exports) {
     "use strict";
-    var stringify2 = (cst) => "type" in cst ? stringifyToken(cst) : stringifyItem(cst);
+    var stringify3 = (cst) => "type" in cst ? stringifyToken(cst) : stringifyItem(cst);
     function stringifyToken(token) {
       switch (token.type) {
         case "block-scalar": {
@@ -5556,7 +5556,7 @@ var require_cst_stringify = __commonJS({
         res += stringifyToken(value);
       return res;
     }
-    exports.stringify = stringify2;
+    exports.stringify = stringify3;
   }
 });
 
@@ -7267,7 +7267,7 @@ var require_public_api = __commonJS({
       }
       return doc;
     }
-    function parse2(src, reviver, options) {
+    function parse3(src, reviver, options) {
       let _reviver = void 0;
       if (typeof reviver === "function") {
         _reviver = reviver;
@@ -7286,7 +7286,7 @@ var require_public_api = __commonJS({
       }
       return doc.toJS(Object.assign({ reviver: _reviver }, options));
     }
-    function stringify2(value, replacer, options) {
+    function stringify3(value, replacer, options) {
       let _replacer = null;
       if (typeof replacer === "function" || Array.isArray(replacer)) {
         _replacer = replacer;
@@ -7308,10 +7308,10 @@ var require_public_api = __commonJS({
         return value.toString(options);
       return new Document.Document(value, _replacer, options).toString(options);
     }
-    exports.parse = parse2;
+    exports.parse = parse3;
     exports.parseAllDocuments = parseAllDocuments;
     exports.parseDocument = parseDocument;
-    exports.stringify = stringify2;
+    exports.stringify = stringify3;
   }
 });
 
@@ -7367,12 +7367,108 @@ var require_dist = __commonJS({
   }
 });
 
-// src/lib/config.ts
+// src/lib/ci.ts
 var import_yaml = __toESM(require_dist(), 1);
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+var CI_CONFIG = ".github/harness-eval.yml";
+var CI_WORKFLOW = ".github/workflows/harness-eval.yml";
+var HARNESS_REPOSITORY = "Sejersen92/harness";
+function readCiStages(path) {
+  if (!existsSync(path)) return { problem: `there is no ${path}` };
+  let yaml;
+  try {
+    yaml = (0, import_yaml.parse)(readFileSync(path, "utf8"));
+  } catch (error) {
+    return { problem: `${path} is not valid YAML: ${error.message.split("\n")[0]}` };
+  }
+  const stages = yaml?.eval?.stages;
+  return Array.isArray(stages) ? { stages } : { problem: `${path} has no eval.stages list` };
+}
+var canonical = (stages) => JSON.stringify(stages.map((s) => ({ name: s.name, run: s.run, cwd: s.cwd ?? null, env: s.env ?? null, timeout_minutes: s.timeout_minutes ?? null })));
+var sameStages = (a, b) => canonical(a) === canonical(b);
+function ciConfigText(stages) {
+  return [
+    "# The stages harness-eval runs on every pull request, from .github/workflows/harness-eval.yml.",
+    "# They are a copy of eval.stages in this repository's routing.yaml, which is in its Harness home",
+    "# because a CI runner has none. Change both together: harness-doctor warns when they differ.",
+    (0, import_yaml.stringify)({ eval: { stages } }).trimEnd(),
+    ""
+  ].join("\n");
+}
+function ciWorkflowText(dir2, stages) {
+  const npmFolders = [...new Set(stages.filter((s) => /^\s*npm\b/.test(s.run)).map((s) => s.cwd ?? "."))];
+  const dotnet = stages.some((s) => /^\s*dotnet\b/.test(s.run));
+  const lines = [
+    "# The Harness eval on every pull request: the stages in .github/harness-eval.yml, run by the same",
+    "# harness-eval that gates a commit locally. Written by harness-init --ci.",
+    "#",
+    "# The local gate can be skipped (git commit --no-verify); this runs on whatever a branch contains.",
+    "# Make it a required check on the default branch to close the loop.",
+    "name: harness-eval",
+    "",
+    "on:",
+    "  pull_request:",
+    "  workflow_dispatch:",
+    "",
+    "permissions:",
+    "  contents: read",
+    "",
+    "jobs:",
+    "  eval:",
+    "    runs-on: ubuntu-latest",
+    "    steps:",
+    "      - uses: actions/checkout@v4",
+    "",
+    "      # The Harness is public, so this needs no token.",
+    "      - uses: actions/checkout@v4",
+    "        with:",
+    `          repository: ${HARNESS_REPOSITORY}`,
+    "          path: .harness-plugin",
+    "",
+    "      - uses: actions/setup-node@v4",
+    "        with:",
+    "          node-version: 22"
+  ];
+  if (dotnet) {
+    lines.push("", "      - uses: actions/setup-dotnet@v4", "        with:", '          dotnet-version: "10.0.x"');
+  }
+  for (const folder of npmFolders) {
+    const install = existsSync(join(dir2, folder, "package-lock.json")) ? "npm ci" : "npm install";
+    lines.push("", `      - name: Install dependencies${folder === "." ? "" : ` (${folder})`}`, `        run: ${install}`);
+    if (folder !== ".") lines.push(`        working-directory: ${folder}`);
+  }
+  lines.push(
+    "",
+    "      # --ci evaluates the checkout as it is and writes no pass marker. A failing stage fails the check,",
+    "      # and its last lines are in the log.",
+    "      - name: Harness eval",
+    `        run: node .harness-plugin/bin/harness-eval.mjs --ci --config ${CI_CONFIG}`,
+    ""
+  );
+  return lines.join("\n");
+}
+function ciPlan(dir2, stages, declined) {
+  const config = join(dir2, CI_CONFIG);
+  const workflow = join(dir2, CI_WORKFLOW);
+  const have = [existsSync(config), existsSync(workflow)];
+  const state = have.every(Boolean) ? "present" : have.some(Boolean) ? "partial" : declined ? "declined" : "missing";
+  const steps2 = [];
+  if (!have[0]) steps2.push({ what: `write ${CI_CONFIG} (stages: ${stages.map((s) => s.name).join(", ")})`, apply: () => write(config, ciConfigText(stages)) });
+  if (!have[1]) steps2.push({ what: `write ${CI_WORKFLOW} (runs harness-eval --ci --config ${CI_CONFIG} on every pull request)`, apply: () => write(workflow, ciWorkflowText(dir2, stages)) });
+  return { state, steps: steps2 };
+}
+function write(path, text) {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, text);
+}
+
+// src/lib/config.ts
+var import_yaml2 = __toESM(require_dist(), 1);
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync as existsSync2, readFileSync as readFileSync2 } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname as dirname2, join as join2, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // src/lib/ids.ts
@@ -7389,12 +7485,12 @@ var git = (cwd, ...args2) => {
     return null;
   }
 };
-var harnessHome = () => process.env.HARNESS_HOME || join(homedir(), ".harness");
+var harnessHome = () => process.env.HARNESS_HOME || join2(homedir(), ".harness");
 var normalisedPath = (dir2) => resolve(dir2).replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
 function repoHome(dir2) {
   const key = normalisedPath(dir2);
   const name = basename(key).replace(/[^a-z0-9._-]+/g, "-") || "repo";
-  return join(harnessHome(), "repos", `${name}-${sha256(key).slice(0, 8)}`);
+  return join2(harnessHome(), "repos", `${name}-${sha256(key).slice(0, 8)}`);
 }
 var NOT_ENROLLED = "not enrolled";
 function projectDir(cwd = process.cwd()) {
@@ -7402,9 +7498,9 @@ function projectDir(cwd = process.cwd()) {
 }
 function pluginRoot() {
   if (process.env.CLAUDE_PLUGIN_ROOT) return process.env.CLAUDE_PLUGIN_ROOT;
-  let dir2 = dirname(fileURLToPath(import.meta.url));
-  while (!existsSync(join(dir2, ".claude-plugin", "plugin.json"))) {
-    const parent = dirname(dir2);
+  let dir2 = dirname2(fileURLToPath(import.meta.url));
+  while (!existsSync2(join2(dir2, ".claude-plugin", "plugin.json"))) {
+    const parent = dirname2(dir2);
     if (parent === dir2) return null;
     dir2 = parent;
   }
@@ -7423,26 +7519,26 @@ var DEFAULT_TEST_GLOBS = [
 ];
 function loadConfig(dir2 = projectDir()) {
   const home2 = repoHome(dir2);
-  const homed = existsSync(join(home2, "routing.yaml"));
-  if (!homed && !existsSync(join(dir2, "routing.yaml"))) return { dir: dir2, mode: "off", reason: NOT_ENROLLED, home: home2 };
-  const routingYaml = join(homed ? home2 : dir2, "routing.yaml");
-  const bytes = readFileSync(routingYaml);
-  const yaml = (0, import_yaml.parse)(bytes.toString("utf8")) ?? {};
+  const homed = existsSync2(join2(home2, "routing.yaml"));
+  if (!homed && !existsSync2(join2(dir2, "routing.yaml"))) return { dir: dir2, mode: "off", reason: NOT_ENROLLED, home: home2 };
+  const routingYaml = join2(homed ? home2 : dir2, "routing.yaml");
+  const bytes = readFileSync2(routingYaml);
+  const yaml = (0, import_yaml2.parse)(bytes.toString("utf8")) ?? {};
   const metadata = yaml.metadata ?? {};
   const layout = homed ? {
     kind: "home",
     root: home2,
     routingYaml,
     metadataDir: home2,
-    markerPath: join(home2, "state", "eval-pass.json"),
-    planPath: join(home2, "PLAN.md")
+    markerPath: join2(home2, "state", "eval-pass.json"),
+    planPath: join2(home2, "PLAN.md")
   } : {
     kind: "repository",
     root: dir2,
     routingYaml,
-    metadataDir: join(dir2, metadata.dir ?? ".harness"),
-    markerPath: join(dir2, ".claude", "state", "eval-pass.json"),
-    planPath: join(dir2, "PLAN.md")
+    metadataDir: join2(dir2, metadata.dir ?? ".harness"),
+    markerPath: join2(dir2, ".claude", "state", "eval-pass.json"),
+    planPath: join2(dir2, "PLAN.md")
   };
   return {
     dir: dir2,
@@ -7466,26 +7562,26 @@ function loadConfig(dir2 = projectDir()) {
 }
 
 // src/lib/home.ts
-var import_yaml2 = __toESM(require_dist(), 1);
+var import_yaml3 = __toESM(require_dist(), 1);
 import { execFileSync as execFileSync2 } from "node:child_process";
-import { chmodSync, existsSync as existsSync3, mkdirSync as mkdirSync2, readdirSync as readdirSync2, readFileSync as readFileSync3, rmSync as rmSync2, statSync, writeFileSync as writeFileSync2 } from "node:fs";
+import { chmodSync, existsSync as existsSync4, mkdirSync as mkdirSync3, readdirSync as readdirSync2, readFileSync as readFileSync4, rmSync as rmSync2, statSync, writeFileSync as writeFileSync3 } from "node:fs";
 import { homedir as homedir2 } from "node:os";
-import { isAbsolute, join as join3, relative } from "node:path";
+import { isAbsolute, join as join4, relative } from "node:path";
 
 // src/lib/spool.ts
-import { appendFileSync, existsSync as existsSync2, mkdirSync, readdirSync, readFileSync as readFileSync2, renameSync, rmSync, writeFileSync } from "node:fs";
-import { join as join2, resolve as resolve2 } from "node:path";
+import { appendFileSync, existsSync as existsSync3, mkdirSync as mkdirSync2, readdirSync, readFileSync as readFileSync3, renameSync, rmSync, writeFileSync as writeFileSync2 } from "node:fs";
+import { join as join3, resolve as resolve2 } from "node:path";
 
 // src/lib/types.ts
 var messageOf = (error) => error instanceof Error ? error.message : String(error);
 
 // src/lib/spool.ts
-var registryPath = () => join2(harnessHome(), "spools.json");
-var pluginRecordPath = () => join2(harnessHome(), "plugin.json");
-var readRegistry = (path) => existsSync2(path) ? JSON.parse(readFileSync2(path, "utf8")) : { version: 1, spools: [] };
+var registryPath = () => join3(harnessHome(), "spools.json");
+var pluginRecordPath = () => join3(harnessHome(), "plugin.json");
+var readRegistry = (path) => existsSync3(path) ? JSON.parse(readFileSync3(path, "utf8")) : { version: 1, spools: [] };
 function writeRegistry(path, registry) {
-  mkdirSync(join2(path, ".."), { recursive: true });
-  writeFileSync(`${path}.tmp`, JSON.stringify(registry, null, 2) + "\n");
+  mkdirSync2(join3(path, ".."), { recursive: true });
+  writeFileSync2(`${path}.tmp`, JSON.stringify(registry, null, 2) + "\n");
   renameSync(`${path}.tmp`, path);
 }
 function registerSpool(spool, now = /* @__PURE__ */ new Date()) {
@@ -7504,17 +7600,17 @@ function recordFailure(config, why) {
   process.stderr.write(`harness: metadata not written: ${why}
 `);
   try {
-    mkdirSync(config.metadataDir, { recursive: true });
-    const file = join2(config.metadataDir, "emit-failures");
-    const count = existsSync2(file) ? Number.parseInt(readFileSync2(file, "utf8"), 10) || 0 : 0;
-    writeFileSync(file, `${count + 1}
+    mkdirSync2(config.metadataDir, { recursive: true });
+    const file = join3(config.metadataDir, "emit-failures");
+    const count = existsSync3(file) ? Number.parseInt(readFileSync3(file, "utf8"), 10) || 0 : 0;
+    writeFileSync2(file, `${count + 1}
 `);
   } catch {
   }
 }
 
 // src/lib/home.ts
-var readRepoRecord = (home2) => readJson(join3(home2, "repo.json"));
+var readRepoRecord = (home2) => readJson(join4(home2, "repo.json"));
 var harnessBranches = (home2) => readRepoRecord(home2)?.harness_branches ?? [];
 function recordBranch(home2, dir2, branch2) {
   const record = readRepoRecord(home2);
@@ -7523,9 +7619,14 @@ function recordBranch(home2, dir2, branch2) {
   if (known.includes(branch2)) return;
   const alive = known.filter((b) => git2(dir2, "show-ref", "--verify", "--quiet", `refs/heads/${b}`) !== null);
   try {
-    writeFileSync2(join3(home2, "repo.json"), JSON.stringify({ ...record, harness_branches: [...alive, branch2] }, null, 2) + "\n");
+    writeFileSync3(join4(home2, "repo.json"), JSON.stringify({ ...record, harness_branches: [...alive, branch2] }, null, 2) + "\n");
   } catch {
   }
+}
+function declineCi(home2, now = /* @__PURE__ */ new Date()) {
+  const record = readRepoRecord(home2);
+  if (!record) return;
+  writeFileSync3(join4(home2, "repo.json"), JSON.stringify({ ...record, ci_declined: utcNow(now) }, null, 2) + "\n");
 }
 var HARNESS_HOOKS = ["pre-commit", "commit-msg", "post-commit"];
 var GIT_HOOKS = [
@@ -7569,7 +7670,7 @@ var GIT_DENY = [
   "Bash(gh repo delete*)",
   "Bash(gh secret*)"
 ];
-var githooksDir = (home2) => join3(home2, "githooks");
+var githooksDir = (home2) => join4(home2, "githooks");
 var forward = (path) => path.replace(/\\/g, "/");
 var git2 = (dir2, ...args2) => {
   try {
@@ -7580,14 +7681,14 @@ var git2 = (dir2, ...args2) => {
 };
 var readJson = (path) => {
   try {
-    return JSON.parse(readFileSync3(path, "utf8"));
+    return JSON.parse(readFileSync4(path, "utf8"));
   } catch {
     return null;
   }
 };
 var readSafely = (path) => {
   try {
-    return readFileSync3(path, "utf8");
+    return readFileSync4(path, "utf8");
   } catch {
     return "";
   }
@@ -7616,45 +7717,45 @@ var homeSettings = (home2) => ({
 function ownHooksDir(dir2, previous) {
   if (!previous) {
     const common = git2(dir2, "rev-parse", "--git-common-dir") ?? ".git";
-    return join3(isAbsolute(common) ? common : join3(dir2, common), "hooks");
+    return join4(isAbsolute(common) ? common : join4(dir2, common), "hooks");
   }
-  if (previous.startsWith("~/")) return join3(homedir2(), previous.slice(2));
-  return isAbsolute(previous) || /^[A-Za-z]:/.test(previous) ? previous : join3(dir2, previous);
+  if (previous.startsWith("~/")) return join4(homedir2(), previous.slice(2));
+  return isAbsolute(previous) || /^[A-Za-z]:/.test(previous) ? previous : join4(dir2, previous);
 }
 function ownHooks(dir2, previous) {
   const folder = ownHooksDir(dir2, previous);
-  if (!existsSync3(folder)) return [];
-  return readdirSync2(folder).filter((name) => GIT_HOOKS.includes(name) && statSync(join3(folder, name)).isFile()).sort();
+  if (!existsSync4(folder)) return [];
+  return readdirSync2(folder).filter((name) => GIT_HOOKS.includes(name) && statSync(join4(folder, name)).isFile()).sort();
 }
 var wrapper = (name) => `#!/bin/sh
 exec "$(dirname "$0")/harness" ${name} "$@"
 `;
 function hookFiles(pluginRoot2, own) {
-  const files = /* @__PURE__ */ new Map([["harness", readFileSync3(join3(pluginRoot2, "templates", "githooks", "harness"), "utf8")]]);
+  const files = /* @__PURE__ */ new Map([["harness", readFileSync4(join4(pluginRoot2, "templates", "githooks", "harness"), "utf8")]]);
   for (const name of [.../* @__PURE__ */ new Set([...HARNESS_HOOKS, ...own])].sort()) files.set(name, wrapper(name));
   return files;
 }
 function routingYamlFor(dir2, pluginRoot2) {
-  const template = readFileSync3(join3(pluginRoot2, "templates", "routing.yaml"), "utf8");
+  const template = readFileSync4(join4(pluginRoot2, "templates", "routing.yaml"), "utf8");
   const stages = detectStages(dir2);
   const block = stages.length ? `  stages:
-${(0, import_yaml2.stringify)(stages, { flow: false }).split("\n").filter(Boolean).map((l) => `    ${l}`).join("\n")}` : "  stages: []             # none detected: add the build and test commands this repository uses";
+${(0, import_yaml3.stringify)(stages, { flow: false }).split("\n").filter(Boolean).map((l) => `    ${l}`).join("\n")}` : "  stages: []             # none detected: add the build and test commands this repository uses";
   return { text: template.replace(/^ {2}stages: \[\].*$/m, block), stages: stages.map((s) => s.name) };
 }
 function detectStages(dir2) {
   const stages = [];
   const shallow = [".", ...readdirSync2(dir2, { withFileTypes: true }).filter((e) => e.isDirectory() && !e.name.startsWith(".") && e.name !== "node_modules").map((e) => e.name)];
   for (const sub of shallow) {
-    const root2 = join3(dir2, sub);
+    const root2 = join4(dir2, sub);
     const solution = readdirSync2(root2).filter((f) => /\.(sln|slnx)$/.test(f))[0];
-    const testProject = solution ? null : readdirSync2(root2, { withFileTypes: true }).filter((e) => e.isDirectory() && /\.Tests?$/.test(e.name) && readdirSync2(join3(root2, e.name)).some((f) => f.endsWith(".csproj"))).map((e) => e.name)[0];
+    const testProject = solution ? null : readdirSync2(root2, { withFileTypes: true }).filter((e) => e.isDirectory() && /\.Tests?$/.test(e.name) && readdirSync2(join4(root2, e.name)).some((f) => f.endsWith(".csproj"))).map((e) => e.name)[0];
     const dotnet = solution ?? testProject;
     if (dotnet) {
       const where = sub === "." ? dotnet : `${sub}/${dotnet}`;
       stages.push({ name: `${sub === "." ? "" : `${sub}-`}build`, run: `dotnet build ${where} --nologo -v q` });
       stages.push({ name: `${sub === "." ? "" : `${sub}-`}test`, run: `dotnet test ${where} --no-build --nologo` });
     }
-    const pkg = readJson(join3(root2, "package.json"));
+    const pkg = readJson(join4(root2, "package.json"));
     for (const script of ["lint", "test", "build"]) {
       if (!pkg?.scripts?.[script]) continue;
       stages.push({ name: `${sub === "." ? "" : `${sub}-`}${script}`.replace(/^-/, ""), run: `npm run ${script}`, ...sub === "." ? {} : { cwd: sub } });
@@ -7671,38 +7772,38 @@ function hooksState(dir2, home2) {
 function enrolPlan(dir2, pluginRoot2, { branch: branch2, now = /* @__PURE__ */ new Date() } = {}) {
   const home2 = repoHome(dir2);
   const steps2 = [];
-  if (!existsSync3(join3(home2, "routing.yaml"))) {
-    const old = join3(dir2, "routing.yaml");
-    if (existsSync3(old)) {
-      steps2.push({ what: `copy routing.yaml into ${home2} (the repository's copy is left as it is)`, apply: () => writeHome(home2, "routing.yaml", readFileSync3(old)) });
+  if (!existsSync4(join4(home2, "routing.yaml"))) {
+    const old = join4(dir2, "routing.yaml");
+    if (existsSync4(old)) {
+      steps2.push({ what: `copy routing.yaml into ${home2} (the repository's copy is left as it is)`, apply: () => writeHome(home2, "routing.yaml", readFileSync4(old)) });
     } else {
       const { text, stages } = routingYamlFor(dir2, pluginRoot2);
-      steps2.push({ what: `write ${join3(home2, "routing.yaml")} (mode observe; stages: ${stages.join(", ") || "none detected"})`, apply: () => writeHome(home2, "routing.yaml", text) });
+      steps2.push({ what: `write ${join4(home2, "routing.yaml")} (mode observe; stages: ${stages.join(", ") || "none detected"})`, apply: () => writeHome(home2, "routing.yaml", text) });
     }
   }
-  if (!existsSync3(join3(home2, "repo.json"))) {
+  if (!existsSync4(join4(home2, "repo.json"))) {
     const record = { schema: "harness.repo/v1", repo_dir: dir2, enrolled: utcNow(now) };
-    steps2.push({ what: `write ${join3(home2, "repo.json")}`, apply: () => writeHome(home2, "repo.json", JSON.stringify(record, null, 2) + "\n") });
+    steps2.push({ what: `write ${join4(home2, "repo.json")}`, apply: () => writeHome(home2, "repo.json", JSON.stringify(record, null, 2) + "\n") });
   }
   const settings = JSON.stringify(homeSettings(home2), null, 2) + "\n";
-  if (readSafely(join3(home2, "settings.json")) !== settings) {
-    steps2.push({ what: `write ${join3(home2, "settings.json")} (${homeDeny(home2).length} deny rules for Harness sessions, worktrees from HEAD)`, apply: () => writeHome(home2, "settings.json", settings) });
+  if (readSafely(join4(home2, "settings.json")) !== settings) {
+    steps2.push({ what: `write ${join4(home2, "settings.json")} (${homeDeny(home2).length} deny rules for Harness sessions, worktrees from HEAD)`, apply: () => writeHome(home2, "settings.json", settings) });
   }
   const hooks = hooksState(dir2, home2);
   const own = ownHooks(dir2, hooks.previous);
   const files = hookFiles(pluginRoot2, own);
   const folder = githooksDir(home2);
-  const present = existsSync3(folder) ? readdirSync2(folder) : [];
-  const stale = [...files].some(([name, text]) => readSafely(join3(folder, name)) !== text) || present.some((name) => !files.has(name));
+  const present = existsSync4(folder) ? readdirSync2(folder) : [];
+  const stale = [...files].some(([name, text]) => readSafely(join4(folder, name)) !== text) || present.some((name) => !files.has(name));
   if (stale) {
     steps2.push({
       what: `write the git hooks in ${folder}: the Harness's ${HARNESS_HOOKS.join(", ")}${own.length ? `, then the repository's own ${own.join(", ")}` : ""}`,
       apply: () => {
-        mkdirSync2(folder, { recursive: true });
-        for (const name of present) if (!files.has(name)) rmSync2(join3(folder, name), { force: true });
+        mkdirSync3(folder, { recursive: true });
+        for (const name of present) if (!files.has(name)) rmSync2(join4(folder, name), { force: true });
         for (const [name, text] of files) {
-          writeFileSync2(join3(folder, name), text);
-          chmodSync(join3(folder, name), 493);
+          writeFileSync3(join4(folder, name), text);
+          chmodSync(join4(folder, name), 493);
         }
       }
     });
@@ -7725,20 +7826,20 @@ function enrolPlan(dir2, pluginRoot2, { branch: branch2, now = /* @__PURE__ */ n
   return { home: home2, steps: steps2 };
 }
 function writeHome(home2, name, content) {
-  mkdirSync2(home2, { recursive: true });
-  writeFileSync2(join3(home2, name), content);
+  mkdirSync3(home2, { recursive: true });
+  writeFileSync3(join4(home2, name), content);
 }
 function homes() {
-  const root2 = join3(harnessHome(), "repos");
-  if (!existsSync3(root2)) return [];
-  return readdirSync2(root2, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => join3(root2, e.name)).map((home2) => ({ home: home2, repoDir: readJson(join3(home2, "repo.json"))?.repo_dir ?? null }));
+  const root2 = join4(harnessHome(), "repos");
+  if (!existsSync4(root2)) return [];
+  return readdirSync2(root2, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => join4(root2, e.name)).map((home2) => ({ home: home2, repoDir: readJson(join4(home2, "repo.json"))?.repo_dir ?? null }));
 }
-var orphans = () => homes().filter(({ repoDir }) => !repoDir || !existsSync3(join3(repoDir, ".git"))).map(({ home: home2 }) => home2);
+var orphans = () => homes().filter(({ repoDir }) => !repoDir || !existsSync4(join4(repoDir, ".git"))).map(({ home: home2 }) => home2);
 
 // src/lib/setup.ts
 import { execFileSync as execFileSync3 } from "node:child_process";
-import { existsSync as existsSync4, mkdirSync as mkdirSync3, readFileSync as readFileSync4, realpathSync, rmSync as rmSync3, writeFileSync as writeFileSync3 } from "node:fs";
-import { join as join4, resolve as resolve3 } from "node:path";
+import { existsSync as existsSync5, mkdirSync as mkdirSync4, readFileSync as readFileSync5, realpathSync, rmSync as rmSync3, writeFileSync as writeFileSync4 } from "node:fs";
+import { join as join5, resolve as resolve3 } from "node:path";
 var MIN_CLAUDE_CODE = [2, 1, 284];
 var MIN_NODE = 22;
 var DENY = [
@@ -7760,7 +7861,7 @@ var git3 = (dir2, ...args2) => {
 };
 var readJson2 = (path) => {
   try {
-    return JSON.parse(readFileSync4(path, "utf8"));
+    return JSON.parse(readFileSync5(path, "utf8"));
   } catch {
     return null;
   }
@@ -7782,11 +7883,11 @@ function checks(dir2, { pluginRoot: pluginRoot2, claudeVersion = readClaudeVersi
   else add("claude-code", atLeast(version(claudeVersion), MIN_CLAUDE_CODE) ? "pass" : "fail", `Claude Code ${claudeVersion} (needs ${MIN_CLAUDE_CODE.join(".")}+)`);
   const recorded = readJson2(pluginRecordPath());
   if (!recorded?.root) add("plugin-recorded", "fail", `${pluginRecordPath()} is missing: start Claude Code once with the plugin so git hooks can find it`);
-  else if (!existsSync4(join4(recorded.root, "bin", "harness-git-hook.mjs"))) add("plugin-recorded", "fail", `${pluginRecordPath()} points at ${recorded.root}, which has no bin/harness-git-hook.mjs`);
+  else if (!existsSync5(join5(recorded.root, "bin", "harness-git-hook.mjs"))) add("plugin-recorded", "fail", `${pluginRecordPath()} points at ${recorded.root}, which has no bin/harness-git-hook.mjs`);
   else if (pluginRoot2 && realpathSync.native(recorded.root).toLowerCase() !== realpathSync.native(pluginRoot2).toLowerCase()) add("plugin-recorded", "warn", `git hooks use ${recorded.root}, not this copy (${pluginRoot2})`);
   else add("plugin-recorded", "pass", `git hooks use ${recorded.root} (${recorded.version})`);
   if (config.mode === "off") {
-    add("routing-yaml", "fail", config.reason === NOT_ENROLLED ? `not enrolled: there is no ${join4(config.home, "routing.yaml")} (/harness:init enrols the repository)` : "mode is off or not recognised");
+    add("routing-yaml", "fail", config.reason === NOT_ENROLLED ? `not enrolled: there is no ${join5(config.home, "routing.yaml")} (/harness:init enrols the repository)` : "mode is off or not recognised");
   } else {
     const tiers = ["T1", "T2", "T3", "T4"].filter((t) => Number.isInteger(config.tiers?.[t]?.max_score) && typeof config.tiers?.[t]?.model === "string");
     if (tiers.length < 4) add("routing-yaml", "fail", `tiers ${["T1", "T2", "T3", "T4"].filter((t) => !tiers.includes(t)).join(", ")} are missing or malformed`);
@@ -7798,9 +7899,9 @@ function checks(dir2, { pluginRoot: pluginRoot2, claudeVersion = readClaudeVersi
   if (!config.metadataDir) add("spool-writable", "warn", "not enrolled, so there is no spool yet");
   else {
     try {
-      mkdirSync3(config.metadataDir, { recursive: true });
-      const probe = join4(config.metadataDir, `.doctor-${process.pid}`);
-      writeFileSync3(probe, "");
+      mkdirSync4(config.metadataDir, { recursive: true });
+      const probe = join5(config.metadataDir, `.doctor-${process.pid}`);
+      writeFileSync4(probe, "");
       rmSync3(probe);
       add("spool-writable", "pass", config.metadataDir);
     } catch (error) {
@@ -7809,6 +7910,13 @@ function checks(dir2, { pluginRoot: pluginRoot2, claudeVersion = readClaudeVersi
   }
   if (config.layout?.kind === "home") homeChecks(dir2, config.layout.root, add);
   else if (config.layout) repositoryChecks(dir2, add);
+  const ciConfig = join5(dir2, CI_CONFIG);
+  if (config.layout && (existsSync5(ciConfig) || existsSync5(join5(dir2, CI_WORKFLOW)))) {
+    const read = readCiStages(ciConfig);
+    if ("problem" in read) add("ci", "warn", `${CI_WORKFLOW} runs the stages in ${CI_CONFIG}, but ${read.problem} (harness-init --ci writes it)`);
+    else if (sameStages(read.stages, config.stages)) add("ci", "pass", `${CI_CONFIG} has the same ${read.stages.length} stage(s) as ${config.layout.routingYaml}`);
+    else add("ci", "warn", `the stages in ${CI_CONFIG} differ from those in ${config.layout.routingYaml}; change both together, or CI checks something the local gate doesn't`);
+  }
   try {
     const spelled = resolve3(dir2);
     const real = realpathSync.native(spelled);
@@ -7818,7 +7926,7 @@ function checks(dir2, { pluginRoot: pluginRoot2, claudeVersion = readClaudeVersi
   } catch (error) {
     add("path-casing", "warn", messageOf(error));
   }
-  const failures = Number.parseInt(readSafely2(join4(config.metadataDir ?? config.home, "emit-failures")), 10) || 0;
+  const failures = Number.parseInt(readSafely2(join5(config.metadataDir ?? config.home, "emit-failures")), 10) || 0;
   add("emit-failures", failures ? "warn" : "pass", failures ? `${failures} metadata write(s) failed; see stderr from the hooks` : "none");
   const lost = orphans();
   add(
@@ -7832,7 +7940,7 @@ function homeChecks(dir2, home2, add) {
   const hooks = hooksState(dir2, home2);
   const folder = githooksDir(home2);
   const own = ownHooks(dir2, hooks.previous);
-  const missing = ["harness", ...HARNESS_HOOKS, ...own].filter((h) => !existsSync4(join4(folder, h)));
+  const missing = ["harness", ...HARNESS_HOOKS, ...own].filter((h) => !existsSync5(join5(folder, h)));
   if (!hooks.ours) {
     add("git-hooks", "fail", `core.hooksPath is ${hooks.current ? `"${hooks.current}"` : "not set"}, not ${folder}: commits made outside Claude Code are not gated (something, such as husky's install, may have changed it; /harness:init puts it back)`);
   } else if (missing.length) {
@@ -7841,13 +7949,13 @@ function homeChecks(dir2, home2, add) {
     const branches = harnessBranches(home2);
     add("git-hooks", "pass", `${HARNESS_HOOKS.join(", ")}${own.length ? `, then the repository's own ${own.join(", ")}` : ""}; commits are gated on ${branches.length ? branches.join(", ") : "no branch yet (pu harness marks the one it starts on)"}`);
   }
-  const settings = readJson2(join4(home2, "settings.json")) ?? {};
+  const settings = readJson2(join5(home2, "settings.json")) ?? {};
   const denied = new Set(settings.permissions?.deny ?? []);
   const missingDeny = homeDeny(home2).filter((rule) => !denied.has(rule));
   add(
     "permissions",
     missingDeny.length ? "warn" : "pass",
-    missingDeny.length ? `${missingDeny.length} deny rule(s) missing from ${join4(home2, "settings.json")} (/harness:init writes them)` : `${denied.size} deny rules for Harness sessions, in ${join4(home2, "settings.json")}`
+    missingDeny.length ? `${missingDeny.length} deny rule(s) missing from ${join5(home2, "settings.json")} (/harness:init writes them)` : `${denied.size} deny rules for Harness sessions, in ${join5(home2, "settings.json")}`
   );
   add(
     "worktree-base",
@@ -7857,13 +7965,13 @@ function homeChecks(dir2, home2, add) {
 }
 function repositoryChecks(dir2, add) {
   const hooksPath = git3(dir2, "config", "core.hooksPath");
-  const missingHooks = HOOKS.filter((h) => !existsSync4(join4(dir2, ".githooks", h)));
+  const missingHooks = HOOKS.filter((h) => !existsSync5(join5(dir2, ".githooks", h)));
   if (hooksPath !== ".githooks") add("git-hooks", "fail", `core.hooksPath is ${hooksPath ? `"${hooksPath}"` : "not set"}: commits made outside Claude Code are not gated`);
   else if (missingHooks.length) add("git-hooks", "fail", `.githooks is missing ${missingHooks.join(", ")}`);
   else add("git-hooks", "pass", "pre-commit, commit-msg and post-commit are on");
   const notIgnored = GITIGNORE.filter((p) => git3(dir2, "check-ignore", "-q", "--no-index", p.replace(/^\//, "").replace(/\/$/, "/x")) === null);
   add("gitignore", notIgnored.length ? "warn" : "pass", notIgnored.length ? `not ignored: ${notIgnored.join(", ")}` : GITIGNORE.join(", "));
-  const settings = readJson2(join4(dir2, ".claude", "settings.json")) ?? {};
+  const settings = readJson2(join5(dir2, ".claude", "settings.json")) ?? {};
   add(
     "attribution-off",
     settings.attribution?.commit === "" ? "pass" : "warn",
@@ -7884,7 +7992,7 @@ function repositoryChecks(dir2, add) {
 }
 function readSafely2(path) {
   try {
-    return readFileSync4(path, "utf8");
+    return readFileSync5(path, "utf8");
   } catch {
     return "";
   }
@@ -7903,13 +8011,46 @@ var apply = args.includes("--apply");
 var branchAt = args.indexOf("--branch");
 var branch = branchAt >= 0 ? args[branchAt + 1] : void 0;
 var dir = projectDir();
+var say = (line = "") => process.stdout.write(line + "\n");
+if (args.includes("--ci")) {
+  const config = loadConfig(dir);
+  if (!config.layout) {
+    say(`harness-init --ci: ${dir} is not enrolled, so there are no eval stages to put in CI. Run harness-init --apply first.`);
+    process.exit(1);
+  }
+  const decline = args.includes("--decline");
+  const { state, steps: steps2 } = ciPlan(dir, config.stages, Boolean(readRepoRecord(config.home)?.ci_declined));
+  say(`harness-init --ci: ${dir}${apply || decline ? "" : " (dry run: nothing is changed)"}`);
+  say(`  ci: ${state}`);
+  if (decline) {
+    declineCi(config.home);
+    say(`  the no is recorded in ${config.home}, so pu harness won't offer the CI files again; harness-init --ci --apply still adds them`);
+    process.exit(0);
+  }
+  if (!steps2.length) {
+    say("  nothing to do: both CI files are in the repository");
+    process.exit(0);
+  }
+  if (!config.stages.length) {
+    say(`  eval.stages is empty in ${config.layout.routingYaml}, so there is nothing to put in CI yet`);
+    process.exit(1);
+  }
+  for (const step of steps2) say(`  - ${step.what}`);
+  if (!apply) {
+    say("\nRun again with --apply to write them, or with --decline to stop pu harness offering them.");
+    process.exit(0);
+  }
+  for (const step of steps2) step.apply();
+  say(`
+wrote ${steps2.length} file(s). They aren't committed: CI runs them once they're committed and pushed.`);
+  process.exit(0);
+}
 var root = pluginRoot();
 if (!root) {
-  process.stdout.write("harness-init: can't find the plugin's own folder, so there is no template to enrol from\n");
+  say("harness-init: can't find the plugin's own folder, so there is no template to enrol from");
   process.exit(1);
 }
 var { home, steps } = enrolPlan(dir, root, branch ? { branch } : {});
-var say = (line = "") => process.stdout.write(line + "\n");
 say(`harness-init: ${dir}${apply ? "" : " (dry run: nothing is changed)"}`);
 say(`  home: ${home}`);
 if (!steps.length) say("  nothing to do: it is enrolled, and everything enrolment sets up is in place");

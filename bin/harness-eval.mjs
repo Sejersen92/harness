@@ -1507,7 +1507,7 @@ var require_stringify = __commonJS({
         props.push(doc.directives.tagString(tag));
       return props.join(" ");
     }
-    function stringify(item, ctx, onComment, onChompKeep) {
+    function stringify2(item, ctx, onComment, onChompKeep) {
       if (identity.isPair(item))
         return item.toString(ctx, onComment, onChompKeep);
       if (identity.isAlias(item)) {
@@ -1536,7 +1536,7 @@ var require_stringify = __commonJS({
 ${ctx.indent}${str}`;
     }
     exports.createStringifyContext = createStringifyContext;
-    exports.stringify = stringify;
+    exports.stringify = stringify2;
   }
 });
 
@@ -1546,7 +1546,7 @@ var require_stringifyPair = __commonJS({
     "use strict";
     var identity = require_identity();
     var Scalar = require_Scalar();
-    var stringify = require_stringify();
+    var stringify2 = require_stringify();
     var stringifyComment = require_stringifyComment();
     function stringifyPair({ key, value }, ctx, onComment, onChompKeep) {
       const { allNullValues, doc, indent, indentStep, options: { commentString, indentSeq, simpleKeys } } = ctx;
@@ -1568,7 +1568,7 @@ var require_stringifyPair = __commonJS({
       });
       let keyCommentDone = false;
       let chompKeep = false;
-      let str = stringify.stringify(key, ctx, () => keyCommentDone = true, () => chompKeep = true);
+      let str = stringify2.stringify(key, ctx, () => keyCommentDone = true, () => chompKeep = true);
       if (!explicitKey && !ctx.inFlow && str.length > 1024) {
         if (simpleKeys)
           throw new Error("With simple keys, single line scalar must not span more than 1024 characters");
@@ -1620,7 +1620,7 @@ ${indent}:`;
         ctx.indent = ctx.indent.substring(2);
       }
       let valueCommentDone = false;
-      const valueStr = stringify.stringify(value, ctx, () => valueCommentDone = true, () => chompKeep = true);
+      const valueStr = stringify2.stringify(value, ctx, () => valueCommentDone = true, () => chompKeep = true);
       let ws = " ";
       if (keyComment || vsb || vcb) {
         ws = vsb ? "\n" : "";
@@ -1761,7 +1761,7 @@ var require_addPairToJSMap = __commonJS({
     "use strict";
     var log = require_log();
     var merge = require_merge();
-    var stringify = require_stringify();
+    var stringify2 = require_stringify();
     var identity = require_identity();
     var toJS = require_toJS();
     function addPairToJSMap(ctx, map, { key, value }) {
@@ -1797,7 +1797,7 @@ var require_addPairToJSMap = __commonJS({
       if (typeof jsKey !== "object")
         return String(jsKey);
       if (identity.isNode(key) && ctx?.doc) {
-        const strCtx = stringify.createStringifyContext(ctx.doc, {});
+        const strCtx = stringify2.createStringifyContext(ctx.doc, {});
         strCtx.anchors = /* @__PURE__ */ new Set();
         for (const node of ctx.anchors.keys())
           strCtx.anchors.add(node.anchor);
@@ -1864,12 +1864,12 @@ var require_stringifyCollection = __commonJS({
   "node_modules/yaml/dist/stringify/stringifyCollection.js"(exports) {
     "use strict";
     var identity = require_identity();
-    var stringify = require_stringify();
+    var stringify2 = require_stringify();
     var stringifyComment = require_stringifyComment();
     function stringifyCollection(collection, ctx, options) {
       const flow = ctx.inFlow ?? collection.flow;
-      const stringify2 = flow ? stringifyFlowCollection : stringifyBlockCollection;
-      return stringify2(collection, ctx, options);
+      const stringify3 = flow ? stringifyFlowCollection : stringifyBlockCollection;
+      return stringify3(collection, ctx, options);
     }
     function stringifyBlockCollection({ comment, items }, ctx, { blockItemPrefix, flowChars, itemIndent, onChompKeep, onComment }) {
       const { indent, options: { commentString } } = ctx;
@@ -1894,7 +1894,7 @@ var require_stringifyCollection = __commonJS({
           }
         }
         chompKeep = false;
-        let str2 = stringify.stringify(item, itemCtx, () => comment2 = null, () => chompKeep = true);
+        let str2 = stringify2.stringify(item, itemCtx, () => comment2 = null, () => chompKeep = true);
         if (comment2)
           str2 += stringifyComment.lineComment(str2, itemIndent, commentString(comment2));
         if (chompKeep && comment2)
@@ -1961,7 +1961,7 @@ ${indent}${line}` : "\n";
         }
         if (comment)
           reqNewline = true;
-        let str = stringify.stringify(item, itemCtx, () => comment = null);
+        let str = stringify2.stringify(item, itemCtx, () => comment = null);
         reqNewline || (reqNewline = lines.length > linesAtValue || str.includes("\n"));
         if (i < items.length - 1) {
           str += ",";
@@ -3322,7 +3322,7 @@ var require_stringifyDocument = __commonJS({
   "node_modules/yaml/dist/stringify/stringifyDocument.js"(exports) {
     "use strict";
     var identity = require_identity();
-    var stringify = require_stringify();
+    var stringify2 = require_stringify();
     var stringifyComment = require_stringifyComment();
     function stringifyDocument(doc, options) {
       const lines = [];
@@ -3337,7 +3337,7 @@ var require_stringifyDocument = __commonJS({
       }
       if (hasDirectives)
         lines.push("---");
-      const ctx = stringify.createStringifyContext(doc, options);
+      const ctx = stringify2.createStringifyContext(doc, options);
       const { commentString } = ctx.options;
       if (doc.commentBefore) {
         if (lines.length !== 1)
@@ -3359,7 +3359,7 @@ var require_stringifyDocument = __commonJS({
           contentComment = doc.contents.comment;
         }
         const onChompKeep = contentComment ? void 0 : () => chompKeep = true;
-        let body = stringify.stringify(doc.contents, ctx, () => contentComment = null, onChompKeep);
+        let body = stringify2.stringify(doc.contents, ctx, () => contentComment = null, onChompKeep);
         if (contentComment)
           body += stringifyComment.lineComment(body, "", commentString(contentComment));
         if ((body[0] === "|" || body[0] === ">") && lines[lines.length - 1] === "---") {
@@ -3367,7 +3367,7 @@ var require_stringifyDocument = __commonJS({
         } else
           lines.push(body);
       } else {
-        lines.push(stringify.stringify(doc.contents, ctx));
+        lines.push(stringify2.stringify(doc.contents, ctx));
       }
       if (doc.directives?.docEnd) {
         if (doc.comment) {
@@ -5503,7 +5503,7 @@ var require_cst_scalar = __commonJS({
 var require_cst_stringify = __commonJS({
   "node_modules/yaml/dist/parse/cst-stringify.js"(exports) {
     "use strict";
-    var stringify = (cst) => "type" in cst ? stringifyToken(cst) : stringifyItem(cst);
+    var stringify2 = (cst) => "type" in cst ? stringifyToken(cst) : stringifyItem(cst);
     function stringifyToken(token) {
       switch (token.type) {
         case "block-scalar": {
@@ -5556,7 +5556,7 @@ var require_cst_stringify = __commonJS({
         res += stringifyToken(value);
       return res;
     }
-    exports.stringify = stringify;
+    exports.stringify = stringify2;
   }
 });
 
@@ -7267,7 +7267,7 @@ var require_public_api = __commonJS({
       }
       return doc;
     }
-    function parse2(src, reviver, options) {
+    function parse3(src, reviver, options) {
       let _reviver = void 0;
       if (typeof reviver === "function") {
         _reviver = reviver;
@@ -7286,7 +7286,7 @@ var require_public_api = __commonJS({
       }
       return doc.toJS(Object.assign({ reviver: _reviver }, options));
     }
-    function stringify(value, replacer, options) {
+    function stringify2(value, replacer, options) {
       let _replacer = null;
       if (typeof replacer === "function" || Array.isArray(replacer)) {
         _replacer = replacer;
@@ -7308,10 +7308,10 @@ var require_public_api = __commonJS({
         return value.toString(options);
       return new Document.Document(value, _replacer, options).toString(options);
     }
-    exports.parse = parse2;
+    exports.parse = parse3;
     exports.parseAllDocuments = parseAllDocuments;
     exports.parseDocument = parseDocument;
-    exports.stringify = stringify;
+    exports.stringify = stringify2;
   }
 });
 
@@ -7368,12 +7368,29 @@ var require_dist = __commonJS({
 });
 
 // src/cli/harness-eval.ts
-import { isAbsolute, join as join4, relative } from "node:path";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { isAbsolute, join as join4, relative, resolve as resolve4 } from "node:path";
+
+// src/lib/ci.ts
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+var import_yaml = __toESM(require_dist(), 1);
+function readCiStages(path) {
+  if (!existsSync(path)) return { problem: `there is no ${path}` };
+  let yaml;
+  try {
+    yaml = (0, import_yaml.parse)(readFileSync(path, "utf8"));
+  } catch (error) {
+    return { problem: `${path} is not valid YAML: ${error.message.split("\n")[0]}` };
+  }
+  const stages = yaml?.eval?.stages;
+  return Array.isArray(stages) ? { stages } : { problem: `${path} has no eval.stages list` };
+}
 
 // src/lib/config.ts
-var import_yaml = __toESM(require_dist(), 1);
+var import_yaml2 = __toESM(require_dist(), 1);
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync as existsSync2, readFileSync as readFileSync2 } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7428,7 +7445,7 @@ function repoIdentity(dir) {
 function pluginRoot() {
   if (process.env.CLAUDE_PLUGIN_ROOT) return process.env.CLAUDE_PLUGIN_ROOT;
   let dir = dirname(fileURLToPath(import.meta.url));
-  while (!existsSync(join(dir, ".claude-plugin", "plugin.json"))) {
+  while (!existsSync2(join(dir, ".claude-plugin", "plugin.json"))) {
     const parent = dirname(dir);
     if (parent === dir) return null;
     dir = parent;
@@ -7439,7 +7456,7 @@ function producer() {
   try {
     const root = pluginRoot();
     if (!root) throw new Error("no plugin root");
-    const { version } = JSON.parse(readFileSync(join(root, ".claude-plugin", "plugin.json"), "utf8"));
+    const { version } = JSON.parse(readFileSync2(join(root, ".claude-plugin", "plugin.json"), "utf8"));
     return { name: "harness", version };
   } catch {
     return { name: "harness", version: "0.0.0-unknown" };
@@ -7458,11 +7475,11 @@ var DEFAULT_TEST_GLOBS = [
 ];
 function loadConfig(dir = projectDir()) {
   const home = repoHome(dir);
-  const homed = existsSync(join(home, "routing.yaml"));
-  if (!homed && !existsSync(join(dir, "routing.yaml"))) return { dir, mode: "off", reason: NOT_ENROLLED, home };
+  const homed = existsSync2(join(home, "routing.yaml"));
+  if (!homed && !existsSync2(join(dir, "routing.yaml"))) return { dir, mode: "off", reason: NOT_ENROLLED, home };
   const routingYaml = join(homed ? home : dir, "routing.yaml");
-  const bytes = readFileSync(routingYaml);
-  const yaml = (0, import_yaml.parse)(bytes.toString("utf8")) ?? {};
+  const bytes = readFileSync2(routingYaml);
+  const yaml = (0, import_yaml2.parse)(bytes.toString("utf8")) ?? {};
   const metadata = yaml.metadata ?? {};
   const layout = homed ? {
     kind: "home",
@@ -7502,7 +7519,7 @@ function loadConfig(dir = projectDir()) {
 
 // src/lib/eval.ts
 import { spawnSync, execFileSync as execFileSync2 } from "node:child_process";
-import { mkdirSync, readFileSync as readFileSync2, renameSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync as mkdirSync2, readFileSync as readFileSync3, renameSync, rmSync, writeFileSync as writeFileSync2 } from "node:fs";
 import { join as join2, resolve as resolve2 } from "node:path";
 var git2 = (dir, ...args2) => execFileSync2("git", ["-C", dir, ...args2], { maxBuffer: 1 << 30, stdio: ["ignore", "pipe", "ignore"] });
 var stagedDiffSha256 = (dir) => sha256(git2(dir, "diff", "--cached", "--binary"));
@@ -7520,8 +7537,8 @@ function unstaged(dir) {
   return [...modified.map((f) => `modified: ${f}`), ...untracked.map((f) => `untracked: ${f}`)];
 }
 function writeMarker(path, marker) {
-  mkdirSync(join2(path, ".."), { recursive: true });
-  writeFileSync(`${path}.tmp`, JSON.stringify(marker, null, 2) + "\n");
+  mkdirSync2(join2(path, ".."), { recursive: true });
+  writeFileSync2(`${path}.tmp`, JSON.stringify(marker, null, 2) + "\n");
   renameSync(`${path}.tmp`, path);
 }
 var clearMarker = (path) => rmSync(path, { force: true });
@@ -7539,7 +7556,7 @@ function stageProblems(stages) {
 var AC_ID = /PLAN-\d+(?:\.\d+)+\/AC-\d+/g;
 function runStages(dir, stages, logDir2, { onStage = () => {
 } } = {}) {
-  mkdirSync(logDir2, { recursive: true });
+  mkdirSync2(logDir2, { recursive: true });
   const results = [];
   let failed = null;
   for (const stage of stages) {
@@ -7560,7 +7577,7 @@ function runStages(dir, stages, logDir2, { onStage = () => {
     const output = Buffer.concat([run.stdout ?? Buffer.alloc(0), run.stderr ?? Buffer.alloc(0)]).toString("utf8") + (run.error ? `
 ${run.error.code === "ETIMEDOUT" ? `timed out after ${stage.timeout_minutes ?? 15} minutes` : run.error.message}
 ` : "");
-    writeFileSync(join2(logDir2, `${stage.name}.log`), output);
+    writeFileSync2(join2(logDir2, `${stage.name}.log`), output);
     const status = run.status === 0 && !run.error ? "pass" : "fail";
     results.push({ name: stage.name, status, duration_ms: Date.now() - started });
     if (status === "fail") failed = { stage: stage.name, output };
@@ -7581,7 +7598,7 @@ var passMarker = (dir, { diffSha256: diffSha2562, taskIds: taskIds2, configSha25
 });
 
 // src/lib/spool.ts
-import { appendFileSync, existsSync as existsSync3, mkdirSync as mkdirSync2, readdirSync, readFileSync as readFileSync3, renameSync as renameSync2, rmSync as rmSync2, writeFileSync as writeFileSync2 } from "node:fs";
+import { appendFileSync, existsSync as existsSync4, mkdirSync as mkdirSync3, readdirSync, readFileSync as readFileSync4, renameSync as renameSync2, rmSync as rmSync2, writeFileSync as writeFileSync3 } from "node:fs";
 import { join as join3, resolve as resolve3 } from "node:path";
 
 // src/lib/types.ts
@@ -7592,10 +7609,10 @@ var messageOf = (error) => error instanceof Error ? error.message : String(error
 // src/lib/spool.ts
 var MAX_LINE_BYTES = 4096;
 var registryPath = () => join3(harnessHome(), "spools.json");
-var readRegistry = (path) => existsSync3(path) ? JSON.parse(readFileSync3(path, "utf8")) : { version: 1, spools: [] };
+var readRegistry = (path) => existsSync4(path) ? JSON.parse(readFileSync4(path, "utf8")) : { version: 1, spools: [] };
 function writeRegistry(path, registry) {
-  mkdirSync2(join3(path, ".."), { recursive: true });
-  writeFileSync2(`${path}.tmp`, JSON.stringify(registry, null, 2) + "\n");
+  mkdirSync3(join3(path, ".."), { recursive: true });
+  writeFileSync3(`${path}.tmp`, JSON.stringify(registry, null, 2) + "\n");
   renameSync2(`${path}.tmp`, path);
 }
 function registerSpool(spool, now = /* @__PURE__ */ new Date()) {
@@ -7614,10 +7631,10 @@ function recordFailure(config2, why) {
   process.stderr.write(`harness: metadata not written: ${why}
 `);
   try {
-    mkdirSync2(config2.metadataDir, { recursive: true });
+    mkdirSync3(config2.metadataDir, { recursive: true });
     const file = join3(config2.metadataDir, "emit-failures");
-    const count = existsSync3(file) ? Number.parseInt(readFileSync3(file, "utf8"), 10) || 0 : 0;
-    writeFileSync2(file, `${count + 1}
+    const count = existsSync4(file) ? Number.parseInt(readFileSync4(file, "utf8"), 10) || 0 : 0;
+    writeFileSync3(file, `${count + 1}
 `);
   } catch {
   }
@@ -7629,8 +7646,8 @@ function appendLine(config2, file, record) {
     return false;
   }
   try {
-    const firstLineInFile = !existsSync3(file);
-    mkdirSync2(join3(file, ".."), { recursive: true });
+    const firstLineInFile = !existsSync4(file);
+    mkdirSync3(join3(file, ".."), { recursive: true });
     appendFileSync(file, line + "\n", { flag: "a" });
     if (firstLineInFile) registerSpool(config2);
     return true;
@@ -7643,18 +7660,18 @@ function sweep(config2, now) {
   const today = utcNow(now).slice(0, 10);
   const marker = join3(config2.metadataDir, "state", "swept");
   try {
-    if (existsSync3(marker) && readFileSync3(marker, "utf8").trim() === today) return;
+    if (existsSync4(marker) && readFileSync4(marker, "utf8").trim() === today) return;
     const cutoff = new Date(now.getTime() - config2.retentionDays * 864e5).toISOString().slice(0, 10);
     const folders = [["events", (n) => n.slice(0, 10)], ["routing-log", (n) => `${n.slice(0, 7)}-31`]];
     for (const [folder, toDate] of folders) {
       const dir = join3(config2.metadataDir, folder);
-      if (!existsSync3(dir)) continue;
+      if (!existsSync4(dir)) continue;
       for (const name of readdirSync(dir).filter((n) => n.endsWith(".jsonl"))) {
         if (toDate(name) < cutoff) rmSync2(join3(dir, name));
       }
     }
-    mkdirSync2(join3(config2.metadataDir, "state"), { recursive: true });
-    writeFileSync2(marker, today);
+    mkdirSync3(join3(config2.metadataDir, "state"), { recursive: true });
+    writeFileSync3(marker, today);
   } catch (error) {
     recordFailure(config2, `retention sweep: ${messageOf(error)}`);
   }
@@ -7691,7 +7708,7 @@ function emitEvent(config2, type, fields = {}, data = {}, now = /* @__PURE__ */ 
 var TIERS = ["T1", "T2", "T3", "T4"];
 function snapshotConfig(config2, repo, now = /* @__PURE__ */ new Date()) {
   const path = join3(config2.metadataDir, "configs", `${config2.config_sha256}.json`);
-  if (existsSync3(path)) return;
+  if (existsSync4(path)) return;
   const tiers = {};
   for (const tier of TIERS) {
     const t = config2.tiers[tier];
@@ -7710,8 +7727,8 @@ function snapshotConfig(config2, repo, now = /* @__PURE__ */ new Date()) {
     gate: { marker_ttl_minutes: config2.markerTtlMinutes }
   };
   try {
-    mkdirSync2(join3(path, ".."), { recursive: true });
-    writeFileSync2(`${path}.tmp`, JSON.stringify(snapshot, null, 2) + "\n");
+    mkdirSync3(join3(path, ".."), { recursive: true });
+    writeFileSync3(`${path}.tmp`, JSON.stringify(snapshot, null, 2) + "\n");
     renameSync2(`${path}.tmp`, path);
   } catch (error) {
     recordFailure(config2, `config snapshot: ${messageOf(error)}`);
@@ -7729,6 +7746,25 @@ var refuse = (why, details = []) => {
   if (details.length > 20) say(`  ... and ${details.length - 20} more`);
   return process.exit(2);
 };
+var configAt = args.indexOf("--config");
+if (configAt >= 0) {
+  const path = args[configAt + 1];
+  if (!ci) refuse("--config goes only with --ci: outside CI the stages come from routing.yaml, and a pass marker belongs to a home");
+  if (!path || path.startsWith("-")) refuse("--config needs the path of a file holding eval.stages, such as .github/harness-eval.yml");
+  const dir = projectDir();
+  const read = readCiStages(resolve4(dir, path));
+  if ("problem" in read) refuse(read.problem);
+  else {
+    const problem2 = stageProblems(read.stages);
+    if (problem2) refuse(problem2.replace("routing.yaml", path));
+    say(`harness-eval: ${read.stages.length} stage(s) for the checkout (ci, stages from ${path})`);
+    const logDir2 = mkdtempSync(join4(tmpdir(), "harness-eval-"));
+    const failed = report(runStages(dir, read.stages, logDir2, { onStage: progress }), logDir2, (p) => p);
+    if (failed) process.exit(1);
+    say("harness-eval: PASS (ci, no marker written)");
+    process.exit(0);
+  }
+}
 var config = loadConfig();
 if (config.mode === "off") {
   say(`harness-eval: the Harness is off here (${config.reason ?? "mode: off"}), so no eval is needed`);
@@ -7755,13 +7791,7 @@ var emit = (type, data) => {
 say(`harness-eval: ${config.stages.length} stage(s) for ${ci ? "the checkout (ci)" : `staged diff ${diffSha256.slice(0, 12)}`}${taskIds.length ? ` (${taskIds.join(", ")})` : ""}`);
 emit("eval.started", { task_ids: taskIds, diff_sha256: diffSha256, ci });
 var logDir = join4(config.metadataDir, "state", "eval");
-var outcome = runStages(config.dir, config.stages, logDir, {
-  // A progress line that the result overwrites only works on a terminal; in a log it is noise.
-  onStage: (stage) => process.stdout.isTTY && process.stdout.write(`  ....  ${stage.name}\r`)
-});
-for (const stage of outcome.stages) {
-  say(`  ${stage.status.padEnd(7)} ${stage.name.padEnd(24)} ${stage.status === "skipped" ? "" : `${(stage.duration_ms / 1e3).toFixed(1)}s`}`);
-}
+var outcome = runStages(config.dir, config.stages, logDir, { onStage: progress });
 emit("eval.completed", {
   result: outcome.result,
   stages: outcome.stages,
@@ -7770,16 +7800,7 @@ emit("eval.completed", {
   diff_sha256: diffSha256,
   ...outcome.failed_acs.length ? { attribution: "task" } : {}
 });
-if (outcome.failed) {
-  const tail = outcome.failed.output.trimEnd().split(/\r?\n/).slice(-60);
-  say();
-  say(`--- ${outcome.failed.stage}: last ${tail.length} lines (full log: ${shown(join4(logDir, `${outcome.failed.stage}.log`))}) ---`);
-  for (const line of tail) say(line);
-  say("---");
-  if (outcome.failed_acs.length) say(`failing acceptance criteria: ${outcome.failed_acs.join(", ")}`);
-  say(`harness-eval: FAIL at ${outcome.failed.stage}`);
-  process.exit(1);
-}
+if (report(outcome, logDir, shown)) process.exit(1);
 if (ci) {
   say("harness-eval: PASS (ci, no marker written)");
   process.exit(0);
@@ -7791,3 +7812,20 @@ if (stagedDiffSha256(config.dir) !== diffSha256 || unstaged(config.dir).length) 
 writeMarker(config.layout.markerPath, passMarker(config.dir, { diffSha256, taskIds, configSha256: config.config_sha256 }));
 say(`harness-eval: PASS - ${shown(config.layout.markerPath)} written; a commit of this staged diff is allowed for ${config.markerTtlMinutes} minutes`);
 process.exit(0);
+function progress(stage) {
+  if (process.stdout.isTTY) process.stdout.write(`  ....  ${stage.name}\r`);
+}
+function report(outcome2, logDir2, shown2) {
+  for (const stage of outcome2.stages) {
+    say(`  ${stage.status.padEnd(7)} ${stage.name.padEnd(24)} ${stage.status === "skipped" ? "" : `${(stage.duration_ms / 1e3).toFixed(1)}s`}`);
+  }
+  if (!outcome2.failed) return false;
+  const tail = outcome2.failed.output.trimEnd().split(/\r?\n/).slice(-60);
+  say();
+  say(`--- ${outcome2.failed.stage}: last ${tail.length} lines (full log: ${shown2(join4(logDir2, `${outcome2.failed.stage}.log`))}) ---`);
+  for (const line of tail) say(line);
+  say("---");
+  if (outcome2.failed_acs.length) say(`failing acceptance criteria: ${outcome2.failed_acs.join(", ")}`);
+  say(`harness-eval: FAIL at ${outcome2.failed.stage}`);
+  return true;
+}
