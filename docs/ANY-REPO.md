@@ -1,6 +1,6 @@
 # The Harness in any repository
 
-**Status:** design, for review (2026-10-08). Nothing here is built yet.
+**Status:** design, reviewed by Mikkel on 2026-10-08. His four decisions are recorded below; one question is still open. Nothing here is built yet.
 
 **What this is for:** today the Harness only works in a repository that commits it: `routing.yaml`, `.githooks/`, a `.gitignore` block and deny rules in `.claude/settings.json`. That rules out every repository Mikkel doesn't own, which is all of his work. This design makes the Harness work in **any** git repository without adding one byte to it, so `pu update` on the work PC followed by `pu harness` in a work repository is enough to start.
 
@@ -23,7 +23,7 @@ It also adds the **intake gate**: the orchestrator doesn't start a task until it
     harness  pre-commit  commit-msg  post-commit
   repos/
     previouslyupcoming-3f9a1c2b/   one home per enrolled clone
-      repo.json                    the clone's path, remote, enrolment date, the hooksPath it had before
+      repo.json                    the clone's path, remote, enrolment date, the hooksPath it had before, its Harness branches
       routing.yaml                 mode, tiers, eval stages, gate settings (was at the repo root)
       settings.json                the deny rules, passed to Claude Code at launch (was .claude/settings.json)
       PLAN.md                      the orchestrator's plans (was at the repo root)
@@ -55,7 +55,7 @@ No home means the Harness is off for that repository, just as no `routing.yaml` 
 
 ## Enrolling a repository
 
-`harness-enrol` (it replaces `harness-init`; `/harness:init` stays as the slash command name). It **shows the plan, then asks**, as init does today:
+`harness-enrol` (it replaces `harness-init`; `/harness:init` stays as the slash command name). Run by hand, it **shows the plan, then asks**, as init does today. Run by `pu harness`, it doesn't ask (see below):
 
 1. Create the home: write `repo.json`, and a `routing.yaml` with the stages detected from the repository (`detectStages`, unchanged: .NET solutions and test projects, npm lint/test/build).
 2. Write `settings.json`, the deny rules rewritten for the home (see below).
@@ -63,25 +63,26 @@ No home means the Harness is off for that repository, just as no `routing.yaml` 
 4. Record the clone's current `core.hooksPath` in `repo.json` (empty means `.git/hooks`), then set `core.hooksPath` to `~/.harness/githooks`.
 5. Register the spool in `spools.json`.
 
-`pu harness start` runs it when you start the Harness in a repository with no home, after asking.
+**Enrolment is automatic** (Mikkel, 2026-10-08). `pu harness` in a repository with no home enrols it without asking, because enrolling changes nothing a person has to review: no files appear in the tree, and the repository's own hooks keep running. It prints what it did, the home's path, the detected stages, and "`pu harness forget` undoes this". When no stages are detected, it still enrols, but says the gate can't pass until stages are added, and names the routing.yaml to edit. `/harness:init` stays for running enrolment by hand.
 
 ### Its own git hooks keep working
 
 Setting `core.hooksPath` turns off whatever hooks the repository had: husky (`.husky`), a committed `.githooks`, or `.git/hooks`. A work repository may depend on them. So the hook dispatcher, after its own step, runs **the repository's own hook of the same name** from the `hooksPath` recorded in `repo.json`, with the same arguments, and fails when it fails. Enrolment never silently removes a check the repository's owners put there.
 
-### What the gate gates
+### What the gate gates: Harness branches
 
-Today the pre-commit hook gates every commit in PU, including Mikkel's own (1–3 minutes each; accepted for PU). In a work repository whose stages are `dotnet build` and `dotnet test`, gating every hand commit is friction the tool shouldn't add.
+**Decided (Mikkel, 2026-10-08): the tool enables, it doesn't block.** The Harness is an add-on to ordinary development, so the git hook gates only **Harness branches**: branches that `pu harness` created or was started on, listed in `repo.json`. Every other branch is left alone, whether that's a colleague's workflow, a quick hand fix or a hotfix. Commits there go straight to the repository's own hooks.
 
-New setting, `gate.scope` in routing.yaml:
-- `harness-branches` (the default for a new enrolment): the git hook gates only commits on branches `pu harness start` created or was started on. Those are listed in `repo.json`. Commits on any other branch go straight through, to the repository's own hooks.
-- `all`: every commit, as PU does today. PU keeps `all`.
+This holds everywhere, PU included. Today PU gates every commit; under this design, Mikkel's hand commits on his own branches stop paying the 1–3 minutes. In repositories he owns, CI (below) still checks every pull request. There's no setting for it: one rule, so there's nothing to configure differently per repository.
 
-The Claude Code commit gate (the PreToolUse hook) is unchanged: inside a Harness session, every commit needs a pass.
+How this holds up:
+- **Inside a Harness session, every commit is gated, whatever the branch.** That's the Claude Code commit gate (the PreToolUse hook), which is unchanged. So an agent can't escape the gate with `git switch -c` onto an ungated branch.
+- **A person's commit on a Harness branch is gated**, because the branch's promise is that every commit on it passed the eval. `git commit --no-verify` is still the person's escape. The deny rules only bind Claude Code sessions, never the person.
+- **Merging a Harness branch** goes through the repository's normal review. In repositories Mikkel owns, CI runs the eval on the pull request.
 
 ## Deny rules without `.claude/settings.json`
 
-`pu harness start` launches Claude Code with:
+`pu harness` launches Claude Code with:
 
 ```text
 claude --plugin-dir <plugin> --agent harness:orchestrator
@@ -124,13 +125,17 @@ Forget says both of these when it finishes, so "sanitised" never means more than
 
 ## CI
 
+**Decided (Mikkel, 2026-10-08): every repository Mikkel owns gets the eval in CI.** Repositories he doesn't own never do, because nothing is committed there.
+
 PU's `eval.yml` runs `harness-eval --ci`, which reads the stages from the checked-out `routing.yaml`. A CI runner has no home. So:
 
 - `harness-eval --ci --config <path>` reads the stages from a file you name.
-- PU commits `.github/harness-eval.yml`, holding only `eval.stages`, and its workflow passes `--config`. This is opt-in, for a repository whose owner wants CI to run the same checks.
-- Work repositories never get it, since nothing is committed there.
+- An owned repository commits `.github/harness-eval.yml`, holding only `eval.stages`, plus the workflow, which passes `--config`.
+- **Owned** means the remote's owner is in PU's personal owners (`RepoIdentity.PersonalOwners`, today github.com/sejersen92). Enrolling an owned repository without the two CI files offers to add them as a commit on a Harness branch. That is the one committed change the Harness ever proposes, and only in a repository Mikkel owns.
 
-The cost: in PU, the stages are then written in two places (the home's routing.yaml and the CI file). The doctor warns when they differ.
+The costs:
+- **The stages are written twice:** in the home's routing.yaml and in the CI file. The doctor warns when they differ.
+- **Every owned repository needs the `HARNESS_READ_TOKEN` secret**, because the harness repository is private and the workflow checks it out. That's a step per repository today (see open questions).
 
 ## The intake gate
 
@@ -159,12 +164,32 @@ The threshold is `intake.max_ambiguity` in routing.yaml, default 0. Each round i
 
 **An example.** "I think I like colors red, blue and green" scores 2. The orchestrator would ask: Where do the colours go? Do they replace existing ones or add to them? What would show it worked: the contrast check passing, or Mikkel's eye? What must stay as it is?
 
+## One hub: each context knows its clones
+
+**Wanted (Mikkel, 2026-10-08):** a repository the Harness or `pu sync` meets should appear in PU's contexts list without anyone registering it. Each context should show, per device, where that device keeps its clone. A repo might be `c:\src\work\repo` on one machine and `c:\src\repo` on another. Full transparency, from a single hub.
+
+**What exists today:**
+- Contexts arrive in PU only through sessions: `pu sync` pushes a session, and its repository becomes a context, matched across machines by remote.
+- A repository with no session yet has to be registered by hand ("Register a repository before its first push").
+- The device record carries the vault layout, not where any repository lives.
+
+**What changes:**
+- **The CLI reports clones.** On each `pu sync`, and at enrolment, it sends one reading per clone it knows: from the repositories its staged sessions ran in, plus every `repo_dir` in `spools.json`. Each reading has the remote, the path on this device, whether the Harness is enrolled there, and when it was last seen. A remote PU hasn't seen before creates its context, with the same matching sessions use.
+- **DocumentService stores them on the context:** `clones: [{ deviceId, deviceName, path, harness, lastSeen }]`. This is an additive change (new nullable fields, merged and never replaced), keyed on device plus path, so two clones on one device are two entries.
+- **The contexts page** shows the clones under each context, one line per device: `HOME-PC  c:\src\previouslyupcoming  · harness · seen today`.
+- **`forget`** reports the clone's `harness: false` on the next sync, so the hub never claims an enrolment that no longer exists.
+
+**Governance:** a clone in a work-domain repository is reported only when the push forwards `--include-work`, the same rule sessions follow (`RepoIdentity.DomainOf`, HarnessSync step 4). The path and remote of a work repository are work data.
+
+This doesn't block anything else in this design. It's its own track, R1 to R3 in the work items, so the H items and W don't wait for it.
+
 ## The baseline
 
-The plugin changes how tasks are specified, which is part of what the baseline measures. So:
+**Decided (Mikkel, 2026-10-08): the baseline continues; nothing restarts.** The 10 tasks so far (PLAN-4.1 to 7.3) stay counted. Improving the components doesn't make earlier tasks stop being part of the baseline.
 
-- The K5 count restarts at the plugin version that ships the intake gate, in **any** repository. Work-repository tasks are better baseline data than more PU tasks, and they land in the Work bucket (2026-10-06).
-- The 10 tasks so far (PLAN-4.1 to 7.3) stay in PU as a **pre-intake cohort**. Comparing the two cohorts (eval rounds, escalations, first-pass rate) is the first measure of whether the gate helps.
+- The count continues in **any** repository. Work-repository tasks land in the Work bucket (2026-10-06), and they're better baseline data than more PU tasks.
+- Every line already carries the plugin version (`producer.version`) and `config_sha256`. So before and after the intake gate can still be compared (eval rounds, escalations, first-pass rate) without being split into separate baselines.
+- C16's freeze ("don't change the plugin or routing.yaml during a baseline") is relaxed accordingly: changes are allowed, and they're traceable through those two fields.
 
 ## Work items, in order
 
@@ -174,16 +199,35 @@ The plugin changes how tasks are specified, which is part of what the baseline m
 | **P1** | PU CLI | `pu update` installs the Harness when it's missing and runs `--update` when it's present. It sets `cleanupPeriodDays` to at least 180 (never lowering a higher value), replaces the `gh auth login` hint with a credential-neutral one, and doesn't let a failed doctor check make `start` report the install as unfinished. Refresh CONNECTING-A-WORK-PC.md. | none, so it can run alongside S9 |
 | **H1** | harness | `repoHome()`, with every path in the table above moved to it, plus the one-release fallback. | S9 |
 | **H2** | harness | `harness-enrol` and `harness-forget`; the doctor checks the home and reports orphans. | H1 |
-| **H3** | harness | Hook chaining and `gate.scope`. | H2 |
+| **H3** | harness | Hook chaining, and gating Harness branches only (`repo.json` lists them). | H2 |
 | **H4** | harness | The intake gate: the orchestrator's prompt, `intake.max_ambiguity`, the `plan.intake` event and its schema. | H1 |
-| **P2** | PU CLI | `pu harness start` enrols when there's no home and passes `--settings` and `--add-dir`; `pu harness forget [--all]`. | H2 |
-| **M** | PU | Migrate PU: the home from its `routing.yaml`; delete `routing.yaml`, `.githooks/` and the `.gitignore` block; CI moves to `--config`; drop the fallback. | P2, H3 |
+| **P2** | PU CLI | `pu harness` enrols automatically when there's no home, records the branch as a Harness branch, and passes `--settings` and `--add-dir`; `pu harness forget [--all]`. | H2 |
+| **C1** | harness | `harness-eval --ci --config`; enrolling an owned repository offers the two CI files. | H2 |
+| **M** | PU | Migrate PU: the home from its `routing.yaml`; delete `routing.yaml`, `.githooks/` and the `.gitignore` block; CI moves to `--config`; drop the fallback. | P2, H3, C1 |
 | **W** | work PC | `pu update`, then `pu harness` in a work repository, on one real task. **Done when that task commits through the gate and shows on the Routing page in the Work bucket.** | M |
 
 P1 and S9 go first and in parallel. The H items are harness work, and each can be an orchestrator run in the harness repository once H1 lands.
 
-## Open questions for Mikkel
+The hub track (see "One hub") runs alongside and blocks nothing:
 
-1. **`gate.scope` default for a new enrolment:** `harness-branches` (recommended), or `all` everywhere as in PU?
-2. **CI in PU:** a second committed file just for CI's stages (recommended), or no CI eval, leaving the local gate as the only one?
-3. **The pre-intake cohort:** keep the 10 tasks as a comparison (recommended), or drop them from the baseline altogether?
+| | Where | What | Depends on |
+|---|---|---|---|
+| **R1** | DocumentService | `clones[]` on the context (additive, keyed on device plus path); a push of clone readings that creates unknown contexts. | none |
+| **R2** | PU CLI | Clone readings on `pu sync` and at enrolment, from staged sessions and `spools.json`, following the include-work rule. | R1 |
+| **R3** | web | The clones per device on the contexts page. | R1 |
+
+## Decided (2026-10-08)
+
+1. **Gate Harness branches only**, everywhere, PU included. The tool enables, it doesn't block.
+2. **Every repository Mikkel owns gets the eval in CI.**
+3. **The 10 tasks stay in the baseline.** The baseline continues, and the plugin version tells the versions apart.
+4. **Enrolment is automatic** on `pu harness`.
+
+## Open questions
+
+1. **`HARNESS_READ_TOKEN` in every owned repository.** CI checks out the private harness repository, so each owned repository needs the secret. The options:
+   - (a) `pu harness` sets it with `gh secret set` from a token kept locally. That's one more credential on disk.
+   - (b) Make the harness repository public. It holds no secrets, but it's your call.
+   - (c) Publish `harness-eval` as a release asset that a workflow can download without a token, if the repository is public anyway.
+
+   (b) is the simplest by far, and makes (c) unnecessary.
