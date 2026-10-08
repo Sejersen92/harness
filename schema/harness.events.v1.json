@@ -24,6 +24,7 @@
   },
   "allOf": [
     { "if": { "$ref": "#/$defs/is/plan.created" }, "then": { "required": ["plan_id"], "properties": { "data": { "$ref": "#/$defs/data/plan.created" } } } },
+    { "if": { "$ref": "#/$defs/is/plan.intake" }, "then": { "required": ["plan_id"], "properties": { "data": { "$ref": "#/$defs/data/plan.intake" } } } },
     { "if": { "$ref": "#/$defs/is/task.scored" }, "then": { "required": ["task_id"], "properties": { "data": { "$ref": "#/$defs/data/task.scored" } } } },
     { "if": { "$ref": "#/$defs/is/task.dispatched" }, "then": { "required": ["task_id"], "properties": { "data": { "$ref": "#/$defs/data/task.dispatched" } } } },
     { "if": { "$ref": "#/$defs/is/task.redispatched" }, "then": { "required": ["task_id"], "properties": { "data": { "$ref": "#/$defs/data/task.redispatched" } } } },
@@ -86,6 +87,18 @@
         "verification": { "$ref": "#/$defs/score" }
       }
     },
+    "review": {
+      "description": "A person's word on an estimate the orchestrator made (H4). Agreed, or overruled with the reason; the estimate it replaced is kept beside it, never overwritten, so the baseline can tell later whose estimate was the better one.",
+      "type": "object",
+      "required": ["verdict", "by"],
+      "properties": {
+        "verdict": { "enum": ["agreed", "overruled"] },
+        "by": { "const": "human" },
+        "reason": { "type": "string", "minLength": 1, "maxLength": 200 }
+      },
+      "if": { "properties": { "verdict": { "const": "overruled" } } },
+      "then": { "required": ["reason"] }
+    },
     "stage_result": {
       "type": "object",
       "required": ["name", "status", "duration_ms"],
@@ -97,6 +110,7 @@
     },
     "is": {
       "plan.created": { "properties": { "type": { "const": "plan.created" } } },
+      "plan.intake": { "properties": { "type": { "const": "plan.intake" } } },
       "task.scored": { "properties": { "type": { "const": "task.scored" } } },
       "task.dispatched": { "properties": { "type": { "const": "task.dispatched" } } },
       "task.redispatched": { "properties": { "type": { "const": "task.redispatched" } } },
@@ -138,7 +152,44 @@
           "total": { "type": "integer", "minimum": 0, "maximum": 12 },
           "score_band": { "description": "C7: the tier the raw total implies, before overrides.", "$ref": "#/$defs/tier" },
           "overrides": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
-          "tier_planned": { "description": "The tier actually chosen, after overrides.", "$ref": "#/$defs/tier" }
+          "tier_planned": { "description": "The tier actually chosen, after overrides.", "$ref": "#/$defs/tier" },
+          "review": {
+            "description": "The person's review of this score (H4). Absent: not reviewed, as in a headless run. Overruled: the fields above are the person's, and original holds the orchestrator's.",
+            "allOf": [
+              { "$ref": "#/$defs/review" },
+              {
+                "if": { "properties": { "verdict": { "const": "overruled" } } },
+                "then": {
+                  "required": ["original"],
+                  "properties": {
+                    "original": {
+                      "type": "object",
+                      "required": ["scores", "total", "score_band", "tier_planned"],
+                      "properties": {
+                        "scores": { "$ref": "#/$defs/scores" },
+                        "total": { "type": "integer", "minimum": 0, "maximum": 12 },
+                        "score_band": { "$ref": "#/$defs/tier" },
+                        "tier_planned": { "$ref": "#/$defs/tier" }
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "plan.intake": {
+        "description": "One round of the intake gate (H4): the brief's ambiguity on the rubric's 0-2 scale, against routing.yaml's intake.max_ambiguity. No Harness agent is dispatched for the plan until its latest round is at or under the threshold, or a person overruled it.",
+        "type": "object",
+        "required": ["round", "ambiguity", "max_ambiguity", "questions", "settled"],
+        "properties": {
+          "round": { "type": "integer", "minimum": 1 },
+          "ambiguity": { "$ref": "#/$defs/score" },
+          "max_ambiguity": { "$ref": "#/$defs/score" },
+          "questions": { "description": "Questions asked of the person this round.", "$ref": "#/$defs/count" },
+          "settled": { "type": "boolean" },
+          "review": { "description": "Only when a person let the plan start above the threshold: overruled, with the reason.", "$ref": "#/$defs/review" }
         }
       },
       "task.dispatched": {

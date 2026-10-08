@@ -71,6 +71,8 @@ export interface Config {
   markerTtlMinutes: number;
   /** Whether the commit-msg hook strips AI attribution trailers: the repository's choice (commits.strip_ai_attribution). */
   stripAiAttribution: boolean;
+  /** The intake gate's threshold: a plan starts once its brief's ambiguity is at most this (intake.max_ambiguity, 0-2). */
+  intakeMaxAmbiguity: number;
 }
 
 export type LoadedConfig = OffConfig | Config;
@@ -133,7 +135,7 @@ export interface HookInput {
   last_assistant_message?: string;
   stop_hook_active?: boolean;
   tool_name?: string;
-  tool_input?: { command?: unknown; file_path?: string; notebook_path?: string };
+  tool_input?: { command?: unknown; file_path?: string; notebook_path?: string; subagent_type?: unknown; prompt?: unknown };
 }
 
 /** The message of a caught error, whatever was thrown. */

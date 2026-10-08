@@ -7398,6 +7398,8 @@ function ulid(ms = Date.now()) {
 }
 var sha256 = (data) => createHash("sha256").update(data).digest("hex");
 var utcNow = (date = /* @__PURE__ */ new Date()) => date.toISOString().replace(/\.\d{3}Z$/, "Z");
+var TASK_ID = /PLAN-\d+(?:\.\d+)+/g;
+var taskIdsIn = (text) => [...new Set(String(text ?? "").match(TASK_ID) ?? [])];
 
 // src/lib/config.ts
 var MODES = ["off", "observe", "route"];
@@ -7494,7 +7496,9 @@ function loadConfig(dir = projectDir()) {
     markerTtlMinutes: Number.isInteger(yaml.gate?.marker_ttl_minutes) ? yaml.gate?.marker_ttl_minutes : 30,
     // Whether a commit may say an AI helped is the repository's call, not the Harness's: a home leaves
     // messages alone unless routing.yaml asks. The old layout always stripped, and keeps doing so.
-    stripAiAttribution: typeof yaml.commits?.strip_ai_attribution === "boolean" ? yaml.commits.strip_ai_attribution : !homed
+    stripAiAttribution: typeof yaml.commits?.strip_ai_attribution === "boolean" ? yaml.commits.strip_ai_attribution : !homed,
+    // 0 unless routing.yaml says 1 or 2: a brief with decisions left open doesn't start by default.
+    intakeMaxAmbiguity: [0, 1, 2].includes(yaml.intake?.max_ambiguity) ? yaml.intake?.max_ambiguity : 0
   };
 }
 
@@ -7570,6 +7574,28 @@ function checkMarker(dir, markerPath, ttlMinutes, now = /* @__PURE__ */ new Date
   }
   return { decision: "allow", reason: "pass", detail: "an eval passed for this staged diff" };
 }
+
+// src/lib/intake.ts
+var planOf = (taskId) => taskId.replace(/\..*$/, "");
+function intakeVerdict(planId, maxAmbiguity, events) {
+  const rounds = events.filter((e) => e.type === "plan.intake" && e.plan_id === planId);
+  const latest = rounds.at(-1);
+  if (!latest) {
+    return { allowed: false, detail: `${planId} has had no intake: write its brief (goal, success signals, boundaries, decisions), score its ambiguity, and record plan.intake before any agent starts` };
+  }
+  const data = latest.data;
+  if (data.review?.verdict === "overruled" && data.review.by === "human") {
+    return { allowed: true, detail: `${planId}'s intake was overruled by the person: ${data.review.reason ?? "no reason given"}` };
+  }
+  if (Number.isInteger(data.ambiguity) && data.ambiguity <= maxAmbiguity) {
+    return { allowed: true, detail: `${planId}'s brief scored ambiguity ${data.ambiguity} (at most ${maxAmbiguity})` };
+  }
+  return {
+    allowed: false,
+    detail: `${planId}'s brief still scores ambiguity ${String(data.ambiguity)}, over the ${maxAmbiguity} routing.yaml allows: ask the person the open questions, update the brief, score it again and record the new round (or record their overrule, with their reason)`
+  };
+}
+var plansIn = (prompt) => [...new Set(taskIdsIn(prompt).map(planOf))];
 
 // src/lib/spool.ts
 import { appendFileSync, existsSync as existsSync3, mkdirSync as mkdirSync2, readdirSync, readFileSync as readFileSync3, renameSync as renameSync2, rmSync as rmSync2, writeFileSync as writeFileSync2 } from "node:fs";
@@ -7708,6 +7734,22 @@ function snapshotConfig(config2, repo, now = /* @__PURE__ */ new Date()) {
     recordFailure(config2, `config snapshot: ${messageOf(error)}`);
   }
 }
+function readEvents(config2) {
+  const dir = join2(config2.metadataDir, "events");
+  if (!existsSync3(dir)) return [];
+  const events = [];
+  for (const name of readdirSync(dir).filter((n) => n.endsWith(".jsonl")).sort()) {
+    for (const line of readFileSync3(join2(dir, name), "utf8").split("\n")) {
+      if (!line.trim()) continue;
+      try {
+        events.push(JSON.parse(line));
+      } catch {
+        recordFailure(config2, `unreadable line in events/${name}`);
+      }
+    }
+  }
+  return events.sort((a, b) => a.ts === b.ts ? a.event_id.localeCompare(b.event_id) : a.ts.localeCompare(b.ts));
+}
 
 // src/hooks/input.ts
 async function readHookInput() {
@@ -7722,6 +7764,7 @@ async function readHookInput() {
 
 // src/hooks/pre-tool-use.ts
 var EDIT_TOOLS = /* @__PURE__ */ new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
+var AGENT_TOOLS = /* @__PURE__ */ new Set(["Agent", "Task"]);
 var deny = (reason) => {
   process.stdout.write(JSON.stringify({
     hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: reason }
@@ -7738,11 +7781,23 @@ var agent = String(input.agent_type ?? "");
 var role = agent.startsWith("harness:impl-t") ? "implementer" : agent === "harness:evaluator" ? "evaluator" : null;
 var edited = EDIT_TOOLS.has(tool) ? args.file_path ?? args.notebook_path : null;
 var policedEdit = Boolean(role && edited);
-if (!touchesMarker && !commits && !policedEdit) process.exit(0);
+var dispatched = AGENT_TOOLS.has(tool) ? String(args.subagent_type ?? "") : "";
+var harnessDispatch = dispatched.startsWith("harness:");
+if (!touchesMarker && !commits && !policedEdit && !harnessDispatch) process.exit(0);
 var config = loadConfig();
 if (config.mode === "off") process.exit(0);
 if (touchesMarker) {
   deny("harness: the eval pass marker (eval-pass.json) is written only by harness-eval. Run harness-eval instead of touching the file.");
+}
+if (harnessDispatch) {
+  const plans = plansIn(args.prompt);
+  if (!plans.length) deny(`harness: a ${dispatched} dispatch must name its task (e.g. "WRITE-TESTS: PLAN-n.m"), so the intake gate can tell which plan it is for.`);
+  const events = readEvents(config);
+  for (const plan of plans) {
+    const verdict2 = intakeVerdict(plan, config.intakeMaxAmbiguity, events);
+    if (!verdict2.allowed) deny(`harness: intake gate: ${verdict2.detail}.`);
+  }
+  process.exit(0);
 }
 if (policedEdit) {
   const test = isTestPath(edited, config.dir, config.testGlobs);

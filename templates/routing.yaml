@@ -16,6 +16,9 @@ eval:                    # harness-eval runs these in order against what is stag
 gate:
   marker_ttl_minutes: 30 # how long a pass allows a commit of the diff it was for
 
+intake:
+  max_ambiguity: 0       # no Harness agent starts on a plan until its brief scores at most this (rubric scale 0-2)
+
 commits:
   strip_ai_attribution: false   # true: the commit-msg hook removes Co-Authored-By AI trailers and "Generated with" lines
 

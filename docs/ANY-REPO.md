@@ -168,6 +168,19 @@ The costs:
 
 The threshold is `intake.max_ambiguity` in routing.yaml, default 0. Each round is recorded as a `plan.intake` event (questions asked, ambiguity before and after), so PU can show how much asking a brief needed. That's an additive schema change (EVENTS.md, a v1 minor). The tasks' own rubric scoring is unchanged: a task can still score ambiguity 1 when splitting the plan exposes something the brief didn't. That's information, not a block.
 
+**Enforced, not only asked for.** A PreToolUse check on the `Agent` tool refuses to dispatch any `harness:*` agent for a plan until the plan's latest `plan.intake` is at or under routing.yaml's threshold, or a person overruled it. The threshold is read from routing.yaml, never from the event, so the orchestrator can't lower its own bar. A dispatch must name its task (`WRITE-TESTS: PLAN-n.m`), or it is refused. The score is still the orchestrator's judgment: the check guarantees the intake happened and came in under the bar, and the brief in PLAN.md, with the questions the person answered, is what keeps the score honest.
+
+**The person can overrule, and it is logged** (Mikkel, 2026-10-08). At intake: "it's clear enough, start" is recorded as `review: { verdict: "overruled", by: "human", reason }` on the round, and lets the plan start.
+
+## The score review (H4)
+
+After scoring, the orchestrator asks the person once per plan to agree with every task's score, band and tier, or adjust them. The one doing the work is usually the better estimator, but the person sometimes knows something the brief didn't say ("that touches the payment flow"). Each `task.scored` then carries `review`:
+- `{ verdict: "agreed", by: "human" }`;
+- `{ verdict: "overruled", by: "human", reason, original: { scores, total, score_band, tier_planned } }`. The scores routed on are the person's; the orchestrator's estimate is kept in `original`, never overwritten;
+- absent when nobody reviewed it (a headless run).
+
+The routing log copies it into `rubric.review`. Keeping both estimates is what lets the baseline answer whose estimate was better: eval rounds, escalations and first-pass rate for the tasks the person raised or lowered, against the ones they agreed with. That calibrates model selection later (M4). Showing it in PU is work item V1.
+
 **An example.** "I think I like colors red, blue and green" scores 2. The orchestrator would ask: Where do the colours go? Do they replace existing ones or add to them? What would show it worked: the contrast check passing, or Mikkel's eye? What must stay as it is?
 
 ## One hub: each context knows its clones
@@ -206,7 +219,8 @@ This doesn't block anything else in this design. It's its own track, R1 to R3 in
 | **H1** | harness | **Done, 0.4.0.** `repoHome()`, with every path in the table above moved to it, plus the one-release fallback. | S9 |
 | **H2** | harness | **Done, 0.5.0.** Enrolment (`harness-init`) and `harness-forget`; per-home hooks chained to the repository's own; `commits.strip_ai_attribution`; the doctor checks the home and reports orphans. | H1 |
 | **H3** | harness | **Done, 0.6.0.** Gating Harness branches only (`repo.json` lists them). Hook chaining moved into H2, since enrolling without it would switch a repository's hooks off. | H2 |
-| **H4** | harness | The intake gate: the orchestrator's prompt, `intake.max_ambiguity`, the `plan.intake` event and its schema. | H1 |
+| **H4** | harness | **Done, 0.7.0.** The intake gate: the orchestrator's brief and intake step, `intake.max_ambiguity`, the `plan.intake` event, and a PreToolUse check on `Agent` that enforces it. Plus the score review: `task.scored.review`, kept in the routing log. | H1 |
+| **V1** | DocumentService + web | Show the reviews: pass `rubric.review` and the plan's intake rounds through to the task page ("agent 3 → you 6: touches payments", "ambiguity 0 after 2 rounds"). | H4 |
 | **P2** | PU CLI | `pu harness` enrols automatically when there's no home, records the branch as a Harness branch, and passes `--settings` and `--add-dir`; `pu harness forget [--all]`. | H2 |
 | **C1** | harness | `harness-eval --ci --config`; enrolling an owned repository offers the two CI files. | H2 |
 | **M** | PU | Migrate PU: the home from its `routing.yaml`; delete `routing.yaml`, `.githooks/` and the `.gitignore` block; CI moves to `--config`; drop the fallback. | P2, H3, C1 |

@@ -15,6 +15,7 @@ interface RoutingYaml {
   eval?: { stages?: unknown; tests?: unknown };
   gate?: { marker_ttl_minutes?: unknown };
   commits?: { strip_ai_attribution?: unknown };
+  intake?: { max_ambiguity?: unknown };
 }
 
 const MODES: readonly Mode[] = ["off", "observe", "route"];
@@ -139,5 +140,7 @@ export function loadConfig(dir: string = projectDir()): LoadedConfig {
     // Whether a commit may say an AI helped is the repository's call, not the Harness's: a home leaves
     // messages alone unless routing.yaml asks. The old layout always stripped, and keeps doing so.
     stripAiAttribution: typeof yaml.commits?.strip_ai_attribution === "boolean" ? yaml.commits.strip_ai_attribution : !homed,
+    // 0 unless routing.yaml says 1 or 2: a brief with decisions left open doesn't start by default.
+    intakeMaxAmbiguity: [0, 1, 2].includes(yaml.intake?.max_ambiguity as number) ? (yaml.intake?.max_ambiguity as number) : 0,
   };
 }

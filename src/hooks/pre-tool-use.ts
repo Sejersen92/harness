@@ -1,4 +1,4 @@
-// PreToolUse for Bash, Edit, Write, MultiEdit and NotebookEdit: the Harness's policies, in one process
+// PreToolUse for Bash, Edit, Write, MultiEdit, NotebookEdit and Agent: the Harness's policies, in one process
 // rather than one per policy, because this runs on every Bash call and Node's start-up is most of
 // its cost.
 //
@@ -9,6 +9,8 @@
 // - tests-only: the evaluator (harness:evaluator) may edit nothing but test files.
 //   Both read routing.yaml's eval.tests globs. They cover the edit tools; a test file rewritten
 //   through Bash is outside what a hook can see reliably, and the evaluator's review is the backstop.
+// - intake-gate: no Harness agent (harness:*) is dispatched for a plan until the plan's brief has passed
+//   intake (lib/intake.ts, H4).
 //
 // A deny is a JSON permissionDecision, never exit 1, which Claude Code treats as a non-blocking error
 // and lets the call through (S8). Anything this script can't decide, it allows: an unreadable input
@@ -16,11 +18,14 @@
 import { join } from "node:path";
 import { loadConfig, pluginRoot } from "../lib/config.ts";
 import { checkMarker, isCommit, isMarkerPath, isTestPath } from "../lib/gate.ts";
-import { emitEvent } from "../lib/spool.ts";
+import { intakeVerdict, plansIn } from "../lib/intake.ts";
+import { emitEvent, readEvents } from "../lib/spool.ts";
 import { messageOf } from "../lib/types.ts";
 import { readHookInput } from "./input.ts";
 
 const EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
+// The subagent tool's name now, and the one it had before.
+const AGENT_TOOLS = new Set(["Agent", "Task"]);
 
 const deny = (reason: string): never => {
   process.stdout.write(JSON.stringify({
@@ -44,13 +49,26 @@ const agent = String(input.agent_type ?? "");
 const role = agent.startsWith("harness:impl-t") ? "implementer" : agent === "harness:evaluator" ? "evaluator" : null;
 const edited = EDIT_TOOLS.has(tool) ? (args.file_path ?? args.notebook_path) : null;
 const policedEdit = Boolean(role && edited);
-if (!touchesMarker && !commits && !policedEdit) process.exit(0);
+const dispatched = AGENT_TOOLS.has(tool) ? String(args.subagent_type ?? "") : "";
+const harnessDispatch = dispatched.startsWith("harness:");
+if (!touchesMarker && !commits && !policedEdit && !harnessDispatch) process.exit(0);
 
 const config = loadConfig();
 if (config.mode === "off") process.exit(0);
 
 if (touchesMarker) {
   deny("harness: the eval pass marker (eval-pass.json) is written only by harness-eval. Run harness-eval instead of touching the file.");
+}
+
+if (harnessDispatch) {
+  const plans = plansIn(args.prompt);
+  if (!plans.length) deny(`harness: a ${dispatched} dispatch must name its task (e.g. "WRITE-TESTS: PLAN-n.m"), so the intake gate can tell which plan it is for.`);
+  const events = readEvents(config);
+  for (const plan of plans) {
+    const verdict = intakeVerdict(plan, config.intakeMaxAmbiguity, events);
+    if (!verdict.allowed) deny(`harness: intake gate: ${verdict.detail}.`);
+  }
+  process.exit(0);
 }
 
 if (policedEdit) {
