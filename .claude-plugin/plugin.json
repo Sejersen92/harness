@@ -1,6 +1,6 @@
 {
   "name": "harness",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Scores every task for complexity, routes it to the matching model tier, gates commits on an independent eval, and records metadata PreviouslyUpcoming visualises.",
   "author": { "name": "Mikkel Sejersen" }
 }

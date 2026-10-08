@@ -44,10 +44,13 @@ test("the threshold is routing.yaml's, never the one the orchestrator wrote into
   assert.equal(intakeVerdict("PLAN-1", 0, [lowered]).allowed, false);
 });
 
-test("a dispatch's plans come from the task ids its prompt names", () => {
+test("a dispatch's plans come from its header line only", () => {
   assert.deepEqual(plansIn("WRITE-TESTS: PLAN-7.2\n\n### PLAN-7.2 — x\n- Depends on: PLAN-7.1"), ["PLAN-7"]);
   assert.deepEqual(plansIn("EVALUATE: PLAN-3.1, PLAN-4.2"), ["PLAN-3", "PLAN-4"]);
   assert.deepEqual(plansIn("do the thing"), []);
+  // The first gated run (2026-10-08): PLAN-9.1's dispatch named PLAN-6's and PLAN-8's tests further down.
+  assert.deepEqual(plansIn("\n  IMPLEMENT: PLAN-9.1\nThe existing tests PLAN-6.1/AC-2 and PLAN-8.2/AC-1 must keep passing."), ["PLAN-9"]);
+  assert.deepEqual(plansIn("do the thing\nfor PLAN-9.1"), [], "a task named only below the first line is no header");
 });
 
 test("the hook refuses a Harness agent for a plan without a settled intake, and lets it through after", () => {
@@ -69,7 +72,7 @@ test("the hook refuses a Harness agent for a plan without a settled intake, and 
   assert.equal(refused?.permissionDecision, "deny");
   assert.match(String(refused?.permissionDecisionReason), /intake gate: PLAN-1 has had no intake/);
 
-  assert.match(String(dispatch("harness:impl-t2", "please do it")?.permissionDecisionReason), /must name its task/);
+  assert.match(String(dispatch("harness:impl-t2", "please do it")?.permissionDecisionReason), /must start with its header line naming the task/);
   assert.equal(dispatch("general-purpose", "look around"), null, "agents that aren't the Harness's are not gated");
 
   emit("plan.intake", "--plan", "PLAN-1", "--data", JSON.stringify({ round: 1, ambiguity: 1, max_ambiguity: 0, questions: 2, settled: false }));
@@ -77,6 +80,7 @@ test("the hook refuses a Harness agent for a plan without a settled intake, and 
 
   emit("plan.intake", "--plan", "PLAN-1", "--data", JSON.stringify({ round: 2, ambiguity: 0, max_ambiguity: 0, questions: 0, settled: true }));
   assert.equal(dispatch("harness:evaluator", "WRITE-TESTS: PLAN-1.1"), null, "a clear brief lets the work start");
+  assert.equal(dispatch("harness:impl-t2", "IMPLEMENT: PLAN-1.1\nKeep PLAN-0.3/AC-1 passing."), null, "an older plan named below the header is not gated");
 });
 
 test("an overrule must say why, and a score overrule must keep the orchestrator's original", () => {

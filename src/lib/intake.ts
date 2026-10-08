@@ -41,7 +41,13 @@ export function intakeVerdict(planId: string, maxAmbiguity: number, events: read
 }
 
 /**
- * The plans an agent call is for, from the task ids its prompt names ("WRITE-TESTS: PLAN-7.2"). Every
- * dispatch the orchestrator makes names its task, so a call naming none is refused rather than guessed.
+ * The plans an agent call is for, from its header: the prompt's first non-empty line, as in
+ * "WRITE-TESTS: PLAN-7.2". Only that line counts. The rest of a prompt names other ids freely (an older
+ * plan's tests, a dependency, a criterion), and reading those made the gate refuse PLAN-9.1 over PLAN-6's
+ * test names in the first run with the gate (2026-10-08). A call whose header names no task is refused
+ * rather than guessed.
  */
-export const plansIn = (prompt: unknown): string[] => [...new Set(taskIdsIn(prompt).map(planOf))];
+export const plansIn = (prompt: unknown): string[] => {
+  const header = String(prompt ?? "").split(/\r?\n/).find((line) => line.trim()) ?? "";
+  return [...new Set(taskIdsIn(header).map(planOf))];
+};
