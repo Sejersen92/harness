@@ -144,17 +144,13 @@ Independent tasks with no overlapping file scope can run in parallel worktrees, 
 
 ## Setup and health
 
-Both are scripts (`bin/harness-init.mjs`, `bin/harness-doctor.mjs`) with slash commands in front of them (`commands/init.md`, `commands/doctor.md`). They share one list in `src/lib/setup.ts`, so init never sets up something doctor doesn't check, and doctor never asks for something init can't do. `pu harness --install` will call the same scripts.
+Three scripts with slash commands in front of them: `harness-init` (`/harness:init`), `harness-forget` (`/harness:forget`) and `harness-doctor` (`/harness:doctor`). Enrolment and forgetting are in `src/lib/home.ts`, the doctor's checks in `src/lib/setup.ts`.
 
-**`/harness:init`** is a dry run unless given `--apply`. It lists each change and describes the settings change in words before anything is written (S7). Each step leaves what is already right alone, so running it twice is safe. It:
-- writes `routing.yaml` (mode `observe`) with the stages it detects: `lint`, `test` and `build` npm scripts, and a .NET solution or `*.Tests` project, at the root or one folder down;
-- adds `.harness/`, `.claude/state/` and `/PLAN.md` to `.gitignore`, and keeps `.githooks/*` LF in `.gitattributes`;
-- installs the `.githooks/` wrappers and sets `core.hooksPath` for this clone;
-- merges into `.claude/settings.json`: the deny rules, `attribution.commit: ""` and `worktree.baseRef: "head"` (S6). It keeps every setting and rule already there.
+**`/harness:init` enrols the repository** (0.5.0): it gives the repository a home under `~/.harness/repos/` and writes nothing into its working tree. It is a dry run unless given `--apply`, and `pu harness` runs it with `--apply` whenever it starts the Harness, so a repository is enrolled when it is first worked in. The steps, the per-home hooks chained to the repository's own, and `harness.previousHooksPath` are in [ANY-REPO.md](ANY-REPO.md#enrolling-a-repository). **`/harness:forget`** undoes it.
 
-**The deny rules** are the source design's list without its Vercel and Azure rules, which belong to repositories that use them. They cover the guardrail files (`.claude/state/`, `.claude/settings.json`, `.githooks/`, `.github/workflows/`), anything that skips or bypasses the gate (`--no-verify`, `-n`, `commit-tree`), history rewrites and pushes to main, and `gh pr merge`, `release`, `repo delete` and `secret`. They apply to **every** Claude Code session in the repository, not only the Harness's, which is why init shows them first and the person decides.
+**The deny rules** are the source design's list without its Vercel and Azure rules, which belong to repositories that use them, and with Edit rules only (S9). They cover the guardrail files (the home's `state/`, `routing.yaml`, `settings.json`, `repo.json` and `githooks/`, and `.github/workflows/`), anything that skips or bypasses the gate (`--no-verify`, `-n`, `commit-tree`), history rewrites and pushes to main, and `gh pr merge`, `release`, `repo delete` and `secret`. They live in the home's `settings.json` and reach a session through `claude --settings`, so they bind Harness sessions only, never other sessions in the repository.
 
-The CI eval workflow is not written by init yet (step 4c). The source's "dry-run commit to prove the gate denies" is covered by doctor's `git-hooks` check and the git-hook tests instead.
+A repository still set up the old way (`routing.yaml`, `.githooks/` and `.claude/settings.json` committed, PU until its migration) is read and checked as before.
 
 **`/harness:doctor`** prints one line per check (`pass`, `warn` or `fail`) and exits 1 when anything fails:
 
@@ -163,15 +159,16 @@ The CI eval workflow is not written by init yet (step 4c). The source's "dry-run
 | `node` | Node is older than 22 (fail) |
 | `claude-code` | Claude Code is older than 2.1.284 (fail); `claude` is not on PATH (warn) |
 | `plugin-recorded` | `~/.harness/plugin.json` is missing or points at no plugin (fail); git hooks use a different copy (warn) |
-| `routing-yaml` | missing, mode off, a tier malformed, or no eval stages, which means no commit can pass (fail) |
-| `spool-writable` | the metadata folder can't be written (fail) |
-| `git-hooks` | `core.hooksPath` isn't `.githooks` or a wrapper is missing, so commits outside Claude Code aren't gated (fail) |
-| `gitignore` | `.harness/`, `.claude/state/` or `/PLAN.md` isn't ignored (warn) |
-| `attribution-off` | `attribution.commit` isn't `""` (warn: the commit-msg hook still strips it) |
-| `permissions` | a deny rule is missing (warn) |
+| `routing-yaml` | not enrolled, mode off, a tier malformed, or no eval stages, which means no commit can pass (fail) |
+| `layout` | `routing.yaml` is in the repository, the layout from before homes (warn: `/harness:init` moves it) |
+| `spool-writable` | the metadata folder can't be written (fail); not enrolled, so there is none (warn) |
+| `git-hooks` | `core.hooksPath` isn't the home's `githooks/` (something such as husky's install moved it), or a wrapper is missing, so commits outside Claude Code aren't gated (fail) |
+| `permissions` | a deny rule is missing from the home's `settings.json` (warn) |
 | `worktree-base` | `worktree.baseRef` isn't `head` (warn: needed only for parallel groups, M6) |
+| `gitignore`, `attribution-off` | the old layout only: as before (warn) |
 | `path-casing` | the working directory's letters differ in case from the disk's (warn, S6) |
-| `emit-failures` | `.harness/emit-failures` counts failed writes (warn, C12) |
+| `emit-failures` | `emit-failures` in the spool counts failed writes (warn, C12) |
+| `orphans` | a home whose clone is gone (warn: `harness-forget` removes it) |
 
 Inside Claude Code it also records `harness.doctor`. The trusted-folder check from the original list is left out: Claude Code keeps trust in its own state, and a check that reads it would break the next time that format changes.
 

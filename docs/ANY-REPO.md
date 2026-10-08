@@ -19,11 +19,10 @@ It also adds the **intake gate**: the orchestrator doesn't start a task until it
 ~/.harness/                        ($HARNESS_HOME overrides, as today)
   plugin.json                      where the plugin lives (unchanged)
   spools.json                      the spool registry PU reads (unchanged format; paths move)
-  githooks/                        the four hook scripts, copied from templates/githooks/
-    harness  pre-commit  commit-msg  post-commit
   repos/
     previouslyupcoming-3f9a1c2b/   one home per enrolled clone
-      repo.json                    the clone's path, remote, enrolment date, the hooksPath it had before, its Harness branches
+      repo.json                    the clone's path and enrolment date (and, from H3, its Harness branches)
+      githooks/                    this clone's core.hooksPath: the dispatcher, and a wrapper per hook it runs
       routing.yaml                 mode, tiers, eval stages, gate settings (was at the repo root)
       settings.json                the deny rules, passed to Claude Code at launch (was .claude/settings.json)
       PLAN.md                      the orchestrator's plans (was at the repo root)
@@ -49,25 +48,32 @@ One function, `repoHome(dir)` in `lib/config.ts`, computes the name from the git
 | `metadataDir`: `<repo>/.harness` | `<home>` (`metadata.dir` is dropped from routing.yaml) |
 | `markerPath`: `<repo>/.claude/state/eval-pass.json` | `<home>/state/eval-pass.json` |
 | `plan.mjs`: `<repo>/PLAN.md` | `<home>/PLAN.md` |
-| `setup.mjs`: settings, .gitignore, .gitattributes, .githooks | the home and `~/.harness/githooks` |
+| `setup.mjs`: settings, .gitignore, .gitattributes, .githooks | the home, and its own `githooks/` |
 
 No home means the Harness is off for that repository, just as no `routing.yaml` means it today. For one release, a `routing.yaml` at the repository root is still read when there's no home, so PU keeps working until it migrates. That fallback is then deleted, keeping to principle 4.
 
 ## Enrolling a repository
 
-`harness-enrol` (it replaces `harness-init`; `/harness:init` stays as the slash command name). Run by hand, it **shows the plan, then asks**, as init does today. Run by `pu harness`, it doesn't ask (see below):
+`harness-init` enrols (built in H2, 0.5.0; `/harness:init` runs it). Without `--apply` it **shows the plan and changes nothing**; `pu harness` runs it with `--apply` (see below). Each step leaves what is already right alone:
 
-1. Create the home: write `repo.json`, and a `routing.yaml` with the stages detected from the repository (`detectStages`, unchanged: .NET solutions and test projects, npm lint/test/build).
-2. Write `settings.json`, the deny rules rewritten for the home (see below).
-3. Copy the hook scripts to `~/.harness/githooks/` when they're missing or out of date.
-4. Record the clone's current `core.hooksPath` in `repo.json` (empty means `.git/hooks`), then set `core.hooksPath` to `~/.harness/githooks`.
-5. Register the spool in `spools.json`.
+1. Write `<home>/routing.yaml`: the repository's own `routing.yaml` copied in, for a repository set up the old way (its copy is left for the person to delete), or else the template with the stages detected from the repository (`detectStages`: .NET solutions and test projects, npm lint/test/build).
+2. Write `<home>/repo.json`.
+3. Write `<home>/settings.json`: the deny rules for this home (see below), and worktrees from HEAD.
+4. Write `<home>/githooks/`: the dispatcher, and a wrapper for the Harness's three hooks plus each hook the repository already has.
+5. Remember the clone's current `core.hooksPath` as `harness.previousHooksPath` in the clone's own `.git/config` (empty means it was unset), then point `core.hooksPath` at `<home>/githooks`.
+6. Register the spool in `spools.json`.
+
+**Why each home has its own hooks folder**, not one shared `~/.harness/githooks`: a folder serves only the hook names it holds, and repositories differ in which ones they use. A shared folder would need a wrapper for every name, and some fire constantly (`post-index-change` on every `git status` VS Code runs), each one starting a shell. A home's folder holds only what its clone runs. Enrolling again picks up a hook the repository has added since.
+
+**Why the old `core.hooksPath` goes in git config**, not `repo.json`: the dispatcher is a shell script, and `git config --get` reads it in one call with no JSON and no Node. It is also where `core.hooksPath` itself lives, so the two travel together, and forget removes both.
 
 **Enrolment is automatic** (Mikkel, 2026-10-08). `pu harness` in a repository with no home enrols it without asking, because enrolling changes nothing a person has to review: no files appear in the tree, and the repository's own hooks keep running. It prints what it did, the home's path, the detected stages, and "`pu harness forget` undoes this". When no stages are detected, it still enrols, but says the gate can't pass until stages are added, and names the routing.yaml to edit. `/harness:init` stays for running enrolment by hand.
 
 ### Its own git hooks keep working
 
-Setting `core.hooksPath` turns off whatever hooks the repository had: husky (`.husky`), a committed `.githooks`, or `.git/hooks`. A work repository may depend on them. So the hook dispatcher, after its own step, runs **the repository's own hook of the same name** from the `hooksPath` recorded in `repo.json`, with the same arguments, and fails when it fails. Enrolment never silently removes a check the repository's owners put there.
+Setting `core.hooksPath` turns off whatever hooks the repository had: husky (`.husky`), a committed `.githooks`, or `.git/hooks`. A work repository may depend on them. So the hook dispatcher, after its own step, runs **the repository's own hook of the same name** from `harness.previousHooksPath`, resolved as git resolves it, with the same arguments and stdin, and fails when it fails. Only real hook names are chained, so a helper file in the folder (husky's `h`) isn't mistaken for one. Enrolment never silently removes a check the repository's owners put there.
+
+If something later moves `core.hooksPath` (husky's install does, on `npm install`), the doctor says so, and enrolling again, which `pu harness` does every time it starts, puts the Harness back in front, remembering the new path.
 
 ### What the gate gates: Harness branches
 
@@ -96,26 +102,26 @@ claude --plugin-dir <plugin> --agent harness:orchestrator
 The rules are today's list (`DENY` in `lib/setup.ts`), with the guardrail paths moved to the home:
 
 ```text
-Edit(~/.harness/repos/*/state/**)
-Edit(~/.harness/repos/*/routing.yaml)  Edit(~/.harness/repos/*/settings.json)
-Edit(~/.harness/githooks/**)
-Edit(.github/workflows/**)
+Edit(~/.harness/repos/<this home>/state/**)        Edit(~/.harness/repos/<this home>/routing.yaml)
+Edit(~/.harness/repos/<this home>/settings.json)   Edit(~/.harness/repos/<this home>/repo.json)
+Edit(~/.harness/repos/<this home>/githooks/**)     Edit(.github/workflows/**)
 ...plus the git and gh rules, unchanged
 ```
 
 Only `Edit(...)` rules: S9 showed that `Write(path)` rules are never matched, and that `Edit` rules cover every file tool. `PLAN.md` stays writable, because the orchestrator writes it. `settings.json` also carries `worktree.baseRef: "head"` (S6). The session-start hook tells the session where the home and its `PLAN.md` are, the same way it hands over the `harness-emit` path today.
 
-`attribution.commit: ""` is no longer set by the Harness. Whether a repository's commits carry an AI trailer is that repository's choice. PU's committed `.claude/settings.json` keeps it, and the commit-msg hook still strips trailers in PU.
+`attribution.commit: ""` is no longer set by the Harness. Whether a repository's commits carry an AI trailer is that repository's choice, so it is a routing.yaml setting, `commits.strip_ai_attribution`. A home's default is `false`: the commit-msg hook leaves messages alone, since an employer may want the trailer. A repository set up the old way keeps stripping, as PU does today, and PU's migration (M) sets it to `true`.
 
 ## Forgetting a repository
 
-`harness-forget [<dir>] [--all] [--yes]`, wrapped by `pu harness forget`:
+`harness-forget [--all] [--yes]` (built in H2; `/harness:forget` runs it), wrapped by `pu harness forget` (P2):
 
-1. Lists what it will remove: the home, the `core.hooksPath` change, the spool's `spools.json` entry.
-2. **Refuses while the spool has lines PU hasn't sent**, naming how many. Either run `pu sync` first, or pass `--discard-unsent` to throw them away on purpose.
-3. On confirmation: restores the recorded `core.hooksPath` (or unsets it), deletes the home, and removes the registry entry.
+1. Lists what it will remove: the home, the `core.hooksPath` change, the spool's `spools.json` entry, and how many spool lines go with the home. Without `--yes` that is all it does.
+2. With `--yes`: restores `core.hooksPath` from `harness.previousHooksPath` (or unsets it), removes that key, deletes the home, and takes the spool off the registry.
 
-With `--all`, it does the same for every home, plus `~/.harness/githooks/`. `plugin.json` and the plugin checkout stay; uninstalling the plugin itself is a separate step.
+**Unsent lines.** Which lines PU has received is PU's own record (its cursors in its local app data), and the Harness doesn't read another tool's private state. So `harness-forget` only counts the lines and warns that any PU hasn't received are lost. **`pu harness forget` is the one that refuses**: it compares the lines with its cursors, and only goes ahead when everything is sent, or with `--discard-unsent`.
+
+With `--all`, it does the same for every home, including orphans (homes whose clone is gone). `plugin.json` and the plugin checkout stay; uninstalling the plugin itself is a separate step.
 
 **What forget doesn't touch:**
 - What was already sent to PU. That's deleted the PU way, by deleting the context on the web.
@@ -198,8 +204,8 @@ This doesn't block anything else in this design. It's its own track, R1 to R3 in
 | **S9** | harness, by hand | **Done 2026-10-08, passed** ([spikes.md](spikes.md#s9-the-harness-with-nothing-in-the-repository-2026-10-08)). Spike. Do `--settings` deny rules with `~/` and `*` paths apply, and add to the user's own settings rather than replacing them? Can `--add-dir` let the orchestrator write in the home with no prompt? Does Git for Windows accept a `core.hooksPath` outside the repository? Can the dispatcher chain to `.husky/`? | none |
 | **P1** | PU CLI | `pu update` installs the Harness when it's missing and runs `--update` when it's present. It sets `cleanupPeriodDays` to at least 180 (never lowering a higher value), replaces the `gh auth login` hint with a credential-neutral one, and doesn't let a failed doctor check make `start` report the install as unfinished. Refresh CONNECTING-A-WORK-PC.md. | none, so it can run alongside S9 |
 | **H1** | harness | **Done, 0.4.0.** `repoHome()`, with every path in the table above moved to it, plus the one-release fallback. | S9 |
-| **H2** | harness | `harness-enrol` and `harness-forget`; the doctor checks the home and reports orphans. | H1 |
-| **H3** | harness | Hook chaining, and gating Harness branches only (`repo.json` lists them). | H2 |
+| **H2** | harness | **Done, 0.5.0.** Enrolment (`harness-init`) and `harness-forget`; per-home hooks chained to the repository's own; `commits.strip_ai_attribution`; the doctor checks the home and reports orphans. | H1 |
+| **H3** | harness | Gating Harness branches only (`repo.json` lists them). Hook chaining moved into H2, since enrolling without it would switch a repository's hooks off. | H2 |
 | **H4** | harness | The intake gate: the orchestrator's prompt, `intake.max_ambiguity`, the `plan.intake` event and its schema. | H1 |
 | **P2** | PU CLI | `pu harness` enrols automatically when there's no home, records the branch as a Harness branch, and passes `--settings` and `--add-dir`; `pu harness forget [--all]`. | H2 |
 | **C1** | harness | `harness-eval --ci --config`; enrolling an owned repository offers the two CI files. | H2 |

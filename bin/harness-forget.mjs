@@ -1507,7 +1507,7 @@ var require_stringify = __commonJS({
         props.push(doc.directives.tagString(tag));
       return props.join(" ");
     }
-    function stringify(item, ctx, onComment, onChompKeep) {
+    function stringify2(item, ctx, onComment, onChompKeep) {
       if (identity.isPair(item))
         return item.toString(ctx, onComment, onChompKeep);
       if (identity.isAlias(item)) {
@@ -1536,7 +1536,7 @@ var require_stringify = __commonJS({
 ${ctx.indent}${str}`;
     }
     exports.createStringifyContext = createStringifyContext;
-    exports.stringify = stringify;
+    exports.stringify = stringify2;
   }
 });
 
@@ -1546,7 +1546,7 @@ var require_stringifyPair = __commonJS({
     "use strict";
     var identity = require_identity();
     var Scalar = require_Scalar();
-    var stringify = require_stringify();
+    var stringify2 = require_stringify();
     var stringifyComment = require_stringifyComment();
     function stringifyPair({ key, value }, ctx, onComment, onChompKeep) {
       const { allNullValues, doc, indent, indentStep, options: { commentString, indentSeq, simpleKeys } } = ctx;
@@ -1568,7 +1568,7 @@ var require_stringifyPair = __commonJS({
       });
       let keyCommentDone = false;
       let chompKeep = false;
-      let str = stringify.stringify(key, ctx, () => keyCommentDone = true, () => chompKeep = true);
+      let str = stringify2.stringify(key, ctx, () => keyCommentDone = true, () => chompKeep = true);
       if (!explicitKey && !ctx.inFlow && str.length > 1024) {
         if (simpleKeys)
           throw new Error("With simple keys, single line scalar must not span more than 1024 characters");
@@ -1620,7 +1620,7 @@ ${indent}:`;
         ctx.indent = ctx.indent.substring(2);
       }
       let valueCommentDone = false;
-      const valueStr = stringify.stringify(value, ctx, () => valueCommentDone = true, () => chompKeep = true);
+      const valueStr = stringify2.stringify(value, ctx, () => valueCommentDone = true, () => chompKeep = true);
       let ws = " ";
       if (keyComment || vsb || vcb) {
         ws = vsb ? "\n" : "";
@@ -1761,7 +1761,7 @@ var require_addPairToJSMap = __commonJS({
     "use strict";
     var log = require_log();
     var merge = require_merge();
-    var stringify = require_stringify();
+    var stringify2 = require_stringify();
     var identity = require_identity();
     var toJS = require_toJS();
     function addPairToJSMap(ctx, map, { key, value }) {
@@ -1797,7 +1797,7 @@ var require_addPairToJSMap = __commonJS({
       if (typeof jsKey !== "object")
         return String(jsKey);
       if (identity.isNode(key) && ctx?.doc) {
-        const strCtx = stringify.createStringifyContext(ctx.doc, {});
+        const strCtx = stringify2.createStringifyContext(ctx.doc, {});
         strCtx.anchors = /* @__PURE__ */ new Set();
         for (const node of ctx.anchors.keys())
           strCtx.anchors.add(node.anchor);
@@ -1864,12 +1864,12 @@ var require_stringifyCollection = __commonJS({
   "node_modules/yaml/dist/stringify/stringifyCollection.js"(exports) {
     "use strict";
     var identity = require_identity();
-    var stringify = require_stringify();
+    var stringify2 = require_stringify();
     var stringifyComment = require_stringifyComment();
     function stringifyCollection(collection, ctx, options) {
       const flow = ctx.inFlow ?? collection.flow;
-      const stringify2 = flow ? stringifyFlowCollection : stringifyBlockCollection;
-      return stringify2(collection, ctx, options);
+      const stringify3 = flow ? stringifyFlowCollection : stringifyBlockCollection;
+      return stringify3(collection, ctx, options);
     }
     function stringifyBlockCollection({ comment, items }, ctx, { blockItemPrefix, flowChars, itemIndent, onChompKeep, onComment }) {
       const { indent, options: { commentString } } = ctx;
@@ -1894,7 +1894,7 @@ var require_stringifyCollection = __commonJS({
           }
         }
         chompKeep = false;
-        let str2 = stringify.stringify(item, itemCtx, () => comment2 = null, () => chompKeep = true);
+        let str2 = stringify2.stringify(item, itemCtx, () => comment2 = null, () => chompKeep = true);
         if (comment2)
           str2 += stringifyComment.lineComment(str2, itemIndent, commentString(comment2));
         if (chompKeep && comment2)
@@ -1961,7 +1961,7 @@ ${indent}${line}` : "\n";
         }
         if (comment)
           reqNewline = true;
-        let str = stringify.stringify(item, itemCtx, () => comment = null);
+        let str = stringify2.stringify(item, itemCtx, () => comment = null);
         reqNewline || (reqNewline = lines.length > linesAtValue || str.includes("\n"));
         if (i < items.length - 1) {
           str += ",";
@@ -3322,22 +3322,22 @@ var require_stringifyDocument = __commonJS({
   "node_modules/yaml/dist/stringify/stringifyDocument.js"(exports) {
     "use strict";
     var identity = require_identity();
-    var stringify = require_stringify();
+    var stringify2 = require_stringify();
     var stringifyComment = require_stringifyComment();
     function stringifyDocument(doc, options) {
       const lines = [];
       let hasDirectives = options.directives === true;
       if (options.directives !== false && doc.directives) {
-        const dir = doc.directives.toString(doc);
-        if (dir) {
-          lines.push(dir);
+        const dir2 = doc.directives.toString(doc);
+        if (dir2) {
+          lines.push(dir2);
           hasDirectives = true;
         } else if (doc.directives.docStart)
           hasDirectives = true;
       }
       if (hasDirectives)
         lines.push("---");
-      const ctx = stringify.createStringifyContext(doc, options);
+      const ctx = stringify2.createStringifyContext(doc, options);
       const { commentString } = ctx.options;
       if (doc.commentBefore) {
         if (lines.length !== 1)
@@ -3359,7 +3359,7 @@ var require_stringifyDocument = __commonJS({
           contentComment = doc.contents.comment;
         }
         const onChompKeep = contentComment ? void 0 : () => chompKeep = true;
-        let body = stringify.stringify(doc.contents, ctx, () => contentComment = null, onChompKeep);
+        let body = stringify2.stringify(doc.contents, ctx, () => contentComment = null, onChompKeep);
         if (contentComment)
           body += stringifyComment.lineComment(body, "", commentString(contentComment));
         if ((body[0] === "|" || body[0] === ">") && lines[lines.length - 1] === "---") {
@@ -3367,7 +3367,7 @@ var require_stringifyDocument = __commonJS({
         } else
           lines.push(body);
       } else {
-        lines.push(stringify.stringify(doc.contents, ctx));
+        lines.push(stringify2.stringify(doc.contents, ctx));
       }
       if (doc.directives?.docEnd) {
         if (doc.comment) {
@@ -5503,7 +5503,7 @@ var require_cst_scalar = __commonJS({
 var require_cst_stringify = __commonJS({
   "node_modules/yaml/dist/parse/cst-stringify.js"(exports) {
     "use strict";
-    var stringify = (cst) => "type" in cst ? stringifyToken(cst) : stringifyItem(cst);
+    var stringify2 = (cst) => "type" in cst ? stringifyToken(cst) : stringifyItem(cst);
     function stringifyToken(token) {
       switch (token.type) {
         case "block-scalar": {
@@ -5556,7 +5556,7 @@ var require_cst_stringify = __commonJS({
         res += stringifyToken(value);
       return res;
     }
-    exports.stringify = stringify;
+    exports.stringify = stringify2;
   }
 });
 
@@ -7286,7 +7286,7 @@ var require_public_api = __commonJS({
       }
       return doc.toJS(Object.assign({ reviver: _reviver }, options));
     }
-    function stringify(value, replacer, options) {
+    function stringify2(value, replacer, options) {
       let _replacer = null;
       if (typeof replacer === "function" || Array.isArray(replacer)) {
         _replacer = replacer;
@@ -7311,7 +7311,7 @@ var require_public_api = __commonJS({
     exports.parse = parse2;
     exports.parseAllDocuments = parseAllDocuments;
     exports.parseDocument = parseDocument;
-    exports.stringify = stringify;
+    exports.stringify = stringify2;
   }
 });
 
@@ -7368,315 +7368,154 @@ var require_dist = __commonJS({
 });
 
 // src/lib/config.ts
-var import_yaml = __toESM(require_dist(), 1);
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+var import_yaml = __toESM(require_dist(), 1);
 
 // src/lib/ids.ts
 import { createHash, randomBytes } from "node:crypto";
-var CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-function ulid(ms = Date.now()) {
-  let time = "";
-  let t = BigInt(ms);
-  for (let i = 0; i < 10; i++) {
-    time = CROCKFORD.charAt(Number(t % 32n)) + time;
-    t /= 32n;
-  }
-  let rand = BigInt("0x" + randomBytes(10).toString("hex"));
-  let tail = "";
-  for (let i = 0; i < 16; i++) {
-    tail = CROCKFORD.charAt(Number(rand % 32n)) + tail;
-    rand /= 32n;
-  }
-  return time + tail;
-}
 var sha256 = (data) => createHash("sha256").update(data).digest("hex");
-var utcNow = (date = /* @__PURE__ */ new Date()) => date.toISOString().replace(/\.\d{3}Z$/, "Z");
 
 // src/lib/config.ts
-var MODES = ["off", "observe", "route"];
-var git = (cwd, ...args) => {
+var git = (cwd, ...args2) => {
   try {
-    return execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    return execFileSync("git", ["-C", cwd, ...args2], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
   } catch {
     return null;
   }
 };
 var harnessHome = () => process.env.HARNESS_HOME || join(homedir(), ".harness");
-var normalisedPath = (dir) => resolve(dir).replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
-function repoHome(dir) {
-  const key = normalisedPath(dir);
+var normalisedPath = (dir2) => resolve(dir2).replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+function repoHome(dir2) {
+  const key = normalisedPath(dir2);
   const name = basename(key).replace(/[^a-z0-9._-]+/g, "-") || "repo";
   return join(harnessHome(), "repos", `${name}-${sha256(key).slice(0, 8)}`);
 }
-var NOT_ENROLLED = "not enrolled";
 function projectDir(cwd = process.cwd()) {
   return process.env.CLAUDE_PROJECT_DIR || git(cwd, "rev-parse", "--show-toplevel") || cwd;
 }
-function repoIdentity(dir) {
-  const remote = git(dir, "remote", "get-url", "origin");
-  const normalised = remote?.trim().toLowerCase().replace(/\/+$/, "").replace(/\.git$/, "");
-  const name = ((normalised ? normalised.split(/[/:]/).pop() : void 0) ?? basename(dir)).toLowerCase();
-  return { name, remote_sha256: sha256(normalised ?? `local:${dir.toLowerCase()}`) };
-}
-function pluginRoot() {
-  if (process.env.CLAUDE_PLUGIN_ROOT) return process.env.CLAUDE_PLUGIN_ROOT;
-  let dir = dirname(fileURLToPath(import.meta.url));
-  while (!existsSync(join(dir, ".claude-plugin", "plugin.json"))) {
-    const parent = dirname(dir);
-    if (parent === dir) return null;
-    dir = parent;
-  }
-  return dir;
-}
-function producer() {
-  try {
-    const root = pluginRoot();
-    if (!root) throw new Error("no plugin root");
-    const { version } = JSON.parse(readFileSync(join(root, ".claude-plugin", "plugin.json"), "utf8"));
-    return { name: "harness", version };
-  } catch {
-    return { name: "harness", version: "0.0.0-unknown" };
-  }
-}
-var DEFAULT_TEST_GLOBS = [
-  "**/*.test.*",
-  "**/*.spec.*",
-  "**/*_test.*",
-  "**/test_*.py",
-  "**/test/**",
-  "**/tests/**",
-  "**/__tests__/**",
-  "**/*.Tests/**",
-  "**/*Tests.cs"
-];
-function loadConfig(dir = projectDir()) {
-  const home = repoHome(dir);
-  const homed = existsSync(join(home, "routing.yaml"));
-  if (!homed && !existsSync(join(dir, "routing.yaml"))) return { dir, mode: "off", reason: NOT_ENROLLED, home };
-  const routingYaml = join(homed ? home : dir, "routing.yaml");
-  const bytes = readFileSync(routingYaml);
-  const yaml = (0, import_yaml.parse)(bytes.toString("utf8")) ?? {};
-  const metadata = yaml.metadata ?? {};
-  const layout = homed ? {
-    kind: "home",
-    root: home,
-    routingYaml,
-    metadataDir: home,
-    markerPath: join(home, "state", "eval-pass.json"),
-    planPath: join(home, "PLAN.md")
-  } : {
-    kind: "repository",
-    root: dir,
-    routingYaml,
-    metadataDir: join(dir, metadata.dir ?? ".harness"),
-    markerPath: join(dir, ".claude", "state", "eval-pass.json"),
-    planPath: join(dir, "PLAN.md")
-  };
-  return {
-    dir,
-    home,
-    layout,
-    mode: MODES.includes(yaml.mode) ? yaml.mode : "off",
-    tiers: yaml.tiers ?? {},
-    config_sha256: sha256(bytes),
-    metadataDir: layout.metadataDir,
-    retentionDays: Number.isInteger(metadata.retention_days) ? metadata.retention_days : 30,
-    includeJustifications: metadata.include_justifications !== false,
-    stages: Array.isArray(yaml.eval?.stages) ? yaml.eval.stages : [],
-    testGlobs: Array.isArray(yaml.eval?.tests) && yaml.eval.tests.length ? yaml.eval.tests.map(String) : [...DEFAULT_TEST_GLOBS],
-    markerTtlMinutes: Number.isInteger(yaml.gate?.marker_ttl_minutes) ? yaml.gate?.marker_ttl_minutes : 30,
-    // Whether a commit may say an AI helped is the repository's call, not the Harness's: a home leaves
-    // messages alone unless routing.yaml asks. The old layout always stripped, and keeps doing so.
-    stripAiAttribution: typeof yaml.commits?.strip_ai_attribution === "boolean" ? yaml.commits.strip_ai_attribution : !homed
-  };
-}
+
+// src/lib/home.ts
+import { execFileSync as execFileSync2 } from "node:child_process";
+import { chmodSync, existsSync as existsSync2, mkdirSync as mkdirSync2, readdirSync as readdirSync2, readFileSync as readFileSync2, rmSync as rmSync2, statSync, writeFileSync as writeFileSync2 } from "node:fs";
+var import_yaml2 = __toESM(require_dist(), 1);
+import { isAbsolute, join as join3, relative } from "node:path";
 
 // src/lib/spool.ts
-import { appendFileSync, existsSync as existsSync2, mkdirSync, readdirSync, readFileSync as readFileSync2, renameSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join as join2, resolve as resolve2 } from "node:path";
-
-// src/lib/types.ts
-var EFFORTS = ["low", "medium", "high", "xhigh", "max"];
-var isEffort = (value) => EFFORTS.includes(value);
-var messageOf = (error) => error instanceof Error ? error.message : String(error);
-
-// src/lib/spool.ts
-var MAX_LINE_BYTES = 4096;
 var registryPath = () => join2(harnessHome(), "spools.json");
-var readRegistry = (path) => existsSync2(path) ? JSON.parse(readFileSync2(path, "utf8")) : { version: 1, spools: [] };
+var readRegistry = (path) => existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : { version: 1, spools: [] };
 function writeRegistry(path, registry) {
   mkdirSync(join2(path, ".."), { recursive: true });
   writeFileSync(`${path}.tmp`, JSON.stringify(registry, null, 2) + "\n");
   renameSync(`${path}.tmp`, path);
 }
-function registerSpool(spool, now = /* @__PURE__ */ new Date()) {
+function unregisterSpool(metadataDir) {
   const path = registryPath();
-  const metadataDir = resolve2(spool.metadataDir);
-  try {
-    const registry = readRegistry(path);
-    if (registry.spools.some((s) => s.metadata_dir.toLowerCase() === metadataDir.toLowerCase())) return;
-    registry.spools.push({ repo_dir: resolve2(spool.dir), metadata_dir: metadataDir, first_seen: utcNow(now) });
-    writeRegistry(path, registry);
-  } catch (error) {
-    recordFailure(spool, `spool registry: ${messageOf(error)}`);
-  }
+  const registry = readRegistry(path);
+  const kept = registry.spools.filter((s) => s.metadata_dir.toLowerCase() !== resolve2(metadataDir).toLowerCase());
+  if (kept.length === registry.spools.length) return false;
+  writeRegistry(path, { ...registry, spools: kept });
+  return true;
 }
-function recordFailure(config2, why) {
-  process.stderr.write(`harness: metadata not written: ${why}
-`);
+
+// src/lib/home.ts
+var githooksDir = (home) => join3(home, "githooks");
+var git2 = (dir2, ...args2) => {
   try {
-    mkdirSync(config2.metadataDir, { recursive: true });
-    const file = join2(config2.metadataDir, "emit-failures");
-    const count = existsSync2(file) ? Number.parseInt(readFileSync2(file, "utf8"), 10) || 0 : 0;
-    writeFileSync(file, `${count + 1}
-`);
+    return execFileSync2("git", ["-C", dir2, ...args2], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
   } catch {
-  }
-}
-function appendLine(config2, file, record) {
-  const line = JSON.stringify(record);
-  if (Buffer.byteLength(line) >= MAX_LINE_BYTES) {
-    recordFailure(config2, `${record.type ?? record.schema} line is ${Buffer.byteLength(line)} bytes, over the 4 KB limit`);
-    return false;
-  }
-  try {
-    const firstLineInFile = !existsSync2(file);
-    mkdirSync(join2(file, ".."), { recursive: true });
-    appendFileSync(file, line + "\n", { flag: "a" });
-    if (firstLineInFile) registerSpool(config2);
-    return true;
-  } catch (error) {
-    recordFailure(config2, messageOf(error));
-    return false;
-  }
-}
-function sweep(config2, now) {
-  const today = utcNow(now).slice(0, 10);
-  const marker = join2(config2.metadataDir, "state", "swept");
-  try {
-    if (existsSync2(marker) && readFileSync2(marker, "utf8").trim() === today) return;
-    const cutoff = new Date(now.getTime() - config2.retentionDays * 864e5).toISOString().slice(0, 10);
-    const folders = [["events", (n) => n.slice(0, 10)], ["routing-log", (n) => `${n.slice(0, 7)}-31`]];
-    for (const [folder, toDate] of folders) {
-      const dir = join2(config2.metadataDir, folder);
-      if (!existsSync2(dir)) continue;
-      for (const name of readdirSync(dir).filter((n) => n.endsWith(".jsonl"))) {
-        if (toDate(name) < cutoff) rmSync(join2(dir, name));
-      }
-    }
-    mkdirSync(join2(config2.metadataDir, "state"), { recursive: true });
-    writeFileSync(marker, today);
-  } catch (error) {
-    recordFailure(config2, `retention sweep: ${messageOf(error)}`);
-  }
-}
-function emitEvent(config2, type, fields = {}, data = {}, now = /* @__PURE__ */ new Date()) {
-  if (config2.mode === "off") return null;
-  sweep(config2, now);
-  const sessionId = fields.session_id ?? process.env.CLAUDE_CODE_SESSION_ID;
-  if (!sessionId) {
-    recordFailure(config2, `${type}: no session id (not running inside Claude Code?)`);
     return null;
   }
-  const envelope = {
-    schema: "harness.events/v1",
-    event_id: ulid(now.getTime()),
-    ts: utcNow(now),
-    type,
-    producer: producer(),
-    repo: repoIdentity(config2.dir),
-    mode: config2.mode,
-    session_id: sessionId,
-    config_sha256: config2.config_sha256
-  };
-  for (const key of ["prompt_id", "agent_id", "agent_type", "plan_id", "task_id"]) {
-    const value = fields[key];
-    if (value) envelope[key] = value;
-  }
-  const event = { ...envelope, data };
-  const file = join2(config2.metadataDir, "events", `${event.ts.slice(0, 10)}.jsonl`);
-  if (!appendLine(config2, file, event)) return null;
-  snapshotConfig(config2, event.repo, now);
-  return event;
-}
-var TIERS = ["T1", "T2", "T3", "T4"];
-function snapshotConfig(config2, repo, now = /* @__PURE__ */ new Date()) {
-  const path = join2(config2.metadataDir, "configs", `${config2.config_sha256}.json`);
-  if (existsSync2(path)) return;
-  const tiers = {};
-  for (const tier of TIERS) {
-    const t = config2.tiers[tier];
-    if (!t || !Number.isInteger(t.max_score) || typeof t.agent !== "string" || typeof t.model !== "string") continue;
-    tiers[tier] = { max_score: t.max_score, agent: t.agent, model: t.model, ...isEffort(t.effort) ? { effort: t.effort } : {} };
-  }
-  const snapshot = {
-    schema: "harness.config/v1",
-    config_sha256: config2.config_sha256,
-    captured: utcNow(now),
-    producer: producer(),
-    repo,
-    mode: config2.mode,
-    tiers,
-    eval: { stages: config2.stages.map((s) => s?.name).filter((n) => typeof n === "string" && n.length > 0) },
-    gate: { marker_ttl_minutes: config2.markerTtlMinutes }
-  };
-  try {
-    mkdirSync(join2(path, ".."), { recursive: true });
-    writeFileSync(`${path}.tmp`, JSON.stringify(snapshot, null, 2) + "\n");
-    renameSync(`${path}.tmp`, path);
-  } catch (error) {
-    recordFailure(config2, `config snapshot: ${messageOf(error)}`);
-  }
-}
-
-// src/hooks/input.ts
-import { existsSync as existsSync3, mkdirSync as mkdirSync2, readFileSync as readFileSync3, rmSync as rmSync2, writeFileSync as writeFileSync2 } from "node:fs";
-import { join as join3 } from "node:path";
-async function readHookInput() {
-  const chunks = [];
-  for await (const chunk of process.stdin) chunks.push(chunk);
-  try {
-    return JSON.parse(Buffer.concat(chunks).toString("utf8")) ?? {};
-  } catch {
-    return {};
-  }
-}
-var isHarnessAgent = (input2) => typeof input2.agent_type === "string" && input2.agent_type.startsWith("harness:") && input2.agent_type !== "harness:orchestrator";
-var agentState = (config2, agentId) => {
-  const dir = join3(config2.metadataDir, "state", "agents");
-  const file = join3(dir, `${agentId}.json`);
-  return {
-    save(value) {
-      mkdirSync2(dir, { recursive: true });
-      writeFileSync2(file, JSON.stringify(value));
-    },
-    take() {
-      if (!existsSync3(file)) return null;
-      try {
-        return JSON.parse(readFileSync3(file, "utf8"));
-      } catch {
-        return null;
-      } finally {
-        rmSync2(file, { force: true });
-      }
-    }
-  };
 };
-
-// src/hooks/subagent-start.ts
-var input = await readHookInput();
-var config = loadConfig();
-if (config.mode !== "off" && isHarnessAgent(input) && input.agent_id) {
-  const event = emitEvent(config, "subagent.started", {
-    session_id: input.session_id,
-    prompt_id: input.prompt_id,
-    agent_id: input.agent_id,
-    agent_type: input.agent_type
-  }, {});
-  if (event) agentState(config, input.agent_id).save({ started: event.ts, startedMs: Date.now() });
+var readJson = (path) => {
+  try {
+    return JSON.parse(readFileSync2(path, "utf8"));
+  } catch {
+    return null;
+  }
+};
+var readSafely = (path) => {
+  try {
+    return readFileSync2(path, "utf8");
+  } catch {
+    return "";
+  }
+};
+var registered = (metadataDir) => (readJson(registryPath())?.spools ?? []).some((s) => normalisedPath(s.metadata_dir) === normalisedPath(metadataDir));
+function hooksState(dir2, home) {
+  const current = git2(dir2, "config", "--get", "core.hooksPath");
+  const ours = current !== null && normalisedPath(current) === normalisedPath(githooksDir(home));
+  return { current, ours, previous: ours ? git2(dir2, "config", "--get", "harness.previousHooksPath") : current };
 }
+function homes() {
+  const root = join3(harnessHome(), "repos");
+  if (!existsSync2(root)) return [];
+  return readdirSync2(root, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => join3(root, e.name)).map((home) => ({ home, repoDir: readJson(join3(home, "repo.json"))?.repo_dir ?? null }));
+}
+function spoolLines(home) {
+  let lines = 0;
+  for (const folder of ["events", "routing-log"]) {
+    const dir2 = join3(home, folder);
+    if (!existsSync2(dir2)) continue;
+    for (const name of readdirSync2(dir2).filter((n) => n.endsWith(".jsonl"))) {
+      lines += readSafely(join3(dir2, name)).split("\n").filter((l) => l.trim()).length;
+    }
+  }
+  return lines;
+}
+function forgetPlan(home, repoDir) {
+  const steps = [];
+  if (repoDir && existsSync2(join3(repoDir, ".git"))) {
+    const hooks = hooksState(repoDir, home);
+    if (hooks.ours) {
+      const previous = hooks.previous;
+      steps.push({
+        what: previous ? `git config core.hooksPath "${previous}" in ${repoDir} (as it was before enrolment)` : `unset core.hooksPath in ${repoDir} (it was unset before enrolment)`,
+        apply: () => {
+          if (previous) execFileSync2("git", ["-C", repoDir, "config", "core.hooksPath", previous]);
+          else execFileSync2("git", ["-C", repoDir, "config", "--unset", "core.hooksPath"]);
+          execFileSync2("git", ["-C", repoDir, "config", "--unset", "harness.previousHooksPath"]);
+        }
+      });
+    }
+  }
+  const unsentRisk = spoolLines(home);
+  if (existsSync2(home)) {
+    steps.push({ what: `delete ${home}${unsentRisk ? ` (its spool holds ${unsentRisk} line(s))` : ""}`, apply: () => rmSync2(home, { recursive: true, force: true }) });
+  }
+  if (registered(home)) steps.push({ what: `remove it from ${registryPath()}`, apply: () => unregisterSpool(home) });
+  return { steps, unsentRisk };
+}
+
+// src/cli/harness-forget.ts
+var args = process.argv.slice(2);
+var all = args.includes("--all");
+var yes = args.includes("--yes");
+var say = (line = "") => process.stdout.write(line + "\n");
+var dir = projectDir();
+var targets = all ? homes() : [{ home: repoHome(dir), repoDir: dir }];
+var plans = targets.map((t) => ({ ...t, ...forgetPlan(t.home, t.repoDir) })).filter((p) => p.steps.length);
+say(`harness-forget: ${all ? "every enrolled repository on this machine" : dir}${yes ? "" : " (dry run: nothing is changed)"}`);
+if (!plans.length) {
+  say(all ? "  nothing to do: no repository is enrolled" : "  nothing to do: this repository is not enrolled");
+  process.exit(0);
+}
+for (const plan of plans) {
+  say(`  ${plan.repoDir ?? "(a home whose clone is unknown)"}`);
+  for (const step of plan.steps) say(`    - ${step.what}`);
+}
+var atRisk = plans.reduce((sum, p) => sum + p.unsentRisk, 0);
+if (atRisk) say(`
+${atRisk} spool line(s) go with the home(s). Any PU has not received yet are lost; \`pu harness forget\` checks that first.`);
+say("Not removed: what PU has already received (delete it in PU), Claude Code's transcripts, the plugin, and any Harness files committed to a repository.");
+if (!yes) {
+  say("\nRun again with --yes to make these changes.");
+  process.exit(0);
+}
+for (const plan of plans) for (const step of plan.steps) step.apply();
+say(`
+forgot ${plans.length} repository(ies).`);
 process.exit(0);

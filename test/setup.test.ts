@@ -1,88 +1,208 @@
-// harness-doctor and harness-init against throwaway repositories: what doctor finds in a bare one,
-// that init's dry run changes nothing, and that --apply leaves a repository doctor passes.
-import { test } from "node:test";
+// harness-doctor, harness-init (enrol) and harness-forget against throwaway repositories: what doctor
+// finds in a bare one, that enrolling writes nothing into the repository and leaves one doctor passes,
+// that the repository's own hooks keep running after the Harness's, and that forget puts it all back.
+import { test, type TestContext } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DENY, checks, detectStages, settingsDiff, type CheckResult } from "../src/lib/setup.ts";
+import { repoHome } from "../src/lib/config.ts";
+import { detectStages, homeDeny } from "../src/lib/home.ts";
+import { checks, type CheckResult } from "../src/lib/setup.ts";
 import { root } from "./validators.ts";
 
+/** A routing.yaml whose one stage passes, so a commit's eval is quick and certain. */
+const PASSING = [
+  "version: 1",
+  "mode: observe",
+  "tiers:",
+  "  T1: { max_score: 2,  agent: impl-t1, model: sonnet, effort: low }",
+  "  T2: { max_score: 6,  agent: impl-t2, model: sonnet, effort: medium }",
+  "  T3: { max_score: 9,  agent: impl-t3, model: sonnet, effort: high }",
+  "  T4: { max_score: 12, agent: impl-t4, model: opus,   effort: medium }",
+  "eval:",
+  "  stages:",
+  `    - { name: build, run: 'node -e "process.exit(0)"' }`,
+  "",
+].join("\n");
+
+/** A repository with one commit, and a scratch ~/.harness outside it holding the plugin record. */
 function makeRepo() {
   const dir = mkdtempSync(join(tmpdir(), "harness-setup-"));
-  const home = join(dir, ".harness-home");
-  execFileSync("git", ["init", "-q", dir]);
-  mkdirSync(home);
-  writeFileSync(join(home, "plugin.json"), JSON.stringify({ root, version: "test" }));
-  writeFileSync(join(dir, "package.json"), JSON.stringify({ scripts: { lint: "eslint", test: "vitest run", build: "next build", dev: "next dev" } }));
-  const env: NodeJS.ProcessEnv = { ...process.env, CLAUDE_PROJECT_DIR: dir, HARNESS_HOME: home };
+  const harnessHome = mkdtempSync(join(tmpdir(), "harness-setup-home-"));
+  writeFileSync(join(harnessHome, "plugin.json"), JSON.stringify({ root, version: "test" }));
+  const env: NodeJS.ProcessEnv = {
+    ...process.env, CLAUDE_PROJECT_DIR: dir, HARNESS_HOME: harnessHome,
+    GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t",
+  };
   delete env.CLAUDE_CODE_SESSION_ID;
+  const git = (args: string[], extra: NodeJS.ProcessEnv = {}) =>
+    spawnSync("git", ["-C", dir, "-c", "core.autocrlf=false", ...args], { env: { ...env, ...extra }, encoding: "utf8" });
+  git(["init", "-q"]);
+  writeFileSync(join(dir, "package.json"), JSON.stringify({ scripts: { lint: "eslint", test: "vitest run", build: "next build", dev: "next dev" } }));
+  git(["add", "-A"]);
+  git(["commit", "-q", "-m", "init"]);
   const run = (name: string, ...args: string[]) => spawnSync("node", [join(root, "bin", `${name}.mjs`), ...args], { cwd: dir, env, encoding: "utf8" });
-  return { dir, home, run };
+  const setting = (key: string): string | null => {
+    const result = git(["config", "--get", key]);
+    return result.status === 0 ? result.stdout.trim() : null;
+  };
+  return { dir, harnessHome, git, run, setting };
+}
+
+/** Points HARNESS_HOME at the test's scratch folder for code run in this process, never the machine's. */
+function useHarnessHome(t: TestContext, harnessHome: string): void {
+  const previous = process.env.HARNESS_HOME;
+  process.env.HARNESS_HOME = harnessHome;
+  t.after(() => (previous === undefined ? delete process.env.HARNESS_HOME : (process.env.HARNESS_HOME = previous)));
 }
 
 const status = (results: CheckResult[], name: string): CheckResult["status"] | undefined => results.find((r) => r.name === name)?.status;
 
-test("doctor on a bare repository fails what the Harness needs and says why", () => {
+test("doctor on a bare repository says it is not enrolled, and checks no layout it doesn't have", () => {
   const { run } = makeRepo();
   const result = run("harness-doctor");
 
   assert.equal(result.status, 1);
-  assert.match(result.stdout, /fail\s+routing-yaml\s+not enrolled: there is no \S+routing\.yaml/);
+  assert.match(result.stdout, /fail\s+routing-yaml\s+not enrolled: there is no \S+routing\.yaml \(\/harness:init enrols the repository\)/);
   assert.match(result.stdout, /warn\s+spool-writable\s+not enrolled/);
-  assert.match(result.stdout, /fail\s+git-hooks\s+core\.hooksPath is not set/);
-  assert.match(result.stdout, /warn\s+permissions\s+19 deny rule\(s\) missing/);
+  assert.doesNotMatch(result.stdout, /git-hooks|gitignore|permissions/);
 });
 
-test("init's dry run lists every change and makes none", () => {
-  const { dir, run } = makeRepo();
+test("init's dry run lists every change and makes none", (t) => {
+  const { dir, harnessHome, git, run, setting } = makeRepo();
+  useHarnessHome(t, harnessHome);
   const result = run("harness-init");
 
   assert.equal(result.status, 0);
   assert.match(result.stdout, /dry run: nothing is changed/);
-  assert.match(result.stdout, /write routing\.yaml \(mode observe; stages: lint, test, build\)/);
-  assert.match(result.stdout, /every Claude Code session in this repository/);
-  assert.match(result.stdout, /\+ Bash\(gh pr merge\*\)/);
-  for (const f of ["routing.yaml", ".gitignore", ".githooks", join(".claude", "settings.json")]) assert.equal(existsSync(join(dir, f)), false, f);
-  assert.equal(spawnSync("git", ["-C", dir, "config", "core.hooksPath"]).status, 1);
+  assert.match(result.stdout, /routing\.yaml \(mode observe; stages: lint, test, build\)/);
+  assert.match(result.stdout, /git config core\.hooksPath \S+\/githooks in this clone \(it was unset/);
+  assert.equal(existsSync(repoHome(dir)), false, "no home yet");
+  assert.equal(setting("core.hooksPath"), null);
+  assert.equal(git(["status", "--porcelain", "--ignored"]).stdout, "");
 });
 
-test("init --apply leaves a repository doctor passes, and running it again has nothing to do", (t) => {
-  const { dir, home, run } = makeRepo();
-  // checks() runs in this process below: point it at the test's plugin.json, never the machine's.
-  const previous = process.env.HARNESS_HOME;
-  process.env.HARNESS_HOME = home;
-  t.after(() => (previous === undefined ? delete process.env.HARNESS_HOME : (process.env.HARNESS_HOME = previous)));
-  mkdirSync(join(dir, ".claude"));
-  writeFileSync(join(dir, ".claude", "settings.json"), JSON.stringify({ model: "opus", permissions: { deny: ["Bash(rm -rf*)"] } }));
+test("init --apply enrols with nothing in the repository, doctor passes, and again has nothing to do", (t) => {
+  const { dir, harnessHome, git, run, setting } = makeRepo();
+  useHarnessHome(t, harnessHome);
+  const home = repoHome(dir);
 
   const applied = run("harness-init", "--apply");
   assert.equal(applied.status, 0, applied.stdout + applied.stderr);
 
-  const routing = readFileSync(join(dir, "routing.yaml"), "utf8");
+  const routing = readFileSync(join(home, "routing.yaml"), "utf8");
   assert.match(routing, /mode: observe/);
   assert.match(routing, /name: test\n\s+run: npm run test/);
   assert.doesNotMatch(routing, /npm run dev/);
+  assert.match(routing, /strip_ai_attribution: false/);
+  assert.equal(JSON.parse(readFileSync(join(home, "repo.json"), "utf8")).repo_dir, dir);
 
-  const settings = JSON.parse(readFileSync(join(dir, ".claude", "settings.json"), "utf8"));
-  assert.equal(settings.model, "opus", "unrelated settings are kept");
-  assert.ok(settings.permissions.deny.includes("Bash(rm -rf*)"), "existing deny rules are kept");
-  for (const rule of DENY) assert.ok(settings.permissions.deny.includes(rule), rule);
-  assert.equal(settings.attribution.commit, "");
+  const settings = JSON.parse(readFileSync(join(home, "settings.json"), "utf8"));
+  assert.deepEqual(settings.permissions.deny, homeDeny(home));
+  assert.ok(settings.permissions.deny.every((rule: string) => !rule.startsWith("Write(")), "Edit rules only (S9)");
   assert.equal(settings.worktree.baseRef, "head");
 
-  assert.equal(execFileSync("git", ["-C", dir, "config", "core.hooksPath"], { encoding: "utf8" }).trim(), ".githooks");
-  assert.match(readFileSync(join(dir, ".gitignore"), "utf8"), /\.harness\/\n\.claude\/state\/\n\/PLAN\.md/);
-  assert.match(readFileSync(join(dir, ".gitattributes"), "utf8"), /\.githooks\/\* text eol=lf/);
+  assert.deepEqual(readdirSync(join(home, "githooks")).sort(), ["commit-msg", "harness", "post-commit", "pre-commit"]);
+  assert.equal(setting("core.hooksPath"), join(home, "githooks").replace(/\\/g, "/"));
+  assert.equal(setting("harness.previousHooksPath"), "", "it was unset, and that is remembered");
+  assert.match(readFileSync(join(harnessHome, "spools.json"), "utf8"), /"metadata_dir"/);
 
   const results = checks(dir, { pluginRoot: root, claudeVersion: "2.1.285 (Claude Code)" });
-  // init still sets a repository up in the repository itself, the layout from before homes, which the
-  // doctor names as a warning. That one goes when init enrols into the home instead (ANY-REPO.md, H2).
-  assert.deepEqual(results.filter((r) => r.status !== "pass").map((r) => r.name), ["layout"], JSON.stringify(results, null, 1));
+  assert.deepEqual(results.filter((r) => r.status !== "pass").map((r) => r.name), [], JSON.stringify(results, null, 1));
 
-  const again = run("harness-init");
-  assert.match(again.stdout, /nothing to do/);
+  assert.equal(git(["status", "--porcelain", "--ignored"]).stdout, "", "nothing in the repository, ignored files included");
+  assert.match(run("harness-init").stdout, /nothing to do/);
+});
+
+test("a repository set up the old way keeps its routing.yaml when it is enrolled; the copy moves, nothing is deleted", (t) => {
+  const { dir, harnessHome, run } = makeRepo();
+  useHarnessHome(t, harnessHome);
+  writeFileSync(join(dir, "routing.yaml"), PASSING.replace("mode: observe", "mode: route"));
+
+  const applied = run("harness-init", "--apply");
+  assert.equal(applied.status, 0, applied.stdout);
+  assert.match(applied.stdout, /copy routing\.yaml into \S+ \(the repository's copy is left as it is\)/);
+  assert.match(readFileSync(join(repoHome(dir), "routing.yaml"), "utf8"), /mode: route/);
+  assert.ok(existsSync(join(dir, "routing.yaml")), "the repository's own copy is not touched");
+});
+
+test("the repository's own hooks still run, after the Harness's, and a failing one stops the commit", (t) => {
+  const { dir, harnessHome, git, run, setting } = makeRepo();
+  useHarnessHome(t, harnessHome);
+  // Its own hooks, the way husky keeps them: a folder named by core.hooksPath, relative to the tree.
+  mkdirSync(join(dir, ".husky"));
+  const log = join(harnessHome, "husky.log");
+  writeFileSync(join(dir, ".husky", "pre-commit"), `#!/bin/sh\necho pre-commit >> "${log.replace(/\\/g, "/")}"\n[ "$HUSKY_FAIL" = "1" ] && exit 1\nexit 0\n`);
+  writeFileSync(join(dir, ".husky", "pre-push"), "#!/bin/sh\nexit 0\n");
+  writeFileSync(join(dir, ".husky", "h"), "# a helper, not a hook\n");
+  for (const f of ["pre-commit", "pre-push", "h"]) chmodSync(join(dir, ".husky", f), 0o755);
+  git(["add", "-A"]);
+  git(["commit", "-q", "-m", "husky"]);
+  git(["config", "core.hooksPath", ".husky"]);
+  // A routing.yaml whose eval passes, already in the home, which enrolment keeps.
+  mkdirSync(repoHome(dir), { recursive: true });
+  writeFileSync(join(repoHome(dir), "routing.yaml"), PASSING);
+
+  const applied = run("harness-init", "--apply");
+  assert.match(applied.stdout, /then the repository's own pre-commit, pre-push/);
+  assert.equal(setting("harness.previousHooksPath"), ".husky");
+  assert.deepEqual(readdirSync(join(repoHome(dir), "githooks")).sort(), ["commit-msg", "harness", "post-commit", "pre-commit", "pre-push"], "its helper file is not taken for a hook");
+
+  writeFileSync(join(dir, "a.txt"), "one\n");
+  git(["add", "a.txt"]);
+  const committed = git(["commit", "-q", "-m", "change\n\nCo-Authored-By: Claude <noreply@anthropic.com>"]);
+  assert.equal(committed.status, 0, committed.stdout + committed.stderr);
+  assert.match(committed.stderr, /running harness-eval now/, "the Harness's gate ran");
+  assert.equal(readFileSync(log, "utf8").trim(), "pre-commit", "and then the repository's own hook");
+  assert.match(git(["log", "-1", "--format=%B"]).stdout, /Co-Authored-By: Claude/, "a home leaves the message alone by default");
+
+  writeFileSync(join(dir, "a.txt"), "two\n");
+  git(["add", "a.txt"]);
+  const refused = git(["commit", "-q", "-m", "refused"], { HUSKY_FAIL: "1" });
+  assert.notEqual(refused.status, 0, "the repository's failing hook stops the commit");
+});
+
+test("forget puts the clone back as it was, and its dry run changes nothing", (t) => {
+  const { dir, harnessHome, git, run, setting } = makeRepo();
+  useHarnessHome(t, harnessHome);
+  git(["config", "core.hooksPath", ".husky"]);
+  run("harness-init", "--apply");
+  const home = repoHome(dir);
+  assert.ok(existsSync(home));
+
+  const dry = run("harness-forget");
+  assert.match(dry.stdout, /dry run/);
+  assert.match(dry.stdout, /git config core\.hooksPath "\.husky"/);
+  assert.match(dry.stdout, /Not removed: what PU has already received/);
+  assert.ok(existsSync(home), "a dry run deletes nothing");
+
+  const forgot = run("harness-forget", "--yes");
+  assert.equal(forgot.status, 0, forgot.stdout);
+  assert.equal(existsSync(home), false);
+  assert.equal(setting("core.hooksPath"), ".husky", "core.hooksPath is what it was before enrolment");
+  assert.equal(setting("harness.previousHooksPath"), null);
+  assert.doesNotMatch(readFileSync(join(harnessHome, "spools.json"), "utf8"), /"metadata_dir"/);
+  assert.equal(git(["status", "--porcelain", "--ignored"]).stdout, "");
+  assert.match(run("harness-forget").stdout, /nothing to do: this repository is not enrolled/);
+});
+
+test("forget --all removes every home, orphans included, and unsets a hooksPath that was unset", (t) => {
+  const first = makeRepo();
+  useHarnessHome(t, first.harnessHome);
+  first.run("harness-init", "--apply");
+  // An orphan: a home whose clone has gone.
+  const orphan = join(first.harnessHome, "repos", "gone-00000000");
+  mkdirSync(orphan, { recursive: true });
+  writeFileSync(join(orphan, "repo.json"), JSON.stringify({ schema: "harness.repo/v1", repo_dir: join(tmpdir(), "no-such-clone"), enrolled: "2026-10-08T00:00:00Z" }));
+  assert.equal(status(checks(first.dir, { pluginRoot: root, claudeVersion: "2.1.285" }), "orphans"), "warn");
+
+  const forgot = first.run("harness-forget", "--all", "--yes");
+  assert.equal(forgot.status, 0, forgot.stdout);
+  assert.match(forgot.stdout, /forgot 2 repository/);
+  assert.deepEqual(readdirSync(join(first.harnessHome, "repos")), []);
+  assert.equal(first.setting("core.hooksPath"), null, "it was unset before, so it is unset again");
 });
 
 test("stages are found for npm scripts and for a .NET test project", () => {
@@ -97,17 +217,6 @@ test("stages are found for npm scripts and for a .NET test project", () => {
     { name: "cli-test", run: "dotnet test cli/Thing.Tests --no-build --nologo" },
     { name: "web-lint", run: "npm run lint", cwd: "web" },
     { name: "web-build", run: "npm run build", cwd: "web" },
-  ]);
-});
-
-test("the settings change is described in words, not as a line diff", () => {
-  const lines = settingsDiff({ attribution: { commit: "x" }, permissions: { deny: ["Bash(git reset --hard*)"] } },
-    { attribution: { commit: "" }, permissions: { deny: ["Bash(git reset --hard*)", "Bash(gh pr merge*)"] }, worktree: { baseRef: "head" } });
-  assert.deepEqual(lines, [
-    "permissions.deny gains 1 rule(s):",
-    "    + Bash(gh pr merge*)",
-    'attribution.commit: "x" -> ""',
-    'worktree.baseRef: (not set) -> "head"',
   ]);
 });
 

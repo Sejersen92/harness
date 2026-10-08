@@ -7500,7 +7500,10 @@ function loadConfig(dir = projectDir()) {
     includeJustifications: metadata.include_justifications !== false,
     stages: Array.isArray(yaml.eval?.stages) ? yaml.eval.stages : [],
     testGlobs: Array.isArray(yaml.eval?.tests) && yaml.eval.tests.length ? yaml.eval.tests.map(String) : [...DEFAULT_TEST_GLOBS],
-    markerTtlMinutes: Number.isInteger(yaml.gate?.marker_ttl_minutes) ? yaml.gate?.marker_ttl_minutes : 30
+    markerTtlMinutes: Number.isInteger(yaml.gate?.marker_ttl_minutes) ? yaml.gate?.marker_ttl_minutes : 30,
+    // Whether a commit may say an AI helped is the repository's call, not the Harness's: a home leaves
+    // messages alone unless routing.yaml asks. The old layout always stripped, and keeps doing so.
+    stripAiAttribution: typeof yaml.commits?.strip_ai_attribution === "boolean" ? yaml.commits.strip_ai_attribution : !homed
   };
 }
 
@@ -7516,18 +7519,22 @@ var messageOf = (error) => error instanceof Error ? error.message : String(error
 // src/lib/spool.ts
 var MAX_LINE_BYTES = 4096;
 var registryPath = () => join2(harnessHome(), "spools.json");
-function registerSpool(config2, now = /* @__PURE__ */ new Date()) {
+var readRegistry = (path) => existsSync2(path) ? JSON.parse(readFileSync2(path, "utf8")) : { version: 1, spools: [] };
+function writeRegistry(path, registry) {
+  mkdirSync(join2(path, ".."), { recursive: true });
+  writeFileSync(`${path}.tmp`, JSON.stringify(registry, null, 2) + "\n");
+  renameSync(`${path}.tmp`, path);
+}
+function registerSpool(spool, now = /* @__PURE__ */ new Date()) {
   const path = registryPath();
-  const metadataDir = resolve2(config2.metadataDir);
+  const metadataDir = resolve2(spool.metadataDir);
   try {
-    const registry = existsSync2(path) ? JSON.parse(readFileSync2(path, "utf8")) : { version: 1, spools: [] };
+    const registry = readRegistry(path);
     if (registry.spools.some((s) => s.metadata_dir.toLowerCase() === metadataDir.toLowerCase())) return;
-    registry.spools.push({ repo_dir: resolve2(config2.dir), metadata_dir: metadataDir, first_seen: utcNow(now) });
-    mkdirSync(join2(path, ".."), { recursive: true });
-    writeFileSync(`${path}.tmp`, JSON.stringify(registry, null, 2) + "\n");
-    renameSync(`${path}.tmp`, path);
+    registry.spools.push({ repo_dir: resolve2(spool.dir), metadata_dir: metadataDir, first_seen: utcNow(now) });
+    writeRegistry(path, registry);
   } catch (error) {
-    recordFailure(config2, `spool registry: ${messageOf(error)}`);
+    recordFailure(spool, `spool registry: ${messageOf(error)}`);
   }
 }
 function recordFailure(config2, why) {

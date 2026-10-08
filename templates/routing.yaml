@@ -1,4 +1,4 @@
-# routing.yaml: owned by the repository, read by the harness plugin.
+# routing.yaml: this repository's Harness settings, kept in its home (~/.harness/repos/<name>-<hash>/).
 # Its SHA-256 is config_sha256 on every metadata line (C16): don't edit it during a baseline.
 version: 1
 mode: observe            # off | observe | route   (observe = the baseline: scored, not routed)
@@ -16,7 +16,9 @@ eval:                    # harness-eval runs these in order against what is stag
 gate:
   marker_ttl_minutes: 30 # how long a pass allows a commit of the diff it was for
 
+commits:
+  strip_ai_attribution: false   # true: the commit-msg hook removes Co-Authored-By AI trailers and "Generated with" lines
+
 metadata:
-  dir: .harness          # gitignored
   retention_days: 30
   include_justifications: true

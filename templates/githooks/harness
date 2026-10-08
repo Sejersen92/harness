@@ -1,20 +1,40 @@
 #!/bin/sh
-# Runs one of the Harness's git hooks (github.com/Sejersen92/harness): the commit gate for commits
-# made outside Claude Code, the AI-attribution strip, and the commit record.
+# The Harness's git hook dispatcher (github.com/Sejersen92/harness). Every hook in this folder runs
+# through here: first the Harness's own step, for the three hooks it has one for (the commit gate for
+# commits made outside Claude Code, the AI-attribution strip, the commit record), then the repository's
+# own hook of the same name, so setting core.hooksPath here never switches a check of theirs off.
 #
-# The plugin's location is read from ~/.harness/plugin.json, which the plugin writes whenever a
-# Claude Code session starts with it - never from a path written into this repository.
-root=$(node -e "const p=require('path'),o=require('os');try{process.stdout.write(require(p.join(process.env.HARNESS_HOME||p.join(o.homedir(),'.harness'),'plugin.json')).root)}catch{}" 2>/dev/null)
+# The plugin's location is read from ~/.harness/plugin.json, which the plugin writes whenever a Claude
+# Code session starts with it - never from a path written into the repository.
+hook=$1
+shift
 
-if [ -z "$root" ] || [ ! -f "$root/bin/harness-git-hook.mjs" ]; then
-  # Only pre-commit guards anything; the others have nothing to do without the plugin.
-  [ "$1" = "pre-commit" ] || exit 0
-  echo "harness: this repository gates commits on an eval, but the Harness plugin is not set up on this machine." >&2
-  echo "  1. git clone https://github.com/Sejersen92/harness c:/src/harness   (Node 22 or later)" >&2
-  echo "  2. start Claude Code in this repository once with: claude --plugin-dir c:/src/harness" >&2
-  echo "     so it records where it lives, then commit again." >&2
-  echo "  (git commit --no-verify skips this check.)" >&2
-  exit 1
-fi
+case "$hook" in
+  pre-commit|commit-msg|post-commit)
+    root=$(node -e "const p=require('path'),o=require('os');try{process.stdout.write(require(p.join(process.env.HARNESS_HOME||p.join(o.homedir(),'.harness'),'plugin.json')).root)}catch{}" 2>/dev/null)
+    if [ -n "$root" ] && [ -f "$root/bin/harness-git-hook.mjs" ]; then
+      node "$root/bin/harness-git-hook.mjs" "$hook" "$@" || exit $?
+    elif [ "$hook" = "pre-commit" ]; then
+      # Only pre-commit guards anything; the others have nothing to do without the plugin.
+      echo "harness: this repository gates commits on an eval, but the Harness plugin is not set up on this machine." >&2
+      echo "  Set it up (pu update does), or start Claude Code once with --plugin-dir <the harness checkout>" >&2
+      echo "  so it records where it lives, then commit again. (git commit --no-verify skips this check.)" >&2
+      exit 1
+    fi
+    ;;
+esac
 
-exec node "$root/bin/harness-git-hook.mjs" "$@"
+# The repository's own hook: from where core.hooksPath pointed before enrolment (harness.previousHooksPath
+# in this clone's config), resolved as git resolves it, or .git/hooks when it was unset.
+previous=$(git config --get harness.previousHooksPath 2>/dev/null)
+case "$previous" in
+  "") previous="$(git rev-parse --git-common-dir)/hooks" ;;
+  "~/"*) previous="$HOME/${previous#"~/"}" ;;
+  /*|[A-Za-z]:*) ;;
+  *) previous="$(git rev-parse --show-toplevel)/$previous" ;;
+esac
+# Never back into this folder, which would loop.
+[ "$(cd "$previous" 2>/dev/null && pwd)" = "$(cd "$(dirname "$0")" && pwd)" ] && exit 0
+# Git runs a hook only when it is executable; so does this.
+[ -x "$previous/$hook" ] || exit 0
+exec "$previous/$hook" "$@"

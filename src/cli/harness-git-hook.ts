@@ -1,13 +1,13 @@
 // harness-git-hook pre-commit | commit-msg <file> | post-commit
 //
-// The Harness's git hooks, for commits made outside Claude Code as well as inside it. A repository
-// switches them on with the wrappers in templates/githooks/ and `git config core.hooksPath .githooks`.
+// The Harness's git hooks, for commits made outside Claude Code as well as inside it, run by the
+// dispatcher in templates/githooks/harness, which enrolment puts in the repository's home.
 //
 // - pre-commit: the same check as commit-gate (lib/gate.ts). With no pass for what is staged, it
 //   runs harness-eval itself and lets the commit through if that passes (decided 2026-10-07), so a
 //   commit by hand needs no separate step. Exit 1 stops the commit.
-// - commit-msg: strips AI attribution trailers. Claude Code's own attribution setting is off too;
-//   this is the backstop.
+// - commit-msg: strips AI attribution trailers when routing.yaml's commits.strip_ai_attribution says to
+//   (a home's default is no; the old layout's is yes).
 // - post-commit: records commit.created, inside Claude Code only (that is where the session id is).
 //
 // Git runs hooks from the top of the working tree, so that is the repository, whatever
@@ -35,6 +35,7 @@ const say = (line: string): boolean => process.stderr.write(`${line}\n`);
 
 if (hook === "commit-msg") {
   const file = rest[0] ?? "";
+  if (config.mode === "off" || !config.stripAiAttribution) process.exit(0);
   try {
     const stripped = stripAttribution(readFileSync(file, "utf8"));
     if (stripped !== null) writeFileSync(file, stripped);
