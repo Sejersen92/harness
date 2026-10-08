@@ -23,7 +23,35 @@ export interface RepoRecord {
   schema: "harness.repo/v1";
   repo_dir: string;
   enrolled: string;
+  /** The branches the Harness has worked on: the git pre-commit hook gates these and no others (H3). */
+  harness_branches?: string[];
 }
+
+export const readRepoRecord = (home: string): RepoRecord | null => readJson<RepoRecord>(join(home, "repo.json"));
+
+/** The branches whose commits the git pre-commit hook gates. */
+export const harnessBranches = (home: string): string[] => readRepoRecord(home)?.harness_branches ?? [];
+
+/**
+ * Marks a branch as a Harness branch, so commits on it are gated outside Claude Code too. Branches that
+ * no longer exist in the clone are dropped while the list is written, so it never outgrows the work.
+ * Does nothing for a home with no repo.json, and never throws: it runs inside hooks.
+ */
+export function recordBranch(home: string, dir: string, branch: string): void {
+  const record = readRepoRecord(home);
+  if (!record || !branch) return;
+  const known = record.harness_branches ?? [];
+  if (known.includes(branch)) return;
+  const alive = known.filter((b) => git(dir, "show-ref", "--verify", "--quiet", `refs/heads/${b}`) !== null);
+  try {
+    writeFileSync(join(home, "repo.json"), JSON.stringify({ ...record, harness_branches: [...alive, branch] }, null, 2) + "\n");
+  } catch {
+    // A branch that isn't recorded is only ungated outside Claude Code; inside it, every commit is.
+  }
+}
+
+/** The branch checked out in a clone, or "" when HEAD is detached. */
+export const currentBranch = (dir: string): string => git(dir, "branch", "--show-current") ?? "";
 
 /** The three hooks the Harness has a step of its own in. */
 export const HARNESS_HOOKS = ["pre-commit", "commit-msg", "post-commit"] as const;
@@ -196,7 +224,9 @@ export function hooksState(dir: string, home: string): { current: string | null;
  * already right alone, so enrolling an enrolled repository changes nothing, and enrolling again after
  * something moved core.hooksPath (husky's install does) puts the Harness back in front of it.
  */
-export function enrolPlan(dir: string, pluginRoot: string, now: Date = new Date()): { home: string; steps: Step[] } {
+export function enrolPlan(
+  dir: string, pluginRoot: string, { branch, now = new Date() }: { branch?: string; now?: Date } = {},
+): { home: string; steps: Step[] } {
   const home = repoHome(dir);
   const steps: Step[] = [];
 
@@ -254,6 +284,11 @@ export function enrolPlan(dir: string, pluginRoot: string, now: Date = new Date(
 
   if (!registered(home)) {
     steps.push({ what: `register the spool in ${registryPath()}, so pu sync finds it`, apply: () => registerSpool({ dir, metadataDir: home }, now) });
+  }
+
+  // Last, because it writes into repo.json, which an earlier step may be creating.
+  if (branch && !harnessBranches(home).includes(branch)) {
+    steps.push({ what: `mark ${branch} as a Harness branch: commits on it are gated outside Claude Code too`, apply: () => recordBranch(home, dir, branch) });
   }
 
   return { home, steps };

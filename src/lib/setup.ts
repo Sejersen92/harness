@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { loadConfig, NOT_ENROLLED } from "./config.ts";
-import { GIT_DENY, githooksDir, HARNESS_HOOKS, homeDeny, hooksState, orphans, ownHooks } from "./home.ts";
+import { GIT_DENY, githooksDir, HARNESS_HOOKS, harnessBranches, homeDeny, hooksState, orphans, ownHooks } from "./home.ts";
 import { pluginRecordPath } from "./spool.ts";
 import { messageOf } from "./types.ts";
 
@@ -149,7 +149,8 @@ function homeChecks(dir: string, home: string, add: Add): void {
   } else if (missing.length) {
     add("git-hooks", "fail", `${folder} is missing ${missing.join(", ")} (/harness:init writes them)`);
   } else {
-    add("git-hooks", "pass", `${HARNESS_HOOKS.join(", ")}${own.length ? `, then the repository's own ${own.join(", ")}` : ""}`);
+    const branches = harnessBranches(home);
+    add("git-hooks", "pass", `${HARNESS_HOOKS.join(", ")}${own.length ? `, then the repository's own ${own.join(", ")}` : ""}; commits are gated on ${branches.length ? branches.join(", ") : "no branch yet (pu harness marks the one it starts on)"}`);
   }
 
   const settings = readJson<Settings>(join(home, "settings.json")) ?? {};

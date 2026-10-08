@@ -7382,9 +7382,9 @@ var utcNow = (date = /* @__PURE__ */ new Date()) => date.toISOString().replace(/
 
 // src/lib/config.ts
 var MODES = ["off", "observe", "route"];
-var git = (cwd, ...args) => {
+var git = (cwd, ...args2) => {
   try {
-    return execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    return execFileSync("git", ["-C", cwd, ...args2], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
   } catch {
     return null;
   }
@@ -7512,6 +7512,19 @@ function recordFailure(config, why) {
 }
 
 // src/lib/home.ts
+var readRepoRecord = (home2) => readJson(join3(home2, "repo.json"));
+var harnessBranches = (home2) => readRepoRecord(home2)?.harness_branches ?? [];
+function recordBranch(home2, dir2, branch2) {
+  const record = readRepoRecord(home2);
+  if (!record || !branch2) return;
+  const known = record.harness_branches ?? [];
+  if (known.includes(branch2)) return;
+  const alive = known.filter((b) => git2(dir2, "show-ref", "--verify", "--quiet", `refs/heads/${b}`) !== null);
+  try {
+    writeFileSync2(join3(home2, "repo.json"), JSON.stringify({ ...record, harness_branches: [...alive, branch2] }, null, 2) + "\n");
+  } catch {
+  }
+}
 var HARNESS_HOOKS = ["pre-commit", "commit-msg", "post-commit"];
 var GIT_HOOKS = [
   "applypatch-msg",
@@ -7556,9 +7569,9 @@ var GIT_DENY = [
 ];
 var githooksDir = (home2) => join3(home2, "githooks");
 var forward = (path) => path.replace(/\\/g, "/");
-var git2 = (dir2, ...args) => {
+var git2 = (dir2, ...args2) => {
   try {
-    return execFileSync2("git", ["-C", dir2, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    return execFileSync2("git", ["-C", dir2, ...args2], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
   } catch {
     return null;
   }
@@ -7653,7 +7666,7 @@ function hooksState(dir2, home2) {
   const ours = current !== null && normalisedPath(current) === normalisedPath(githooksDir(home2));
   return { current, ours, previous: ours ? git2(dir2, "config", "--get", "harness.previousHooksPath") : current };
 }
-function enrolPlan(dir2, pluginRoot2, now = /* @__PURE__ */ new Date()) {
+function enrolPlan(dir2, pluginRoot2, { branch: branch2, now = /* @__PURE__ */ new Date() } = {}) {
   const home2 = repoHome(dir2);
   const steps2 = [];
   if (!existsSync3(join3(home2, "routing.yaml"))) {
@@ -7704,6 +7717,9 @@ function enrolPlan(dir2, pluginRoot2, now = /* @__PURE__ */ new Date()) {
   if (!registered(home2)) {
     steps2.push({ what: `register the spool in ${registryPath()}, so pu sync finds it`, apply: () => registerSpool({ dir: dir2, metadataDir: home2 }, now) });
   }
+  if (branch2 && !harnessBranches(home2).includes(branch2)) {
+    steps2.push({ what: `mark ${branch2} as a Harness branch: commits on it are gated outside Claude Code too`, apply: () => recordBranch(home2, dir2, branch2) });
+  }
   return { home: home2, steps: steps2 };
 }
 function writeHome(home2, name, content) {
@@ -7733,9 +7749,9 @@ var DENY = [
 ];
 var GITIGNORE = [".harness/", ".claude/state/", "/PLAN.md"];
 var HOOKS = ["harness", ...HARNESS_HOOKS];
-var git3 = (dir2, ...args) => {
+var git3 = (dir2, ...args2) => {
   try {
-    return execFileSync3("git", ["-C", dir2, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    return execFileSync3("git", ["-C", dir2, ...args2], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
   } catch {
     return null;
   }
@@ -7820,7 +7836,8 @@ function homeChecks(dir2, home2, add) {
   } else if (missing.length) {
     add("git-hooks", "fail", `${folder} is missing ${missing.join(", ")} (/harness:init writes them)`);
   } else {
-    add("git-hooks", "pass", `${HARNESS_HOOKS.join(", ")}${own.length ? `, then the repository's own ${own.join(", ")}` : ""}`);
+    const branches = harnessBranches(home2);
+    add("git-hooks", "pass", `${HARNESS_HOOKS.join(", ")}${own.length ? `, then the repository's own ${own.join(", ")}` : ""}; commits are gated on ${branches.length ? branches.join(", ") : "no branch yet (pu harness marks the one it starts on)"}`);
   }
   const settings = readJson2(join4(home2, "settings.json")) ?? {};
   const denied = new Set(settings.permissions?.deny ?? []);
@@ -7879,14 +7896,17 @@ function readClaudeVersion() {
 }
 
 // src/cli/harness-init.ts
-var apply = process.argv.includes("--apply");
+var args = process.argv.slice(2);
+var apply = args.includes("--apply");
+var branchAt = args.indexOf("--branch");
+var branch = branchAt >= 0 ? args[branchAt + 1] : void 0;
 var dir = projectDir();
 var root = pluginRoot();
 if (!root) {
   process.stdout.write("harness-init: can't find the plugin's own folder, so there is no template to enrol from\n");
   process.exit(1);
 }
-var { home, steps } = enrolPlan(dir, root);
+var { home, steps } = enrolPlan(dir, root, branch ? { branch } : {});
 var say = (line = "") => process.stdout.write(line + "\n");
 say(`harness-init: ${dir}${apply ? "" : " (dry run: nothing is changed)"}`);
 say(`  home: ${home}`);

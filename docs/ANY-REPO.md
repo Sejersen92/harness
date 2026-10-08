@@ -77,9 +77,9 @@ If something later moves `core.hooksPath` (husky's install does, on `npm install
 
 ### What the gate gates: Harness branches
 
-**Decided (Mikkel, 2026-10-08): the tool enables, it doesn't block.** The Harness is an add-on to ordinary development, so the git hook gates only **Harness branches**: branches that `pu harness` created or was started on, listed in `repo.json`. Every other branch is left alone, whether that's a colleague's workflow, a quick hand fix or a hotfix. Commits there go straight to the repository's own hooks.
+**Decided (Mikkel, 2026-10-08): the tool enables, it doesn't block.** The Harness is an add-on to ordinary development, so the git hook gates only **Harness branches**: branches the Harness has worked on, listed in `repo.json` as `harness_branches`. A branch is added by `harness-init --branch <name>` (which `pu harness` passes for the branch it starts on), by SessionStart (the branch a Harness session starts on), and by `post-commit` inside a Harness session (a branch the session switched to). Branches that no longer exist drop off whenever the list is written. Every other branch is left alone, whether that's a colleague's workflow, a quick hand fix or a hotfix. Commits there go straight to the repository's own hooks.
 
-This holds everywhere, PU included. Today PU gates every commit; under this design, Mikkel's hand commits on his own branches stop paying the 1–3 minutes. In repositories he owns, CI (below) still checks every pull request. There's no setting for it: one rule, so there's nothing to configure differently per repository.
+This holds in every enrolled repository, and PU's too once it moves (M): a repository still set up the old way has no list and keeps gating every commit. Today PU gates every commit; under this design, Mikkel's hand commits on his own branches stop paying the 1–3 minutes. In repositories he owns, CI (below) still checks every pull request. There's no setting for it: one rule, so there's nothing to configure differently per repository.
 
 How this holds up:
 - **Inside a Harness session, every commit is gated, whatever the branch.** That's the Claude Code commit gate (the PreToolUse hook), which is unchanged. So an agent can't escape the gate with `git switch -c` onto an ungated branch.
@@ -205,7 +205,7 @@ This doesn't block anything else in this design. It's its own track, R1 to R3 in
 | **P1** | PU CLI | `pu update` installs the Harness when it's missing and runs `--update` when it's present. It sets `cleanupPeriodDays` to at least 180 (never lowering a higher value), replaces the `gh auth login` hint with a credential-neutral one, and doesn't let a failed doctor check make `start` report the install as unfinished. Refresh CONNECTING-A-WORK-PC.md. | none, so it can run alongside S9 |
 | **H1** | harness | **Done, 0.4.0.** `repoHome()`, with every path in the table above moved to it, plus the one-release fallback. | S9 |
 | **H2** | harness | **Done, 0.5.0.** Enrolment (`harness-init`) and `harness-forget`; per-home hooks chained to the repository's own; `commits.strip_ai_attribution`; the doctor checks the home and reports orphans. | H1 |
-| **H3** | harness | Gating Harness branches only (`repo.json` lists them). Hook chaining moved into H2, since enrolling without it would switch a repository's hooks off. | H2 |
+| **H3** | harness | **Done, 0.6.0.** Gating Harness branches only (`repo.json` lists them). Hook chaining moved into H2, since enrolling without it would switch a repository's hooks off. | H2 |
 | **H4** | harness | The intake gate: the orchestrator's prompt, `intake.max_ambiguity`, the `plan.intake` event and its schema. | H1 |
 | **P2** | PU CLI | `pu harness` enrols automatically when there's no home, records the branch as a Harness branch, and passes `--settings` and `--add-dir`; `pu harness forget [--all]`. | H2 |
 | **C1** | harness | `harness-eval --ci --config`; enrolling an owned repository offers the two CI files. | H2 |
