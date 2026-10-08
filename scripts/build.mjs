@@ -6,6 +6,7 @@ const entries = {
   "harness-doctor": "src/cli/harness-doctor.ts",
   "harness-emit": "src/cli/harness-emit.ts",
   "harness-eval": "src/cli/harness-eval.ts",
+  "harness-forget": "src/cli/harness-forget.ts",
   "harness-git-hook": "src/cli/harness-git-hook.ts",
   "harness-init": "src/cli/harness-init.ts",
   "hook-pre-tool-use": "src/hooks/pre-tool-use.ts",

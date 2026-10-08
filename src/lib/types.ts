@@ -69,6 +69,8 @@ export interface Config {
   stages: Stage[];
   testGlobs: string[];
   markerTtlMinutes: number;
+  /** Whether the commit-msg hook strips AI attribution trailers: the repository's choice (commits.strip_ai_attribution). */
+  stripAiAttribution: boolean;
 }
 
 export type LoadedConfig = OffConfig | Config;

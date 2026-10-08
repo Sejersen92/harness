@@ -2,7 +2,7 @@
 
 A Claude Code plugin, part of PreviouslyUpcoming. It scores every task for complexity, runs it on the model that score calls for, gates commits on an independent eval, and writes a metadata stream that PU ingests and visualises.
 
-The contract is written; no plugin code exists yet. Read in this order:
+Read in this order (and [docs/ANY-REPO.md](docs/ANY-REPO.md) for how it runs in any repository with nothing written into it):
 
 1. [docs/DESIGN.md](docs/DESIGN.md): how it works, with every review fix and spike result applied.
 2. [docs/EVENTS.md](docs/EVENTS.md): the two metadata outputs (Harness Events v1 and Routing log v1), with examples.
@@ -13,7 +13,7 @@ The original design documents are in [docs/sources/](docs/sources/).
 
 ## Trying it in a repository
 
-1. Copy [templates/routing.yaml](templates/routing.yaml) to the repository root (`mode: observe`), and add `.harness/` to its `.gitignore`.
+1. Enrol the repository: `/harness:init` in a Claude Code session with the plugin, or `node <this checkout>/bin/harness-init.mjs --apply` from its root. It gives the repository a home under `~/.harness/repos/` and writes nothing into it. `/harness:forget` undoes it. (`pu harness` does this for you.)
 2. Start Claude Code there with the plugin and the orchestrator:
 
    ```sh
@@ -21,9 +21,9 @@ The original design documents are in [docs/sources/](docs/sources/).
    ```
 
    Or install it once: run `/plugin marketplace add c:/src/harness`, then `/plugin install harness@harness-local`.
-3. Give it a task. Events land in `.harness/events/`, and one routing-log line per completed task lands in `.harness/routing-log/`.
+3. Give it a task. Its plan, events and routing log land in the repository's home, `~/.harness/repos/<name>-<hash>/`.
 
-Without a `routing.yaml`, the plugin does nothing in that repository.
+In a repository that isn't enrolled, the plugin does nothing.
 
 ## Building
 

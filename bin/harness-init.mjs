@@ -7378,6 +7378,7 @@ import { fileURLToPath } from "node:url";
 // src/lib/ids.ts
 import { createHash, randomBytes } from "node:crypto";
 var sha256 = (data) => createHash("sha256").update(data).digest("hex");
+var utcNow = (date = /* @__PURE__ */ new Date()) => date.toISOString().replace(/\.\d{3}Z$/, "Z");
 
 // src/lib/config.ts
 var MODES = ["off", "observe", "route"];
@@ -7421,20 +7422,20 @@ var DEFAULT_TEST_GLOBS = [
   "**/*Tests.cs"
 ];
 function loadConfig(dir2 = projectDir()) {
-  const home = repoHome(dir2);
-  const homed = existsSync(join(home, "routing.yaml"));
-  if (!homed && !existsSync(join(dir2, "routing.yaml"))) return { dir: dir2, mode: "off", reason: NOT_ENROLLED, home };
-  const routingYaml = join(homed ? home : dir2, "routing.yaml");
+  const home2 = repoHome(dir2);
+  const homed = existsSync(join(home2, "routing.yaml"));
+  if (!homed && !existsSync(join(dir2, "routing.yaml"))) return { dir: dir2, mode: "off", reason: NOT_ENROLLED, home: home2 };
+  const routingYaml = join(homed ? home2 : dir2, "routing.yaml");
   const bytes = readFileSync(routingYaml);
   const yaml = (0, import_yaml.parse)(bytes.toString("utf8")) ?? {};
   const metadata = yaml.metadata ?? {};
   const layout = homed ? {
     kind: "home",
-    root: home,
+    root: home2,
     routingYaml,
-    metadataDir: home,
-    markerPath: join(home, "state", "eval-pass.json"),
-    planPath: join(home, "PLAN.md")
+    metadataDir: home2,
+    markerPath: join(home2, "state", "eval-pass.json"),
+    planPath: join(home2, "PLAN.md")
   } : {
     kind: "repository",
     root: dir2,
@@ -7445,7 +7446,7 @@ function loadConfig(dir2 = projectDir()) {
   };
   return {
     dir: dir2,
-    home,
+    home: home2,
     layout,
     mode: MODES.includes(yaml.mode) ? yaml.mode : "off",
     tiers: yaml.tiers ?? {},
@@ -7455,36 +7456,88 @@ function loadConfig(dir2 = projectDir()) {
     includeJustifications: metadata.include_justifications !== false,
     stages: Array.isArray(yaml.eval?.stages) ? yaml.eval.stages : [],
     testGlobs: Array.isArray(yaml.eval?.tests) && yaml.eval.tests.length ? yaml.eval.tests.map(String) : [...DEFAULT_TEST_GLOBS],
-    markerTtlMinutes: Number.isInteger(yaml.gate?.marker_ttl_minutes) ? yaml.gate?.marker_ttl_minutes : 30
+    markerTtlMinutes: Number.isInteger(yaml.gate?.marker_ttl_minutes) ? yaml.gate?.marker_ttl_minutes : 30,
+    // Whether a commit may say an AI helped is the repository's call, not the Harness's: a home leaves
+    // messages alone unless routing.yaml asks. The old layout always stripped, and keeps doing so.
+    stripAiAttribution: typeof yaml.commits?.strip_ai_attribution === "boolean" ? yaml.commits.strip_ai_attribution : !homed
   };
 }
 
-// src/lib/setup.ts
+// src/lib/home.ts
 var import_yaml2 = __toESM(require_dist(), 1);
 import { execFileSync as execFileSync2 } from "node:child_process";
-import { chmodSync, copyFileSync, existsSync as existsSync2, mkdirSync, readFileSync as readFileSync2, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { join as join3, resolve as resolve3 } from "node:path";
+import { chmodSync, existsSync as existsSync3, mkdirSync as mkdirSync2, readdirSync as readdirSync2, readFileSync as readFileSync3, rmSync as rmSync2, statSync, writeFileSync as writeFileSync2 } from "node:fs";
+import { homedir as homedir2 } from "node:os";
+import { isAbsolute, join as join3, relative } from "node:path";
 
 // src/lib/spool.ts
+import { appendFileSync, existsSync as existsSync2, mkdirSync, readdirSync, readFileSync as readFileSync2, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join as join2, resolve as resolve2 } from "node:path";
 
 // src/lib/types.ts
 var messageOf = (error) => error instanceof Error ? error.message : String(error);
 
 // src/lib/spool.ts
+var registryPath = () => join2(harnessHome(), "spools.json");
 var pluginRecordPath = () => join2(harnessHome(), "plugin.json");
+var readRegistry = (path) => existsSync2(path) ? JSON.parse(readFileSync2(path, "utf8")) : { version: 1, spools: [] };
+function writeRegistry(path, registry) {
+  mkdirSync(join2(path, ".."), { recursive: true });
+  writeFileSync(`${path}.tmp`, JSON.stringify(registry, null, 2) + "\n");
+  renameSync(`${path}.tmp`, path);
+}
+function registerSpool(spool, now = /* @__PURE__ */ new Date()) {
+  const path = registryPath();
+  const metadataDir = resolve2(spool.metadataDir);
+  try {
+    const registry = readRegistry(path);
+    if (registry.spools.some((s) => s.metadata_dir.toLowerCase() === metadataDir.toLowerCase())) return;
+    registry.spools.push({ repo_dir: resolve2(spool.dir), metadata_dir: metadataDir, first_seen: utcNow(now) });
+    writeRegistry(path, registry);
+  } catch (error) {
+    recordFailure(spool, `spool registry: ${messageOf(error)}`);
+  }
+}
+function recordFailure(config, why) {
+  process.stderr.write(`harness: metadata not written: ${why}
+`);
+  try {
+    mkdirSync(config.metadataDir, { recursive: true });
+    const file = join2(config.metadataDir, "emit-failures");
+    const count = existsSync2(file) ? Number.parseInt(readFileSync2(file, "utf8"), 10) || 0 : 0;
+    writeFileSync(file, `${count + 1}
+`);
+  } catch {
+  }
+}
 
-// src/lib/setup.ts
-var MIN_CLAUDE_CODE = [2, 1, 284];
-var MIN_NODE = 22;
-var DENY = [
-  // Agents can't edit their own guardrails: the pass marker, the settings, the git hooks, CI.
-  "Edit(.claude/state/**)",
-  "Write(.claude/state/**)",
-  "Edit(.claude/settings.json)",
-  "Edit(.githooks/**)",
-  "Write(.githooks/**)",
-  "Edit(.github/workflows/**)",
+// src/lib/home.ts
+var HARNESS_HOOKS = ["pre-commit", "commit-msg", "post-commit"];
+var GIT_HOOKS = [
+  "applypatch-msg",
+  "pre-applypatch",
+  "post-applypatch",
+  "pre-commit",
+  "pre-merge-commit",
+  "prepare-commit-msg",
+  "commit-msg",
+  "post-commit",
+  "pre-rebase",
+  "post-checkout",
+  "post-merge",
+  "pre-push",
+  "pre-auto-gc",
+  "post-rewrite",
+  "sendemail-validate",
+  "fsmonitor-watchman",
+  "p4-changelist",
+  "p4-prepare-changelist",
+  "p4-post-changelist",
+  "p4-pre-submit",
+  "post-index-change",
+  "reference-transaction"
+];
+var GIT_DENY = [
   // Nothing skips the gate, or builds a commit around it (C2).
   "Bash(git commit --no-verify*)",
   "Bash(git commit * --no-verify*)",
@@ -7501,8 +7554,8 @@ var DENY = [
   "Bash(gh repo delete*)",
   "Bash(gh secret*)"
 ];
-var GITIGNORE = [".harness/", ".claude/state/", "/PLAN.md"];
-var HOOKS = ["harness", "pre-commit", "commit-msg", "post-commit"];
+var githooksDir = (home2) => join3(home2, "githooks");
+var forward = (path) => path.replace(/\\/g, "/");
 var git2 = (dir2, ...args) => {
   try {
     return execFileSync2("git", ["-C", dir2, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
@@ -7512,12 +7565,188 @@ var git2 = (dir2, ...args) => {
 };
 var readJson = (path) => {
   try {
-    return JSON.parse(readFileSync2(path, "utf8"));
+    return JSON.parse(readFileSync3(path, "utf8"));
   } catch {
     return null;
   }
 };
-var settingsPath = (dir2) => join3(dir2, ".claude", "settings.json");
+var readSafely = (path) => {
+  try {
+    return readFileSync3(path, "utf8");
+  } catch {
+    return "";
+  }
+};
+function rulePath(folder) {
+  const inHome = relative(homedir2(), folder);
+  return inHome && !inHome.startsWith("..") && !isAbsolute(inHome) ? `~/${forward(inHome)}` : `//${forward(folder).replace(/^\/+/, "")}`;
+}
+function homeDeny(home2) {
+  const h = rulePath(home2);
+  return [
+    `Edit(${h}/state/**)`,
+    `Edit(${h}/routing.yaml)`,
+    `Edit(${h}/settings.json)`,
+    `Edit(${h}/repo.json)`,
+    `Edit(${h}/githooks/**)`,
+    "Edit(.github/workflows/**)",
+    ...GIT_DENY
+  ];
+}
+var homeSettings = (home2) => ({
+  permissions: { deny: homeDeny(home2) },
+  // Worktree subagents start from the current branch, not the default one (S6).
+  worktree: { baseRef: "head" }
+});
+function ownHooksDir(dir2, previous) {
+  if (!previous) {
+    const common = git2(dir2, "rev-parse", "--git-common-dir") ?? ".git";
+    return join3(isAbsolute(common) ? common : join3(dir2, common), "hooks");
+  }
+  if (previous.startsWith("~/")) return join3(homedir2(), previous.slice(2));
+  return isAbsolute(previous) || /^[A-Za-z]:/.test(previous) ? previous : join3(dir2, previous);
+}
+function ownHooks(dir2, previous) {
+  const folder = ownHooksDir(dir2, previous);
+  if (!existsSync3(folder)) return [];
+  return readdirSync2(folder).filter((name) => GIT_HOOKS.includes(name) && statSync(join3(folder, name)).isFile()).sort();
+}
+var wrapper = (name) => `#!/bin/sh
+exec "$(dirname "$0")/harness" ${name} "$@"
+`;
+function hookFiles(pluginRoot2, own) {
+  const files = /* @__PURE__ */ new Map([["harness", readFileSync3(join3(pluginRoot2, "templates", "githooks", "harness"), "utf8")]]);
+  for (const name of [.../* @__PURE__ */ new Set([...HARNESS_HOOKS, ...own])].sort()) files.set(name, wrapper(name));
+  return files;
+}
+function routingYamlFor(dir2, pluginRoot2) {
+  const template = readFileSync3(join3(pluginRoot2, "templates", "routing.yaml"), "utf8");
+  const stages = detectStages(dir2);
+  const block = stages.length ? `  stages:
+${(0, import_yaml2.stringify)(stages, { flow: false }).split("\n").filter(Boolean).map((l) => `    ${l}`).join("\n")}` : "  stages: []             # none detected: add the build and test commands this repository uses";
+  return { text: template.replace(/^ {2}stages: \[\].*$/m, block), stages: stages.map((s) => s.name) };
+}
+function detectStages(dir2) {
+  const stages = [];
+  const shallow = [".", ...readdirSync2(dir2, { withFileTypes: true }).filter((e) => e.isDirectory() && !e.name.startsWith(".") && e.name !== "node_modules").map((e) => e.name)];
+  for (const sub of shallow) {
+    const root2 = join3(dir2, sub);
+    const solution = readdirSync2(root2).filter((f) => /\.(sln|slnx)$/.test(f))[0];
+    const testProject = solution ? null : readdirSync2(root2, { withFileTypes: true }).filter((e) => e.isDirectory() && /\.Tests?$/.test(e.name) && readdirSync2(join3(root2, e.name)).some((f) => f.endsWith(".csproj"))).map((e) => e.name)[0];
+    const dotnet = solution ?? testProject;
+    if (dotnet) {
+      const where = sub === "." ? dotnet : `${sub}/${dotnet}`;
+      stages.push({ name: `${sub === "." ? "" : `${sub}-`}build`, run: `dotnet build ${where} --nologo -v q` });
+      stages.push({ name: `${sub === "." ? "" : `${sub}-`}test`, run: `dotnet test ${where} --no-build --nologo` });
+    }
+    const pkg = readJson(join3(root2, "package.json"));
+    for (const script of ["lint", "test", "build"]) {
+      if (!pkg?.scripts?.[script]) continue;
+      stages.push({ name: `${sub === "." ? "" : `${sub}-`}${script}`.replace(/^-/, ""), run: `npm run ${script}`, ...sub === "." ? {} : { cwd: sub } });
+    }
+  }
+  return stages;
+}
+var registered = (metadataDir) => (readJson(registryPath())?.spools ?? []).some((s) => normalisedPath(s.metadata_dir) === normalisedPath(metadataDir));
+function hooksState(dir2, home2) {
+  const current = git2(dir2, "config", "--get", "core.hooksPath");
+  const ours = current !== null && normalisedPath(current) === normalisedPath(githooksDir(home2));
+  return { current, ours, previous: ours ? git2(dir2, "config", "--get", "harness.previousHooksPath") : current };
+}
+function enrolPlan(dir2, pluginRoot2, now = /* @__PURE__ */ new Date()) {
+  const home2 = repoHome(dir2);
+  const steps2 = [];
+  if (!existsSync3(join3(home2, "routing.yaml"))) {
+    const old = join3(dir2, "routing.yaml");
+    if (existsSync3(old)) {
+      steps2.push({ what: `copy routing.yaml into ${home2} (the repository's copy is left as it is)`, apply: () => writeHome(home2, "routing.yaml", readFileSync3(old)) });
+    } else {
+      const { text, stages } = routingYamlFor(dir2, pluginRoot2);
+      steps2.push({ what: `write ${join3(home2, "routing.yaml")} (mode observe; stages: ${stages.join(", ") || "none detected"})`, apply: () => writeHome(home2, "routing.yaml", text) });
+    }
+  }
+  if (!existsSync3(join3(home2, "repo.json"))) {
+    const record = { schema: "harness.repo/v1", repo_dir: dir2, enrolled: utcNow(now) };
+    steps2.push({ what: `write ${join3(home2, "repo.json")}`, apply: () => writeHome(home2, "repo.json", JSON.stringify(record, null, 2) + "\n") });
+  }
+  const settings = JSON.stringify(homeSettings(home2), null, 2) + "\n";
+  if (readSafely(join3(home2, "settings.json")) !== settings) {
+    steps2.push({ what: `write ${join3(home2, "settings.json")} (${homeDeny(home2).length} deny rules for Harness sessions, worktrees from HEAD)`, apply: () => writeHome(home2, "settings.json", settings) });
+  }
+  const hooks = hooksState(dir2, home2);
+  const own = ownHooks(dir2, hooks.previous);
+  const files = hookFiles(pluginRoot2, own);
+  const folder = githooksDir(home2);
+  const present = existsSync3(folder) ? readdirSync2(folder) : [];
+  const stale = [...files].some(([name, text]) => readSafely(join3(folder, name)) !== text) || present.some((name) => !files.has(name));
+  if (stale) {
+    steps2.push({
+      what: `write the git hooks in ${folder}: the Harness's ${HARNESS_HOOKS.join(", ")}${own.length ? `, then the repository's own ${own.join(", ")}` : ""}`,
+      apply: () => {
+        mkdirSync2(folder, { recursive: true });
+        for (const name of present) if (!files.has(name)) rmSync2(join3(folder, name), { force: true });
+        for (const [name, text] of files) {
+          writeFileSync2(join3(folder, name), text);
+          chmodSync(join3(folder, name), 493);
+        }
+      }
+    });
+  }
+  if (!hooks.ours) {
+    steps2.push({
+      what: `git config core.hooksPath ${forward(folder)} in this clone (it was ${hooks.current ? `"${hooks.current}"` : "unset"}; kept as harness.previousHooksPath, and its hooks still run)`,
+      apply: () => {
+        execFileSync2("git", ["-C", dir2, "config", "harness.previousHooksPath", hooks.current ?? ""]);
+        execFileSync2("git", ["-C", dir2, "config", "core.hooksPath", forward(folder)]);
+      }
+    });
+  }
+  if (!registered(home2)) {
+    steps2.push({ what: `register the spool in ${registryPath()}, so pu sync finds it`, apply: () => registerSpool({ dir: dir2, metadataDir: home2 }, now) });
+  }
+  return { home: home2, steps: steps2 };
+}
+function writeHome(home2, name, content) {
+  mkdirSync2(home2, { recursive: true });
+  writeFileSync2(join3(home2, name), content);
+}
+function homes() {
+  const root2 = join3(harnessHome(), "repos");
+  if (!existsSync3(root2)) return [];
+  return readdirSync2(root2, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => join3(root2, e.name)).map((home2) => ({ home: home2, repoDir: readJson(join3(home2, "repo.json"))?.repo_dir ?? null }));
+}
+var orphans = () => homes().filter(({ repoDir }) => !repoDir || !existsSync3(join3(repoDir, ".git"))).map(({ home: home2 }) => home2);
+
+// src/lib/setup.ts
+import { execFileSync as execFileSync3 } from "node:child_process";
+import { existsSync as existsSync4, mkdirSync as mkdirSync3, readFileSync as readFileSync4, realpathSync, rmSync as rmSync3, writeFileSync as writeFileSync3 } from "node:fs";
+import { join as join4, resolve as resolve3 } from "node:path";
+var MIN_CLAUDE_CODE = [2, 1, 284];
+var MIN_NODE = 22;
+var DENY = [
+  // Agents can't edit their own guardrails: the pass marker, the settings, the git hooks, CI.
+  "Edit(.claude/state/**)",
+  "Edit(.claude/settings.json)",
+  "Edit(.githooks/**)",
+  "Edit(.github/workflows/**)",
+  ...GIT_DENY
+];
+var GITIGNORE = [".harness/", ".claude/state/", "/PLAN.md"];
+var HOOKS = ["harness", ...HARNESS_HOOKS];
+var git3 = (dir2, ...args) => {
+  try {
+    return execFileSync3("git", ["-C", dir2, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+  } catch {
+    return null;
+  }
+};
+var readJson2 = (path) => {
+  try {
+    return JSON.parse(readFileSync4(path, "utf8"));
+  } catch {
+    return null;
+  }
+};
 var version = (text) => (String(text).match(/(\d+)\.(\d+)\.(\d+)/) ?? []).slice(1).map(Number);
 var atLeast = (have, want) => {
   for (let i = 0; i < want.length; i++) if ((have[i] ?? 0) !== (want[i] ?? 0)) return (have[i] ?? 0) > (want[i] ?? 0);
@@ -7533,41 +7762,89 @@ function checks(dir2, { pluginRoot: pluginRoot2, claudeVersion = readClaudeVersi
   add("node", atLeast(node, [MIN_NODE]) ? "pass" : "fail", `Node ${process.versions.node} (needs ${MIN_NODE}+)`);
   if (!claudeVersion) add("claude-code", "warn", "the claude CLI is not on PATH, so its version can't be checked");
   else add("claude-code", atLeast(version(claudeVersion), MIN_CLAUDE_CODE) ? "pass" : "fail", `Claude Code ${claudeVersion} (needs ${MIN_CLAUDE_CODE.join(".")}+)`);
-  const recorded = readJson(pluginRecordPath());
+  const recorded = readJson2(pluginRecordPath());
   if (!recorded?.root) add("plugin-recorded", "fail", `${pluginRecordPath()} is missing: start Claude Code once with the plugin so git hooks can find it`);
-  else if (!existsSync2(join3(recorded.root, "bin", "harness-git-hook.mjs"))) add("plugin-recorded", "fail", `${pluginRecordPath()} points at ${recorded.root}, which has no bin/harness-git-hook.mjs`);
+  else if (!existsSync4(join4(recorded.root, "bin", "harness-git-hook.mjs"))) add("plugin-recorded", "fail", `${pluginRecordPath()} points at ${recorded.root}, which has no bin/harness-git-hook.mjs`);
   else if (pluginRoot2 && realpathSync.native(recorded.root).toLowerCase() !== realpathSync.native(pluginRoot2).toLowerCase()) add("plugin-recorded", "warn", `git hooks use ${recorded.root}, not this copy (${pluginRoot2})`);
   else add("plugin-recorded", "pass", `git hooks use ${recorded.root} (${recorded.version})`);
   if (config.mode === "off") {
-    add("routing-yaml", "fail", config.reason === NOT_ENROLLED ? `not enrolled: there is no ${join3(config.home, "routing.yaml")} (harness-init sets one up)` : "mode is off or not recognised");
+    add("routing-yaml", "fail", config.reason === NOT_ENROLLED ? `not enrolled: there is no ${join4(config.home, "routing.yaml")} (/harness:init enrols the repository)` : "mode is off or not recognised");
   } else {
     const tiers = ["T1", "T2", "T3", "T4"].filter((t) => Number.isInteger(config.tiers?.[t]?.max_score) && typeof config.tiers?.[t]?.model === "string");
     if (tiers.length < 4) add("routing-yaml", "fail", `tiers ${["T1", "T2", "T3", "T4"].filter((t) => !tiers.includes(t)).join(", ")} are missing or malformed`);
-    else if (!config.stages.length) add("routing-yaml", "fail", "eval.stages is empty, so no eval can pass and no commit can be made");
+    else if (!config.stages.length) add("routing-yaml", "fail", `eval.stages is empty in ${config.layout.routingYaml}, so no eval can pass and no commit can be made`);
     else add("routing-yaml", "pass", `mode ${config.mode}, ${config.stages.length} eval stage(s)`);
   }
   if (config.layout?.kind === "home") add("layout", "pass", `nothing in the repository; its files are in ${config.layout.root}`);
-  else if (config.layout) add("layout", "warn", `routing.yaml is in the repository, the layout from before homes; it still works, and enrolling moves it to ${config.home}`);
+  else if (config.layout) add("layout", "warn", `routing.yaml is in the repository, the layout from before homes; it still works, and /harness:init moves it to ${config.home}`);
   if (!config.metadataDir) add("spool-writable", "warn", "not enrolled, so there is no spool yet");
   else {
     try {
-      mkdirSync(config.metadataDir, { recursive: true });
-      const probe = join3(config.metadataDir, `.doctor-${process.pid}`);
-      writeFileSync(probe, "");
-      rmSync(probe);
+      mkdirSync3(config.metadataDir, { recursive: true });
+      const probe = join4(config.metadataDir, `.doctor-${process.pid}`);
+      writeFileSync3(probe, "");
+      rmSync3(probe);
       add("spool-writable", "pass", config.metadataDir);
     } catch (error) {
       add("spool-writable", "fail", messageOf(error));
     }
   }
-  const hooksPath = git2(dir2, "config", "core.hooksPath");
-  const missingHooks = HOOKS.filter((h) => !existsSync2(join3(dir2, ".githooks", h)));
+  if (config.layout?.kind === "home") homeChecks(dir2, config.layout.root, add);
+  else if (config.layout) repositoryChecks(dir2, add);
+  try {
+    const spelled = resolve3(dir2);
+    const real = realpathSync.native(spelled);
+    if (real === spelled) add("path-casing", "pass", spelled);
+    else if (real.toLowerCase() === spelled.toLowerCase()) add("path-casing", "warn", `the working directory is spelled ${spelled}, the disk says ${real}; Claude Code refused a worktree for this (S6)`);
+    else add("path-casing", "pass", `${spelled} (reached through a link to ${real})`);
+  } catch (error) {
+    add("path-casing", "warn", messageOf(error));
+  }
+  const failures = Number.parseInt(readSafely2(join4(config.metadataDir ?? config.home, "emit-failures")), 10) || 0;
+  add("emit-failures", failures ? "warn" : "pass", failures ? `${failures} metadata write(s) failed; see stderr from the hooks` : "none");
+  const lost = orphans();
+  add(
+    "orphans",
+    lost.length ? "warn" : "pass",
+    lost.length ? `${lost.length} home(s) whose clone is gone: ${lost.join(", ")} (harness-forget --all, or per clone, removes them)` : "every home has its clone"
+  );
+  return results2;
+}
+function homeChecks(dir2, home2, add) {
+  const hooks = hooksState(dir2, home2);
+  const folder = githooksDir(home2);
+  const own = ownHooks(dir2, hooks.previous);
+  const missing = ["harness", ...HARNESS_HOOKS, ...own].filter((h) => !existsSync4(join4(folder, h)));
+  if (!hooks.ours) {
+    add("git-hooks", "fail", `core.hooksPath is ${hooks.current ? `"${hooks.current}"` : "not set"}, not ${folder}: commits made outside Claude Code are not gated (something, such as husky's install, may have changed it; /harness:init puts it back)`);
+  } else if (missing.length) {
+    add("git-hooks", "fail", `${folder} is missing ${missing.join(", ")} (/harness:init writes them)`);
+  } else {
+    add("git-hooks", "pass", `${HARNESS_HOOKS.join(", ")}${own.length ? `, then the repository's own ${own.join(", ")}` : ""}`);
+  }
+  const settings = readJson2(join4(home2, "settings.json")) ?? {};
+  const denied = new Set(settings.permissions?.deny ?? []);
+  const missingDeny = homeDeny(home2).filter((rule) => !denied.has(rule));
+  add(
+    "permissions",
+    missingDeny.length ? "warn" : "pass",
+    missingDeny.length ? `${missingDeny.length} deny rule(s) missing from ${join4(home2, "settings.json")} (/harness:init writes them)` : `${denied.size} deny rules for Harness sessions, in ${join4(home2, "settings.json")}`
+  );
+  add(
+    "worktree-base",
+    settings.worktree?.baseRef === "head" ? "pass" : "warn",
+    settings.worktree?.baseRef === "head" ? "worktrees start from HEAD" : `worktree.baseRef is not "head" in the home's settings (needed only for parallel groups, M6)`
+  );
+}
+function repositoryChecks(dir2, add) {
+  const hooksPath = git3(dir2, "config", "core.hooksPath");
+  const missingHooks = HOOKS.filter((h) => !existsSync4(join4(dir2, ".githooks", h)));
   if (hooksPath !== ".githooks") add("git-hooks", "fail", `core.hooksPath is ${hooksPath ? `"${hooksPath}"` : "not set"}: commits made outside Claude Code are not gated`);
   else if (missingHooks.length) add("git-hooks", "fail", `.githooks is missing ${missingHooks.join(", ")}`);
   else add("git-hooks", "pass", "pre-commit, commit-msg and post-commit are on");
-  const notIgnored = GITIGNORE.filter((p) => git2(dir2, "check-ignore", "-q", "--no-index", p.replace(/^\//, "").replace(/\/$/, "/x")) === null);
+  const notIgnored = GITIGNORE.filter((p) => git3(dir2, "check-ignore", "-q", "--no-index", p.replace(/^\//, "").replace(/\/$/, "/x")) === null);
   add("gitignore", notIgnored.length ? "warn" : "pass", notIgnored.length ? `not ignored: ${notIgnored.join(", ")}` : GITIGNORE.join(", "));
-  const settings = readJson(settingsPath(dir2)) ?? {};
+  const settings = readJson2(join4(dir2, ".claude", "settings.json")) ?? {};
   add(
     "attribution-off",
     settings.attribution?.commit === "" ? "pass" : "warn",
@@ -7585,130 +7862,20 @@ function checks(dir2, { pluginRoot: pluginRoot2, claudeVersion = readClaudeVersi
     settings.worktree?.baseRef === "head" ? "pass" : "warn",
     settings.worktree?.baseRef === "head" ? "worktrees start from HEAD" : 'worktree.baseRef is not "head" (needed only for parallel groups, M6)'
   );
-  try {
-    const spelled = resolve3(dir2);
-    const real = realpathSync.native(spelled);
-    if (real === spelled) add("path-casing", "pass", spelled);
-    else if (real.toLowerCase() === spelled.toLowerCase()) add("path-casing", "warn", `the working directory is spelled ${spelled}, the disk says ${real}; Claude Code refused a worktree for this (S6)`);
-    else add("path-casing", "pass", `${spelled} (reached through a link to ${real})`);
-  } catch (error) {
-    add("path-casing", "warn", messageOf(error));
-  }
-  const failures = Number.parseInt(readSafely(join3(config.metadataDir ?? config.home, "emit-failures")), 10) || 0;
-  add("emit-failures", failures ? "warn" : "pass", failures ? `${failures} metadata write(s) failed; see stderr from the hooks` : "none");
-  return results2;
 }
-function readSafely(path) {
+function readSafely2(path) {
   try {
-    return readFileSync2(path, "utf8");
+    return readFileSync4(path, "utf8");
   } catch {
     return "";
   }
 }
 function readClaudeVersion() {
   try {
-    return execFileSync2("claude", ["--version"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 15e3, shell: process.platform === "win32" }).trim();
+    return execFileSync3("claude", ["--version"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 15e3, shell: process.platform === "win32" }).trim();
   } catch {
     return null;
   }
-}
-function detectStages(dir2) {
-  const stages = [];
-  const shallow = [".", ...readdirSync(dir2, { withFileTypes: true }).filter((e) => e.isDirectory() && !e.name.startsWith(".") && e.name !== "node_modules").map((e) => e.name)];
-  for (const sub of shallow) {
-    const root2 = join3(dir2, sub);
-    const solution = readdirSync(root2).filter((f) => /\.(sln|slnx)$/.test(f))[0];
-    const testProject = solution ? null : readdirSync(root2, { withFileTypes: true }).filter((e) => e.isDirectory() && /\.Tests?$/.test(e.name) && readdirSync(join3(root2, e.name)).some((f) => f.endsWith(".csproj"))).map((e) => e.name)[0];
-    const dotnet = solution ?? testProject;
-    if (dotnet) {
-      const where = sub === "." ? dotnet : `${sub}/${dotnet}`;
-      stages.push({ name: `${sub === "." ? "" : `${sub}-`}build`, run: `dotnet build ${where} --nologo -v q` });
-      stages.push({ name: `${sub === "." ? "" : `${sub}-`}test`, run: `dotnet test ${where} --no-build --nologo` });
-    }
-    const pkg = readJson(join3(root2, "package.json"));
-    for (const script of ["lint", "test", "build"]) {
-      if (!pkg?.scripts?.[script]) continue;
-      stages.push({ name: `${sub === "." ? "" : `${sub}-`}${script}`.replace(/^-/, ""), run: `npm run ${script}`, ...sub === "." ? {} : { cwd: sub } });
-    }
-  }
-  return stages;
-}
-function initPlan(dir2, pluginRoot2) {
-  const steps2 = [];
-  if (!existsSync2(join3(dir2, "routing.yaml"))) {
-    const template = readFileSync2(join3(pluginRoot2, "templates", "routing.yaml"), "utf8");
-    const stages = detectStages(dir2);
-    const block = stages.length ? `  stages:
-${(0, import_yaml2.stringify)(stages, { flow: false }).split("\n").filter(Boolean).map((l) => `    ${l}`).join("\n")}` : "  stages: []             # none detected: add the build and test commands this repository uses";
-    const text = template.replace(/^ {2}stages: \[\].*$/m, block);
-    steps2.push({ what: `write routing.yaml (mode observe; stages: ${stages.map((s) => s.name).join(", ") || "none detected"})`, apply: () => writeFileSync(join3(dir2, "routing.yaml"), text) });
-  }
-  const gitignorePath = join3(dir2, ".gitignore");
-  const ignored = readSafely(gitignorePath);
-  const missing = GITIGNORE.filter((p) => !ignored.split(/\r?\n/).includes(p));
-  if (missing.length) {
-    steps2.push({
-      what: `add ${missing.join(", ")} to .gitignore`,
-      apply: () => writeFileSync(gitignorePath, `${ignored}${ignored && !ignored.endsWith("\n") ? "\n" : ""}# The Harness: its metadata spool, the eval pass marker, and the orchestrator's plan.
-${missing.join("\n")}
-`)
-    });
-  }
-  const attributes = readSafely(join3(dir2, ".gitattributes"));
-  if (!/^\.githooks\/\*\s+text\s+eol=lf/m.test(attributes)) {
-    steps2.push({
-      what: "keep .githooks/* LF in .gitattributes (a CRLF #! line breaks a hook on Windows)",
-      apply: () => writeFileSync(join3(dir2, ".gitattributes"), `${attributes}${attributes && !attributes.endsWith("\n") ? "\n" : ""}.githooks/* text eol=lf
-`)
-    });
-  }
-  const staleHooks = HOOKS.filter((h) => readSafely(join3(dir2, ".githooks", h)) !== readSafely(join3(pluginRoot2, "templates", "githooks", h)));
-  if (staleHooks.length) {
-    steps2.push({
-      what: `install .githooks/${staleHooks.join(", .githooks/")}`,
-      apply: () => {
-        mkdirSync(join3(dir2, ".githooks"), { recursive: true });
-        for (const h of staleHooks) {
-          copyFileSync(join3(pluginRoot2, "templates", "githooks", h), join3(dir2, ".githooks", h));
-          chmodSync(join3(dir2, ".githooks", h), 493);
-        }
-      }
-    });
-  }
-  if (git2(dir2, "config", "core.hooksPath") !== ".githooks") {
-    steps2.push({ what: "git config core.hooksPath .githooks (this clone)", apply: () => execFileSync2("git", ["-C", dir2, "config", "core.hooksPath", ".githooks"]) });
-  }
-  const before = readJson(settingsPath(dir2)) ?? {};
-  const after = structuredClone(before);
-  after.permissions ??= {};
-  after.permissions.deny = [.../* @__PURE__ */ new Set([...after.permissions.deny ?? [], ...DENY])];
-  after.attribution = { ...after.attribution ?? {}, commit: "" };
-  after.worktree = { ...after.worktree ?? {}, baseRef: "head" };
-  if (JSON.stringify(before) !== JSON.stringify(after)) {
-    steps2.push({
-      what: '.claude/settings.json: the deny rules, attribution.commit "", worktree.baseRef "head"',
-      apply: () => {
-        mkdirSync(join3(dir2, ".claude"), { recursive: true });
-        writeFileSync(settingsPath(dir2), JSON.stringify(after, null, 2) + "\n");
-      }
-    });
-  }
-  return { steps: steps2, settingsBefore: before, settingsAfter: after };
-}
-function settingsDiff(before, after) {
-  const lines = [];
-  const had = new Set(before.permissions?.deny ?? []);
-  const added = (after.permissions?.deny ?? []).filter((rule) => !had.has(rule));
-  if (added.length) lines.push(`permissions.deny gains ${added.length} rule(s):`, ...added.map((rule) => `    + ${rule}`));
-  const shown = (value) => value === void 0 ? "(not set)" : JSON.stringify(value);
-  const changes = [
-    ["attribution.commit", before.attribution?.commit, after.attribution?.commit],
-    ["worktree.baseRef", before.worktree?.baseRef, after.worktree?.baseRef]
-  ];
-  for (const [label, from, to] of changes) {
-    if (from !== to) lines.push(`${label}: ${shown(from)} -> ${shown(to)}`);
-  }
-  return lines;
 }
 
 // src/cli/harness-init.ts
@@ -7716,27 +7883,22 @@ var apply = process.argv.includes("--apply");
 var dir = projectDir();
 var root = pluginRoot();
 if (!root) {
-  process.stdout.write("harness-init: can't find the plugin's own folder, so there is no template to set up from\n");
+  process.stdout.write("harness-init: can't find the plugin's own folder, so there is no template to enrol from\n");
   process.exit(1);
 }
-var { steps, settingsBefore, settingsAfter } = initPlan(dir, root);
+var { home, steps } = enrolPlan(dir, root);
 var say = (line = "") => process.stdout.write(line + "\n");
 say(`harness-init: ${dir}${apply ? "" : " (dry run: nothing is changed)"}`);
-if (!steps.length) say("  nothing to do: everything init sets up is already in place");
+say(`  home: ${home}`);
+if (!steps.length) say("  nothing to do: it is enrolled, and everything enrolment sets up is in place");
 for (const step of steps) say(`  - ${step.what}`);
-var diff = settingsDiff(settingsBefore, settingsAfter);
-if (diff.length) {
-  say();
-  say(".claude/settings.json would change like this. The deny rules apply to every Claude Code session in this repository:");
-  for (const line of diff) say(`  ${line}`);
-}
 if (!apply) {
-  if (steps.length) say("\nRun again with --apply to make these changes.");
+  if (steps.length) say("\nRun again with --apply to make these changes. harness-forget undoes them.");
   process.exit(0);
 }
 for (const step of steps) step.apply();
 say(`
-applied ${steps.length} change(s). The doctor's checks now:`);
+applied ${steps.length} change(s); harness-forget undoes them. The doctor's checks now:`);
 var results = checks(dir, { pluginRoot: root });
 for (const r of results) say(`  ${r.status.padEnd(5)} ${r.name.padEnd(16)} ${r.detail}`);
 process.exit(results.some((r) => r.status === "fail") ? 1 : 0);

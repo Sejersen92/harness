@@ -51,21 +51,38 @@ export function recordPluginRoot(root: string | null, version: string, now: Date
   }
 }
 
+const readRegistry = (path: string): Registry =>
+  existsSync(path) ? (JSON.parse(readFileSync(path, "utf8")) as Registry) : { version: 1, spools: [] };
+
+/** Write then rename, so a reader (pu sync) never sees half a file. */
+function writeRegistry(path: string, registry: Registry): void {
+  mkdirSync(join(path, ".."), { recursive: true });
+  writeFileSync(`${path}.tmp`, JSON.stringify(registry, null, 2) + "\n");
+  renameSync(`${path}.tmp`, path);
+}
+
 /** Adds this repository's metadata folder to the registry if it isn't there. Cheap after the first time. */
-export function registerSpool(config: Config, now: Date = new Date()): void {
+export function registerSpool(spool: { dir: string; metadataDir: string }, now: Date = new Date()): void {
   const path = registryPath();
-  const metadataDir = resolve(config.metadataDir);
+  const metadataDir = resolve(spool.metadataDir);
   try {
-    const registry: Registry = existsSync(path) ? (JSON.parse(readFileSync(path, "utf8")) as Registry) : { version: 1, spools: [] };
+    const registry = readRegistry(path);
     if (registry.spools.some((s) => s.metadata_dir.toLowerCase() === metadataDir.toLowerCase())) return;
-    registry.spools.push({ repo_dir: resolve(config.dir), metadata_dir: metadataDir, first_seen: utcNow(now) });
-    mkdirSync(join(path, ".."), { recursive: true });
-    // Write then rename, so a reader never sees half a file.
-    writeFileSync(`${path}.tmp`, JSON.stringify(registry, null, 2) + "\n");
-    renameSync(`${path}.tmp`, path);
+    registry.spools.push({ repo_dir: resolve(spool.dir), metadata_dir: metadataDir, first_seen: utcNow(now) });
+    writeRegistry(path, registry);
   } catch (error) {
-    recordFailure(config, `spool registry: ${messageOf(error)}`);
+    recordFailure(spool, `spool registry: ${messageOf(error)}`);
   }
+}
+
+/** Takes a metadata folder off the registry (forget). Returns whether it was there. */
+export function unregisterSpool(metadataDir: string): boolean {
+  const path = registryPath();
+  const registry = readRegistry(path);
+  const kept = registry.spools.filter((s) => s.metadata_dir.toLowerCase() !== resolve(metadataDir).toLowerCase());
+  if (kept.length === registry.spools.length) return false;
+  writeRegistry(path, { ...registry, spools: kept });
+  return true;
 }
 
 export function recordFailure(config: { metadataDir: string }, why: string): void {
