@@ -11,22 +11,22 @@
 //
 // Exit 0 pass, 1 fail, 2 refused (nothing to evaluate, or not a state worth evaluating).
 import { join, relative } from "node:path";
-import { loadConfig } from "../lib/config.mjs";
+import { loadConfig } from "../lib/config.ts";
 import {
   clearMarker, hasStagedChanges, markerPath, passMarker, runStages, stagedDiffSha256, stageProblems, unstaged, writeMarker,
-} from "../lib/eval.mjs";
-import { emitEvent } from "../lib/spool.mjs";
+} from "../lib/eval.ts";
+import { emitEvent } from "../lib/spool.ts";
 
 const args = process.argv.slice(2);
 const ci = args.includes("--ci");
 const taskIds = [...new Set(args.flatMap((a, i) => (args[i - 1] === "--task" ? a.split(",") : [])).map((t) => t.trim()).filter(Boolean))];
 
-const say = (line = "") => process.stdout.write(line + "\n");
-const refuse = (why, details = []) => {
+const say = (line: string = ""): boolean => process.stdout.write(line + "\n");
+const refuse = (why: string, details: string[] = []): never => {
   say(`harness-eval: refused - ${why}`);
   for (const d of details.slice(0, 20)) say(`  ${d}`);
   if (details.length > 20) say(`  ... and ${details.length - 20} more`);
-  process.exit(2);
+  return process.exit(2);
 };
 
 const config = loadConfig();
@@ -50,8 +50,9 @@ const diffSha256 = stagedDiffSha256(config.dir);
 const sessionId = process.env.CLAUDE_CODE_SESSION_ID;
 // Inside Claude Code the run is recorded. A run by hand or in CI has no session to belong to, and is
 // not counted as a failed write either: it is simply not part of a task.
-const emit = (type, data) => {
-  if (sessionId) emitEvent(config, type, taskIds.length === 1 ? { task_id: taskIds[0], plan_id: taskIds[0].replace(/\..*$/, "") } : {}, data);
+const onlyTask = taskIds.length === 1 ? taskIds[0] : undefined;
+const emit = (type: string, data: Record<string, unknown>): void => {
+  if (sessionId) emitEvent(config, type, onlyTask ? { task_id: onlyTask, plan_id: onlyTask.replace(/\..*$/, "") } : {}, data);
 };
 
 say(`harness-eval: ${config.stages.length} stage(s) for ${ci ? "the checkout (ci)" : `staged diff ${diffSha256.slice(0, 12)}`}${taskIds.length ? ` (${taskIds.join(", ")})` : ""}`);

@@ -142,7 +142,7 @@ Independent tasks with no overlapping file scope can run in parallel worktrees, 
 
 ## Setup and health
 
-Both are scripts (`bin/harness-init.mjs`, `bin/harness-doctor.mjs`) with slash commands in front of them (`commands/init.md`, `commands/doctor.md`). They share one list in `src/lib/setup.mjs`, so init never sets up something doctor doesn't check, and doctor never asks for something init can't do. `pu harness --install` will call the same scripts.
+Both are scripts (`bin/harness-init.mjs`, `bin/harness-doctor.mjs`) with slash commands in front of them (`commands/init.md`, `commands/doctor.md`). They share one list in `src/lib/setup.ts`, so init never sets up something doctor doesn't check, and doctor never asks for something init can't do. `pu harness --install` will call the same scripts.
 
 **`/harness:init`** is a dry run unless given `--apply`. It lists each change and describes the settings change in words before anything is written (S7). Each step leaves what is already right alone, so running it twice is safe. It:
 - writes `routing.yaml` (mode `observe`) with the stages it detects: `lint`, `test` and `build` npm scripts, and a .NET solution or `*.Tests` project, at the root or one folder down;

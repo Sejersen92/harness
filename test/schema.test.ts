@@ -4,16 +4,16 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { describe, root, validators } from "./validators.mjs";
+import { describe, root, validators, type Line } from "./validators.ts";
 
 /** Every fenced json/jsonl block in docs/*.md that claims one of our schemas, with where it came from. */
-function docExamples() {
-  const examples = [];
+function docExamples(): { where: string; piece: string }[] {
+  const examples: { where: string; piece: string }[] = [];
   for (const file of readdirSync(join(root, "docs")).filter((f) => f.endsWith(".md"))) {
     const text = readFileSync(join(root, "docs", file), "utf8").replace(/\r\n/g, "\n");
     for (const block of text.matchAll(/^```(jsonl?)[^\n]*\n([\s\S]*?)^```/gm)) {
       const fence = text.slice(0, block.index).split("\n").length;
-      const [, kind, body] = block;
+      const [, kind, body = ""] = block;
       // A jsonl block is one example per line; a json block is one example, located at its fence.
       const pieces = kind === "jsonl"
         ? body.split("\n").map((piece, i) => ({ piece, line: fence + 1 + i })).filter((p) => p.piece.trim())
@@ -30,7 +30,7 @@ function docExamples() {
 const examples = docExamples();
 
 test("the docs contain examples of both outputs, so this test cannot pass by checking nothing", () => {
-  const schemas = new Set(examples.map((e) => { try { return JSON.parse(e.piece).schema; } catch { return null; } }));
+  const schemas = new Set(examples.map((e) => { try { return (JSON.parse(e.piece) as Line).schema as unknown; } catch { return null; } }));
   assert.ok(examples.length >= 10, `only ${examples.length} examples found`);
   assert.ok(schemas.has("harness.events/v1"), "no event examples found");
   assert.ok(schemas.has("harness.routing-log/v1"), "no routing-log examples found");
@@ -38,9 +38,9 @@ test("the docs contain examples of both outputs, so this test cannot pass by che
 
 for (const { where, piece } of examples) {
   test(`example at ${where} is valid`, () => {
-    let value;
-    assert.doesNotThrow(() => { value = JSON.parse(piece); }, `${where} is not valid JSON (no "…" placeholders in examples)`);
-    const validate = validators[value.schema];
+    let value: Line = {};
+    assert.doesNotThrow(() => { value = JSON.parse(piece) as Line; }, `${where} is not valid JSON (no "…" placeholders in examples)`);
+    const validate = validators[String(value.schema)];
     assert.ok(validate, `${where} names an unknown schema ${value.schema}`);
     assert.ok(validate(value), `${where}:\n  ${describe(validate)}`);
   });
@@ -48,17 +48,19 @@ for (const { where, piece } of examples) {
 
 // --- Each design fix must be enforced, not only documented ---------------------------------
 
-const firstOf = (schema, type) => {
-  const found = examples.map((e) => JSON.parse(e.piece)).find((v) => v.schema === schema && (!type || v.type === type));
+const firstOf = (schema: string, type?: string): Line => {
+  const found = examples.map((e) => JSON.parse(e.piece) as Line).find((v) => v.schema === schema && (!type || v.type === type));
   assert.ok(found, `no ${type ?? schema} example in the docs to mutate`);
   return structuredClone(found);
 };
-const rejects = (value, why) => {
-  const validate = validators[value.schema];
+const rejects = (value: Line, why: string): void => {
+  const validate = validators[String(value.schema)];
+  assert.ok(validate, `no schema ${String(value.schema)}`);
   assert.equal(validate(value), false, `should be rejected: ${why}`);
 };
-const accepts = (value, why) => {
-  const validate = validators[value.schema];
+const accepts = (value: Line, why: string): void => {
+  const validate = validators[String(value.schema)];
+  assert.ok(validate, `no schema ${String(value.schema)}`);
   assert.ok(validate(value), `should be accepted: ${why}\n  ${describe(validate)}`);
 };
 

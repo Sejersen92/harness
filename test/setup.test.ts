@@ -6,8 +6,8 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DENY, checks, detectStages, settingsDiff } from "../src/lib/setup.mjs";
-import { root } from "./validators.mjs";
+import { DENY, checks, detectStages, settingsDiff, type CheckResult } from "../src/lib/setup.ts";
+import { root } from "./validators.ts";
 
 function makeRepo() {
   const dir = mkdtempSync(join(tmpdir(), "harness-setup-"));
@@ -16,13 +16,13 @@ function makeRepo() {
   mkdirSync(home);
   writeFileSync(join(home, "plugin.json"), JSON.stringify({ root, version: "test" }));
   writeFileSync(join(dir, "package.json"), JSON.stringify({ scripts: { lint: "eslint", test: "vitest run", build: "next build", dev: "next dev" } }));
-  const env = { ...process.env, CLAUDE_PROJECT_DIR: dir, HARNESS_HOME: home };
+  const env: NodeJS.ProcessEnv = { ...process.env, CLAUDE_PROJECT_DIR: dir, HARNESS_HOME: home };
   delete env.CLAUDE_CODE_SESSION_ID;
-  const run = (name, ...args) => spawnSync("node", [join(root, "bin", `${name}.mjs`), ...args], { cwd: dir, env, encoding: "utf8" });
+  const run = (name: string, ...args: string[]) => spawnSync("node", [join(root, "bin", `${name}.mjs`), ...args], { cwd: dir, env, encoding: "utf8" });
   return { dir, home, run };
 }
 
-const status = (results, name) => results.find((r) => r.name === name)?.status;
+const status = (results: CheckResult[], name: string): CheckResult["status"] | undefined => results.find((r) => r.name === name)?.status;
 
 test("doctor on a bare repository fails what the Harness needs and says why", () => {
   const { run } = makeRepo();

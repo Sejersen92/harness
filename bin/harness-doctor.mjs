@@ -7367,27 +7367,27 @@ var require_dist = __commonJS({
   }
 });
 
-// src/lib/config.mjs
+// src/lib/config.ts
 var import_yaml = __toESM(require_dist(), 1);
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// src/lib/ids.mjs
+// src/lib/ids.ts
 import { createHash, randomBytes } from "node:crypto";
 var CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 function ulid(ms = Date.now()) {
   let time = "";
   let t = BigInt(ms);
   for (let i = 0; i < 10; i++) {
-    time = CROCKFORD[Number(t % 32n)] + time;
+    time = CROCKFORD.charAt(Number(t % 32n)) + time;
     t /= 32n;
   }
   let rand = BigInt("0x" + randomBytes(10).toString("hex"));
   let tail = "";
   for (let i = 0; i < 16; i++) {
-    tail = CROCKFORD[Number(rand % 32n)] + tail;
+    tail = CROCKFORD.charAt(Number(rand % 32n)) + tail;
     rand /= 32n;
   }
   return time + tail;
@@ -7395,7 +7395,8 @@ function ulid(ms = Date.now()) {
 var sha256 = (data) => createHash("sha256").update(data).digest("hex");
 var utcNow = (date = /* @__PURE__ */ new Date()) => date.toISOString().replace(/\.\d{3}Z$/, "Z");
 
-// src/lib/config.mjs
+// src/lib/config.ts
+var MODES = ["off", "observe", "route"];
 var git = (cwd, ...args) => {
   try {
     return execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
@@ -7409,7 +7410,7 @@ function projectDir(cwd = process.cwd()) {
 function repoIdentity(dir2) {
   const remote = git(dir2, "remote", "get-url", "origin");
   const normalised = remote?.trim().toLowerCase().replace(/\/+$/, "").replace(/\.git$/, "");
-  const name = (normalised ? normalised.split(/[/:]/).pop() : basename(dir2)).toLowerCase();
+  const name = ((normalised ? normalised.split(/[/:]/).pop() : void 0) ?? basename(dir2)).toLowerCase();
   return { name, remote_sha256: sha256(normalised ?? `local:${dir2.toLowerCase()}`) };
 }
 function pluginRoot() {
@@ -7424,7 +7425,9 @@ function pluginRoot() {
 }
 function producer() {
   try {
-    const { version: version2 } = JSON.parse(readFileSync(join(pluginRoot(), ".claude-plugin", "plugin.json"), "utf8"));
+    const root = pluginRoot();
+    if (!root) throw new Error("no plugin root");
+    const { version: version2 } = JSON.parse(readFileSync(join(root, ".claude-plugin", "plugin.json"), "utf8"));
     return { name: "harness", version: version2 };
   } catch {
     return { name: "harness", version: "0.0.0-unknown" };
@@ -7449,28 +7452,35 @@ function loadConfig(dir2 = projectDir()) {
   const metadata = yaml.metadata ?? {};
   return {
     dir: dir2,
-    mode: ["off", "observe", "route"].includes(yaml.mode) ? yaml.mode : "off",
+    mode: MODES.includes(yaml.mode) ? yaml.mode : "off",
     tiers: yaml.tiers ?? {},
     config_sha256: sha256(bytes),
     metadataDir: join(dir2, metadata.dir ?? ".harness"),
     retentionDays: Number.isInteger(metadata.retention_days) ? metadata.retention_days : 30,
     includeJustifications: metadata.include_justifications !== false,
     stages: Array.isArray(yaml.eval?.stages) ? yaml.eval.stages : [],
-    testGlobs: Array.isArray(yaml.eval?.tests) && yaml.eval.tests.length ? yaml.eval.tests.map(String) : DEFAULT_TEST_GLOBS,
-    markerTtlMinutes: Number.isInteger(yaml.gate?.marker_ttl_minutes) ? yaml.gate.marker_ttl_minutes : 30
+    testGlobs: Array.isArray(yaml.eval?.tests) && yaml.eval.tests.length ? yaml.eval.tests.map(String) : [...DEFAULT_TEST_GLOBS],
+    markerTtlMinutes: Number.isInteger(yaml.gate?.marker_ttl_minutes) ? yaml.gate?.marker_ttl_minutes : 30
   };
 }
 
-// src/lib/setup.mjs
+// src/lib/setup.ts
 var import_yaml2 = __toESM(require_dist(), 1);
 import { execFileSync as execFileSync2 } from "node:child_process";
 import { chmodSync, copyFileSync, existsSync as existsSync3, mkdirSync as mkdirSync2, readFileSync as readFileSync3, readdirSync as readdirSync2, realpathSync, rmSync as rmSync2, writeFileSync as writeFileSync2 } from "node:fs";
 import { join as join3, resolve as resolve2 } from "node:path";
 
-// src/lib/spool.mjs
+// src/lib/spool.ts
 import { appendFileSync, existsSync as existsSync2, mkdirSync, readdirSync, readFileSync as readFileSync2, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join as join2, resolve } from "node:path";
+
+// src/lib/types.ts
+var EFFORTS = ["low", "medium", "high", "xhigh", "max"];
+var isEffort = (value) => EFFORTS.includes(value);
+var messageOf = (error) => error instanceof Error ? error.message : String(error);
+
+// src/lib/spool.ts
 var MAX_LINE_BYTES = 4096;
 var registryPath = () => join2(process.env.HARNESS_HOME || join2(homedir(), ".harness"), "spools.json");
 var pluginRecordPath = () => join2(process.env.HARNESS_HOME || join2(homedir(), ".harness"), "plugin.json");
@@ -7485,7 +7495,7 @@ function registerSpool(config2, now = /* @__PURE__ */ new Date()) {
     writeFileSync(`${path}.tmp`, JSON.stringify(registry, null, 2) + "\n");
     renameSync(`${path}.tmp`, path);
   } catch (error) {
-    recordFailure(config2, `spool registry: ${error.message}`);
+    recordFailure(config2, `spool registry: ${messageOf(error)}`);
   }
 }
 function recordFailure(config2, why) {
@@ -7513,7 +7523,7 @@ function appendLine(config2, file, record) {
     if (firstLineInFile) registerSpool(config2);
     return true;
   } catch (error) {
-    recordFailure(config2, error.message);
+    recordFailure(config2, messageOf(error));
     return false;
   }
 }
@@ -7523,7 +7533,8 @@ function sweep(config2, now) {
   try {
     if (existsSync2(marker) && readFileSync2(marker, "utf8").trim() === today) return;
     const cutoff = new Date(now.getTime() - config2.retentionDays * 864e5).toISOString().slice(0, 10);
-    for (const [folder, toDate] of [["events", (n) => n.slice(0, 10)], ["routing-log", (n) => `${n.slice(0, 7)}-31`]]) {
+    const folders = [["events", (n) => n.slice(0, 10)], ["routing-log", (n) => `${n.slice(0, 7)}-31`]];
+    for (const [folder, toDate] of folders) {
       const dir2 = join2(config2.metadataDir, folder);
       if (!existsSync2(dir2)) continue;
       for (const name of readdirSync(dir2).filter((n) => n.endsWith(".jsonl"))) {
@@ -7533,7 +7544,7 @@ function sweep(config2, now) {
     mkdirSync(join2(config2.metadataDir, "state"), { recursive: true });
     writeFileSync(marker, today);
   } catch (error) {
-    recordFailure(config2, `retention sweep: ${error.message}`);
+    recordFailure(config2, `retention sweep: ${messageOf(error)}`);
   }
 }
 function emitEvent(config2, type, fields = {}, data = {}, now = /* @__PURE__ */ new Date()) {
@@ -7544,7 +7555,7 @@ function emitEvent(config2, type, fields = {}, data = {}, now = /* @__PURE__ */ 
     recordFailure(config2, `${type}: no session id (not running inside Claude Code?)`);
     return null;
   }
-  const event = {
+  const envelope = {
     schema: "harness.events/v1",
     event_id: ulid(now.getTime()),
     ts: utcNow(now),
@@ -7556,24 +7567,24 @@ function emitEvent(config2, type, fields = {}, data = {}, now = /* @__PURE__ */ 
     config_sha256: config2.config_sha256
   };
   for (const key of ["prompt_id", "agent_id", "agent_type", "plan_id", "task_id"]) {
-    if (fields[key]) event[key] = fields[key];
+    const value = fields[key];
+    if (value) envelope[key] = value;
   }
-  event.data = data;
+  const event = { ...envelope, data };
   const file = join2(config2.metadataDir, "events", `${event.ts.slice(0, 10)}.jsonl`);
   if (!appendLine(config2, file, event)) return null;
   snapshotConfig(config2, event.repo, now);
   return event;
 }
 var TIERS = ["T1", "T2", "T3", "T4"];
-var EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 function snapshotConfig(config2, repo, now = /* @__PURE__ */ new Date()) {
   const path = join2(config2.metadataDir, "configs", `${config2.config_sha256}.json`);
   if (existsSync2(path)) return;
   const tiers = {};
   for (const tier of TIERS) {
-    const t = config2.tiers?.[tier];
+    const t = config2.tiers[tier];
     if (!t || !Number.isInteger(t.max_score) || typeof t.agent !== "string" || typeof t.model !== "string") continue;
-    tiers[tier] = { max_score: t.max_score, agent: t.agent, model: t.model, ...EFFORTS.includes(t.effort) ? { effort: t.effort } : {} };
+    tiers[tier] = { max_score: t.max_score, agent: t.agent, model: t.model, ...isEffort(t.effort) ? { effort: t.effort } : {} };
   }
   const snapshot = {
     schema: "harness.config/v1",
@@ -7583,7 +7594,7 @@ function snapshotConfig(config2, repo, now = /* @__PURE__ */ new Date()) {
     repo,
     mode: config2.mode,
     tiers,
-    eval: { stages: config2.stages.map((s) => s?.name).filter((n) => typeof n === "string" && n) },
+    eval: { stages: config2.stages.map((s) => s?.name).filter((n) => typeof n === "string" && n.length > 0) },
     gate: { marker_ttl_minutes: config2.markerTtlMinutes }
   };
   try {
@@ -7591,11 +7602,11 @@ function snapshotConfig(config2, repo, now = /* @__PURE__ */ new Date()) {
     writeFileSync(`${path}.tmp`, JSON.stringify(snapshot, null, 2) + "\n");
     renameSync(`${path}.tmp`, path);
   } catch (error) {
-    recordFailure(config2, `config snapshot: ${error.message}`);
+    recordFailure(config2, `config snapshot: ${messageOf(error)}`);
   }
 }
 
-// src/lib/setup.mjs
+// src/lib/setup.ts
 var MIN_CLAUDE_CODE = [2, 1, 284];
 var MIN_NODE = 22;
 var DENY = [
@@ -7641,13 +7652,15 @@ var readJson = (path) => {
 var settingsPath = (dir2) => join3(dir2, ".claude", "settings.json");
 var version = (text) => (String(text).match(/(\d+)\.(\d+)\.(\d+)/) ?? []).slice(1).map(Number);
 var atLeast = (have, want) => {
-  for (let i = 0; i < want.length; i++) if ((have[i] ?? 0) !== want[i]) return (have[i] ?? 0) > want[i];
+  for (let i = 0; i < want.length; i++) if ((have[i] ?? 0) !== (want[i] ?? 0)) return (have[i] ?? 0) > (want[i] ?? 0);
   return true;
 };
 function checks(dir2, { pluginRoot: pluginRoot2, claudeVersion = readClaudeVersion() } = {}) {
   const config2 = loadConfig(dir2);
   const results2 = [];
-  const add = (name, status, detail) => results2.push({ name, status, detail });
+  const add = (name, status, detail) => {
+    results2.push({ name, status, detail });
+  };
   const node = version(process.versions.node);
   add("node", atLeast(node, [MIN_NODE]) ? "pass" : "fail", `Node ${process.versions.node} (needs ${MIN_NODE}+)`);
   if (!claudeVersion) add("claude-code", "warn", "the claude CLI is not on PATH, so its version can't be checked");
@@ -7672,7 +7685,7 @@ function checks(dir2, { pluginRoot: pluginRoot2, claudeVersion = readClaudeVersi
     rmSync2(probe);
     add("spool-writable", "pass", config2.metadataDir ?? join3(dir2, ".harness"));
   } catch (error) {
-    add("spool-writable", "fail", error.message);
+    add("spool-writable", "fail", messageOf(error));
   }
   const hooksPath = git2(dir2, "config", "core.hooksPath");
   const missingHooks = HOOKS.filter((h) => !existsSync3(join3(dir2, ".githooks", h)));
@@ -7706,7 +7719,7 @@ function checks(dir2, { pluginRoot: pluginRoot2, claudeVersion = readClaudeVersi
     else if (real.toLowerCase() === spelled.toLowerCase()) add("path-casing", "warn", `the working directory is spelled ${spelled}, the disk says ${real}; Claude Code refused a worktree for this (S6)`);
     else add("path-casing", "pass", `${spelled} (reached through a link to ${real})`);
   } catch (error) {
-    add("path-casing", "warn", error.message);
+    add("path-casing", "warn", messageOf(error));
   }
   const failures = Number.parseInt(readSafely(join3(config2.metadataDir ?? join3(dir2, ".harness"), "emit-failures")), 10) || 0;
   add("emit-failures", failures ? "warn" : "pass", failures ? `${failures} metadata write(s) failed; see stderr from the hooks` : "none");
@@ -7727,7 +7740,7 @@ function readClaudeVersion() {
   }
 }
 
-// src/cli/harness-doctor.mjs
+// src/cli/harness-doctor.ts
 var dir = projectDir();
 var results = checks(dir, { pluginRoot: pluginRoot() });
 process.stdout.write(`harness-doctor: ${dir}
@@ -7739,7 +7752,7 @@ process.stdout.write(`${count("pass")} pass, ${count("warn")} warn, ${count("fai
 `);
 var config = loadConfig(dir);
 if (config.mode !== "off" && process.env.CLAUDE_CODE_SESSION_ID) {
-  const failures = Number.parseInt(results.find((r) => r.name === "emit-failures")?.detail, 10) || 0;
+  const failures = Number.parseInt(results.find((r) => r.name === "emit-failures")?.detail ?? "", 10) || 0;
   emitEvent(config, "harness.doctor", {}, { checks: results.map(({ name, status }) => ({ name, status })), emit_failures: failures });
 }
 process.exit(count("fail") ? 1 : 0);

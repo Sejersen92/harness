@@ -2,27 +2,30 @@
 // repository is with templates/githooks and core.hooksPath, finding the plugin through plugin.json.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { stripAttribution } from "../src/lib/gate.mjs";
-import { describe, root, validators } from "./validators.mjs";
+import { stripAttribution } from "../src/lib/gate.ts";
+import { describe, root, validatorFor, type Line } from "./validators.ts";
+
+type Git = (args: string[], extra?: NodeJS.ProcessEnv, input?: string) => SpawnSyncReturns<string>;
+type Repo = { dir: string; git: Git };
 
 const SESSION = "11111111-2222-4333-8444-555555555555";
 const PASS = `node -e "process.exit(0)"`;
 const FAIL = `node -e "process.exit(1)"`;
 
-function makeRepo({ stage = PASS, plugin = true } = {}) {
+function makeRepo({ stage = PASS, plugin = true }: { stage?: string; plugin?: boolean } = {}): Repo {
   const dir = mkdtempSync(join(tmpdir(), "harness-githooks-"));
   const home = join(dir, ".harness-home");
-  const env = {
+  const env: NodeJS.ProcessEnv = {
     ...process.env, HARNESS_HOME: home,
     GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t",
   };
   delete env.CLAUDE_CODE_SESSION_ID;
   delete env.CLAUDE_PROJECT_DIR;
-  const git = (args, extra = {}, input = undefined) =>
+  const git: Git = (args, extra = {}, input = undefined) =>
     spawnSync("git", ["-C", dir, "-c", "core.autocrlf=false", ...args], { env: { ...env, ...extra }, input, encoding: "utf8" });
 
   git(["init", "-q"]);
@@ -45,12 +48,12 @@ function makeRepo({ stage = PASS, plugin = true } = {}) {
   return { dir, git };
 }
 
-const change = ({ dir, git }, text = "two\n") => {
+const change = ({ dir, git }: Repo, text: string = "two\n"): void => {
   writeFileSync(join(dir, "tracked.txt"), text);
   git(["add", "tracked.txt"]);
 };
 
-const head = ({ git }) => git(["rev-parse", "HEAD"]).stdout.trim();
+const head = ({ git }: Repo): string => git(["rev-parse", "HEAD"]).stdout.trim();
 
 test("a commit by hand with no pass runs the eval itself, and goes through when it passes", () => {
   const repo = makeRepo();
@@ -163,10 +166,10 @@ test("inside Claude Code the commit is recorded as commit.created, with the task
 
   const path = join(repo.dir, ".harness", "events");
   const created = readdirSync(path)
-    .flatMap((f) => readFileSync(join(path, f), "utf8").trim().split("\n").map((l) => JSON.parse(l)))
+    .flatMap((f) => readFileSync(join(path, f), "utf8").trim().split("\n").map((l) => JSON.parse(l) as Line))
     .find((e) => e.type === "commit.created");
   assert.ok(created, "no commit.created");
-  assert.ok(validators[created.schema](created), describe(validators[created.schema]));
+  assert.ok(validatorFor(created)(created), describe(validatorFor(created)));
   assert.equal(created.task_id, "PLAN-1.1");
   assert.deepEqual(created.data, {
     commit_sha: head(repo), task_ids: ["PLAN-1.1"], files_changed: 2, lines_added: 3, lines_removed: 0,

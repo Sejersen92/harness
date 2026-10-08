@@ -6,13 +6,14 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parseReport } from "../src/lib/ids.mjs";
-import { buildRecord } from "../src/lib/tasklog.mjs";
-import { describe, root, validators } from "./validators.mjs";
+import { parseReport } from "../src/lib/ids.ts";
+import { buildRecord } from "../src/lib/tasklog.ts";
+import type { Config } from "../src/lib/types.ts";
+import { describe, root, validatorFor, type Line } from "./validators.ts";
 
 const SESSION = "11111111-2222-4333-8444-555555555555";
 
-function makeRepo({ routing = true } = {}) {
+function makeRepo({ routing = true }: { routing?: boolean } = {}): string {
   const dir = mkdtempSync(join(tmpdir(), "harness-test-"));
   execFileSync("git", ["init", "-q", dir]);
   execFileSync("git", ["-C", dir, "remote", "add", "origin", "https://github.com/example/Sample-Repo.git"]);
@@ -39,24 +40,25 @@ function makeRepo({ routing = true } = {}) {
 }
 
 // HARNESS_HOME keeps the spool registry inside the test repo: a test must never touch the real ~/.harness.
-const env = (dir) => ({ ...process.env, CLAUDE_CODE_SESSION_ID: SESSION, CLAUDE_PROJECT_DIR: dir, CLAUDE_PLUGIN_ROOT: root, HARNESS_HOME: join(dir, ".harness-home") });
+const env = (dir: string): NodeJS.ProcessEnv => ({ ...process.env, CLAUDE_CODE_SESSION_ID: SESSION, CLAUDE_PROJECT_DIR: dir, CLAUDE_PLUGIN_ROOT: root, HARNESS_HOME: join(dir, ".harness-home") });
 
-const emit = (dir, ...args) =>
+const emit = (dir: string, ...args: string[]) =>
   spawnSync("node", [join(root, "bin", "harness-emit.mjs"), ...args], { cwd: dir, env: env(dir), encoding: "utf8" });
 
-const hook = (dir, name, input) =>
+const hook = (dir: string, name: string, input: unknown) =>
   spawnSync("node", [join(root, "bin", `hook-${name}.mjs`)], { cwd: dir, env: env(dir), input: JSON.stringify(input), encoding: "utf8" });
 
-const lines = (dir, folder) => {
+const lines = (dir: string, folder: string): Line[] => {
   const path = join(dir, ".harness", folder);
   if (!existsSync(path)) return [];
-  return readdirSync(path).flatMap((f) => readFileSync(join(path, f), "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l)));
+  return readdirSync(path).flatMap((f) => readFileSync(join(path, f), "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l) as Line));
 };
 
-const assertValid = (value) => {
-  const validate = validators[value.schema];
+function assertValid(value: Line | undefined): asserts value is Line {
+  assert.ok(value, "the line is missing");
+  const validate = validatorFor(value);
   assert.ok(validate(value), `${value.type ?? value.schema} does not match its schema:\n  ${describe(validate)}`);
-};
+}
 
 test("parseReport reads the header and its task ids", () => {
   assert.deepEqual(parseReport("DONE: PLAN-7.2\nchanged things"), { report: "DONE", task_ids: ["PLAN-7.2"] });
@@ -98,7 +100,7 @@ test("one task end to end: every event and the routing-log record match the sche
   assert.equal(events[0].repo.name, "sample-repo");
   assert.equal(events[0].session_id, SESSION);
 
-  const stopped = events.find((e) => e.type === "subagent.stopped");
+  const stopped = events.find((e) => e.type === "subagent.stopped")!;
   assert.deepEqual(stopped.data.task_ids, ["PLAN-1.1"]);
   assert.equal(stopped.data.model, "claude-sonnet-5-5");
   assert.equal(stopped.data.model_requested, "sonnet");
@@ -196,7 +198,7 @@ test("a report handed back through SubagentHandback counts, and the agent is not
 test("a task's gate decisions are the ones made while it was being worked, not since the plan was scored", () => {
   // As in PLAN-3: every task scored up front, then worked one after the other, each ending in a commit.
   const dir = makeRepo();
-  const at = (ts, type, task, data = {}) => ({
+  const at = (ts: string, type: string, task: string | null, data: Record<string, unknown> = {}): Line => ({
     ts, type, session_id: SESSION, event_id: ts, ...(task ? { task_id: task, plan_id: "PLAN-1" } : {}), data,
     repo: { name: "r", remote_sha256: "0".repeat(64) }, producer: { name: "harness", version: "0.2.3" }, mode: "observe", config_sha256: "0".repeat(64),
   });
@@ -216,10 +218,12 @@ test("a task's gate decisions are the ones made while it was being worked, not s
     at("2026-10-07T10:10:00Z", "gate.decision", null, { decision: "allow", reason: "pass" }),
     at("2026-10-07T10:10:02Z", "task.completed", "PLAN-1.2", done),
   ];
-  const config = { dir, includeJustifications: true };
+  // Only what buildRecord reads when the events and the previous records are handed to it.
+  const config = { dir, includeJustifications: true } as Config;
 
-  const first = buildRecord(config, "PLAN-1.1", events, []).record;
-  const second = buildRecord(config, "PLAN-1.2", events, []).record;
+  const first = buildRecord(config, "PLAN-1.1", events as never, []).record;
+  const second = buildRecord(config, "PLAN-1.2", events as never, []).record;
+  assert.ok(first && second, "both records were built");
   assert.deepEqual(first.gate, { denials: 0, denial_reasons: [], allowed: 1 });
   assert.deepEqual(second.gate, { denials: 1, denial_reasons: ["no_marker"], allowed: 1 });
 

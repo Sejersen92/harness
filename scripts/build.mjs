@@ -3,15 +3,15 @@
 import { build } from "esbuild";
 
 const entries = {
-  "harness-doctor": "src/cli/harness-doctor.mjs",
-  "harness-emit": "src/cli/harness-emit.mjs",
-  "harness-eval": "src/cli/harness-eval.mjs",
-  "harness-git-hook": "src/cli/harness-git-hook.mjs",
-  "harness-init": "src/cli/harness-init.mjs",
-  "hook-pre-tool-use": "src/hooks/pre-tool-use.mjs",
-  "hook-session-start": "src/hooks/session-start.mjs",
-  "hook-subagent-start": "src/hooks/subagent-start.mjs",
-  "hook-subagent-stop": "src/hooks/subagent-stop.mjs",
+  "harness-doctor": "src/cli/harness-doctor.ts",
+  "harness-emit": "src/cli/harness-emit.ts",
+  "harness-eval": "src/cli/harness-eval.ts",
+  "harness-git-hook": "src/cli/harness-git-hook.ts",
+  "harness-init": "src/cli/harness-init.ts",
+  "hook-pre-tool-use": "src/hooks/pre-tool-use.ts",
+  "hook-session-start": "src/hooks/session-start.ts",
+  "hook-subagent-start": "src/hooks/subagent-start.ts",
+  "hook-subagent-stop": "src/hooks/subagent-stop.ts",
 };
 
 await build({

@@ -7367,30 +7367,30 @@ var require_dist = __commonJS({
   }
 });
 
-// src/hooks/subagent-stop.mjs
+// src/hooks/subagent-stop.ts
 import { existsSync as existsSync4, readFileSync as readFileSync4 } from "node:fs";
 
-// src/lib/config.mjs
+// src/lib/config.ts
 var import_yaml = __toESM(require_dist(), 1);
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// src/lib/ids.mjs
+// src/lib/ids.ts
 import { createHash, randomBytes } from "node:crypto";
 var CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 function ulid(ms = Date.now()) {
   let time = "";
   let t = BigInt(ms);
   for (let i = 0; i < 10; i++) {
-    time = CROCKFORD[Number(t % 32n)] + time;
+    time = CROCKFORD.charAt(Number(t % 32n)) + time;
     t /= 32n;
   }
   let rand = BigInt("0x" + randomBytes(10).toString("hex"));
   let tail = "";
   for (let i = 0; i < 16; i++) {
-    tail = CROCKFORD[Number(rand % 32n)] + tail;
+    tail = CROCKFORD.charAt(Number(rand % 32n)) + tail;
     rand /= 32n;
   }
   return time + tail;
@@ -7404,10 +7404,11 @@ function parseReport(message) {
   const firstLine = String(message ?? "").split(/\r?\n/).find((line) => line.trim()) ?? "";
   const match = firstLine.match(REPORT);
   if (!match) return { report: "none", task_ids: [] };
-  return { report: match[1], task_ids: taskIdsIn(match[2]) };
+  return { report: match[1] ?? "none", task_ids: taskIdsIn(match[2]) };
 }
 
-// src/lib/config.mjs
+// src/lib/config.ts
+var MODES = ["off", "observe", "route"];
 var git = (cwd, ...args) => {
   try {
     return execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
@@ -7421,7 +7422,7 @@ function projectDir(cwd = process.cwd()) {
 function repoIdentity(dir) {
   const remote = git(dir, "remote", "get-url", "origin");
   const normalised = remote?.trim().toLowerCase().replace(/\/+$/, "").replace(/\.git$/, "");
-  const name = (normalised ? normalised.split(/[/:]/).pop() : basename(dir)).toLowerCase();
+  const name = ((normalised ? normalised.split(/[/:]/).pop() : void 0) ?? basename(dir)).toLowerCase();
   return { name, remote_sha256: sha256(normalised ?? `local:${dir.toLowerCase()}`) };
 }
 function pluginRoot() {
@@ -7436,7 +7437,9 @@ function pluginRoot() {
 }
 function producer() {
   try {
-    const { version } = JSON.parse(readFileSync(join(pluginRoot(), ".claude-plugin", "plugin.json"), "utf8"));
+    const root = pluginRoot();
+    if (!root) throw new Error("no plugin root");
+    const { version } = JSON.parse(readFileSync(join(root, ".claude-plugin", "plugin.json"), "utf8"));
     return { name: "harness", version };
   } catch {
     return { name: "harness", version: "0.0.0-unknown" };
@@ -7461,22 +7464,29 @@ function loadConfig(dir = projectDir()) {
   const metadata = yaml.metadata ?? {};
   return {
     dir,
-    mode: ["off", "observe", "route"].includes(yaml.mode) ? yaml.mode : "off",
+    mode: MODES.includes(yaml.mode) ? yaml.mode : "off",
     tiers: yaml.tiers ?? {},
     config_sha256: sha256(bytes),
     metadataDir: join(dir, metadata.dir ?? ".harness"),
     retentionDays: Number.isInteger(metadata.retention_days) ? metadata.retention_days : 30,
     includeJustifications: metadata.include_justifications !== false,
     stages: Array.isArray(yaml.eval?.stages) ? yaml.eval.stages : [],
-    testGlobs: Array.isArray(yaml.eval?.tests) && yaml.eval.tests.length ? yaml.eval.tests.map(String) : DEFAULT_TEST_GLOBS,
-    markerTtlMinutes: Number.isInteger(yaml.gate?.marker_ttl_minutes) ? yaml.gate.marker_ttl_minutes : 30
+    testGlobs: Array.isArray(yaml.eval?.tests) && yaml.eval.tests.length ? yaml.eval.tests.map(String) : [...DEFAULT_TEST_GLOBS],
+    markerTtlMinutes: Number.isInteger(yaml.gate?.marker_ttl_minutes) ? yaml.gate?.marker_ttl_minutes : 30
   };
 }
 
-// src/lib/spool.mjs
+// src/lib/spool.ts
 import { appendFileSync, existsSync as existsSync2, mkdirSync, readdirSync, readFileSync as readFileSync2, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join as join2, resolve } from "node:path";
+
+// src/lib/types.ts
+var EFFORTS = ["low", "medium", "high", "xhigh", "max"];
+var isEffort = (value) => EFFORTS.includes(value);
+var messageOf = (error) => error instanceof Error ? error.message : String(error);
+
+// src/lib/spool.ts
 var MAX_LINE_BYTES = 4096;
 var registryPath = () => join2(process.env.HARNESS_HOME || join2(homedir(), ".harness"), "spools.json");
 function registerSpool(config2, now = /* @__PURE__ */ new Date()) {
@@ -7490,7 +7500,7 @@ function registerSpool(config2, now = /* @__PURE__ */ new Date()) {
     writeFileSync(`${path}.tmp`, JSON.stringify(registry, null, 2) + "\n");
     renameSync(`${path}.tmp`, path);
   } catch (error) {
-    recordFailure(config2, `spool registry: ${error.message}`);
+    recordFailure(config2, `spool registry: ${messageOf(error)}`);
   }
 }
 function recordFailure(config2, why) {
@@ -7518,7 +7528,7 @@ function appendLine(config2, file, record) {
     if (firstLineInFile) registerSpool(config2);
     return true;
   } catch (error) {
-    recordFailure(config2, error.message);
+    recordFailure(config2, messageOf(error));
     return false;
   }
 }
@@ -7528,7 +7538,8 @@ function sweep(config2, now) {
   try {
     if (existsSync2(marker) && readFileSync2(marker, "utf8").trim() === today) return;
     const cutoff = new Date(now.getTime() - config2.retentionDays * 864e5).toISOString().slice(0, 10);
-    for (const [folder, toDate] of [["events", (n) => n.slice(0, 10)], ["routing-log", (n) => `${n.slice(0, 7)}-31`]]) {
+    const folders = [["events", (n) => n.slice(0, 10)], ["routing-log", (n) => `${n.slice(0, 7)}-31`]];
+    for (const [folder, toDate] of folders) {
       const dir = join2(config2.metadataDir, folder);
       if (!existsSync2(dir)) continue;
       for (const name of readdirSync(dir).filter((n) => n.endsWith(".jsonl"))) {
@@ -7538,7 +7549,7 @@ function sweep(config2, now) {
     mkdirSync(join2(config2.metadataDir, "state"), { recursive: true });
     writeFileSync(marker, today);
   } catch (error) {
-    recordFailure(config2, `retention sweep: ${error.message}`);
+    recordFailure(config2, `retention sweep: ${messageOf(error)}`);
   }
 }
 function emitEvent(config2, type, fields = {}, data2 = {}, now = /* @__PURE__ */ new Date()) {
@@ -7549,7 +7560,7 @@ function emitEvent(config2, type, fields = {}, data2 = {}, now = /* @__PURE__ */
     recordFailure(config2, `${type}: no session id (not running inside Claude Code?)`);
     return null;
   }
-  const event = {
+  const envelope = {
     schema: "harness.events/v1",
     event_id: ulid(now.getTime()),
     ts: utcNow(now),
@@ -7561,24 +7572,24 @@ function emitEvent(config2, type, fields = {}, data2 = {}, now = /* @__PURE__ */
     config_sha256: config2.config_sha256
   };
   for (const key of ["prompt_id", "agent_id", "agent_type", "plan_id", "task_id"]) {
-    if (fields[key]) event[key] = fields[key];
+    const value = fields[key];
+    if (value) envelope[key] = value;
   }
-  event.data = data2;
+  const event = { ...envelope, data: data2 };
   const file = join2(config2.metadataDir, "events", `${event.ts.slice(0, 10)}.jsonl`);
   if (!appendLine(config2, file, event)) return null;
   snapshotConfig(config2, event.repo, now);
   return event;
 }
 var TIERS = ["T1", "T2", "T3", "T4"];
-var EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 function snapshotConfig(config2, repo, now = /* @__PURE__ */ new Date()) {
   const path = join2(config2.metadataDir, "configs", `${config2.config_sha256}.json`);
   if (existsSync2(path)) return;
   const tiers = {};
   for (const tier of TIERS) {
-    const t = config2.tiers?.[tier];
+    const t = config2.tiers[tier];
     if (!t || !Number.isInteger(t.max_score) || typeof t.agent !== "string" || typeof t.model !== "string") continue;
-    tiers[tier] = { max_score: t.max_score, agent: t.agent, model: t.model, ...EFFORTS.includes(t.effort) ? { effort: t.effort } : {} };
+    tiers[tier] = { max_score: t.max_score, agent: t.agent, model: t.model, ...isEffort(t.effort) ? { effort: t.effort } : {} };
   }
   const snapshot = {
     schema: "harness.config/v1",
@@ -7588,7 +7599,7 @@ function snapshotConfig(config2, repo, now = /* @__PURE__ */ new Date()) {
     repo,
     mode: config2.mode,
     tiers,
-    eval: { stages: config2.stages.map((s) => s?.name).filter((n) => typeof n === "string" && n) },
+    eval: { stages: config2.stages.map((s) => s?.name).filter((n) => typeof n === "string" && n.length > 0) },
     gate: { marker_ttl_minutes: config2.markerTtlMinutes }
   };
   try {
@@ -7596,11 +7607,11 @@ function snapshotConfig(config2, repo, now = /* @__PURE__ */ new Date()) {
     writeFileSync(`${path}.tmp`, JSON.stringify(snapshot, null, 2) + "\n");
     renameSync(`${path}.tmp`, path);
   } catch (error) {
-    recordFailure(config2, `config snapshot: ${error.message}`);
+    recordFailure(config2, `config snapshot: ${messageOf(error)}`);
   }
 }
 
-// src/hooks/input.mjs
+// src/hooks/input.ts
 import { existsSync as existsSync3, mkdirSync as mkdirSync2, readFileSync as readFileSync3, rmSync as rmSync2, writeFileSync as writeFileSync2 } from "node:fs";
 import { join as join3 } from "node:path";
 async function readHookInput() {
@@ -7613,9 +7624,9 @@ async function readHookInput() {
   }
 }
 var isHarnessAgent = (input2) => typeof input2.agent_type === "string" && input2.agent_type.startsWith("harness:") && input2.agent_type !== "harness:orchestrator";
-var agentState = (config2, agentId) => {
+var agentState = (config2, agentId2) => {
   const dir = join3(config2.metadataDir, "state", "agents");
-  const file = join3(dir, `${agentId}.json`);
+  const file = join3(dir, `${agentId2}.json`);
   return {
     save(value) {
       mkdirSync2(dir, { recursive: true });
@@ -7634,17 +7645,18 @@ var agentState = (config2, agentId) => {
   };
 };
 
-// src/hooks/subagent-stop.mjs
+// src/hooks/subagent-stop.ts
 var input = await readHookInput();
 var config = loadConfig();
 if (config.mode === "off" || !isHarnessAgent(input) || !input.agent_id) process.exit(0);
+var agentId = input.agent_id;
 function findReport() {
   const fromMessage = parseReport(input.last_assistant_message);
   if (fromMessage.report !== "none") return fromMessage;
   try {
-    const lines = readFileSync4(input.agent_transcript_path, "utf8").trim().split("\n");
+    const lines = readFileSync4(input.agent_transcript_path ?? "", "utf8").trim().split("\n");
     for (let i = lines.length - 1; i >= 0; i--) {
-      const content = JSON.parse(lines[i]).message?.content;
+      const content = JSON.parse(lines[i] ?? "").message?.content;
       const handback = Array.isArray(content) ? content.findLast((c) => c.type === "tool_use" && c.name === "SubagentHandback") : null;
       if (handback) return parseReport(handback.input?.message);
     }
@@ -7663,9 +7675,9 @@ if (report === "none" && !input.stop_hook_active) {
 function observed(transcriptPath) {
   const found = {};
   try {
-    const lines = readFileSync4(transcriptPath, "utf8").trim().split("\n");
+    const lines = readFileSync4(transcriptPath ?? "", "utf8").trim().split("\n");
     for (let i = lines.length - 1; i >= 0 && !found.model; i--) {
-      const line = JSON.parse(lines[i]);
+      const line = JSON.parse(lines[i] ?? "");
       if (line.message?.model) {
         found.model = line.message.model;
         if (line.effort) found.effort = line.effort;
@@ -7683,7 +7695,7 @@ function observed(transcriptPath) {
   }
   return found;
 }
-var started = agentState(config, input.agent_id).take();
+var started = agentState(config, agentId).take();
 var data = {
   report,
   duration_ms: started ? Math.max(0, Date.now() - started.startedMs) : 0,
@@ -7691,7 +7703,7 @@ var data = {
   task_ids,
   ...observed(input.agent_transcript_path)
 };
-if (!["low", "medium", "high", "xhigh", "max"].includes(data.effort)) delete data.effort;
+if (!isEffort(data.effort)) delete data.effort;
 emitEvent(config, "subagent.stopped", {
   session_id: input.session_id,
   prompt_id: input.prompt_id,

@@ -2,14 +2,18 @@
 // would do, including the exact change to .claude/settings.json (S7: a plugin can't ship permission
 // rules, so they are merged here, and a person sees them first). With --apply it makes the changes and
 // runs the doctor's checks. Each step leaves what is already right alone, so running it twice is safe.
-import { pluginRoot, projectDir } from "../lib/config.mjs";
-import { checks, initPlan, settingsDiff } from "../lib/setup.mjs";
+import { pluginRoot, projectDir } from "../lib/config.ts";
+import { checks, initPlan, settingsDiff } from "../lib/setup.ts";
 
 const apply = process.argv.includes("--apply");
 const dir = projectDir();
 const root = pluginRoot();
+if (!root) {
+  process.stdout.write("harness-init: can't find the plugin's own folder, so there is no template to set up from\n");
+  process.exit(1);
+}
 const { steps, settingsBefore, settingsAfter } = initPlan(dir, root);
-const say = (line = "") => process.stdout.write(line + "\n");
+const say = (line: string = ""): boolean => process.stdout.write(line + "\n");
 
 say(`harness-init: ${dir}${apply ? "" : " (dry run: nothing is changed)"}`);
 if (!steps.length) say("  nothing to do: everything init sets up is already in place");
