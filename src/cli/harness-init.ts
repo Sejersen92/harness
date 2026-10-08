@@ -1,4 +1,4 @@
-// harness-init [--apply]: enrol this repository, giving it a home under ~/.harness/repos/ (ANY-REPO.md).
+// harness-init [--apply] [--branch <name>]: enrol this repository, giving it a home under ~/.harness/repos/ (ANY-REPO.md).
 // Nothing in the repository's working tree is written; the only change in the clone is core.hooksPath
 // (and harness.previousHooksPath, so its own hooks keep running). Without --apply it only says what it
 // would do. With --apply it makes the changes and runs the doctor's checks. Each step leaves what is
@@ -10,14 +10,18 @@ import { pluginRoot, projectDir } from "../lib/config.ts";
 import { enrolPlan } from "../lib/home.ts";
 import { checks } from "../lib/setup.ts";
 
-const apply = process.argv.includes("--apply");
+const args = process.argv.slice(2);
+const apply = args.includes("--apply");
+// --branch <name>: also mark that branch as a Harness branch (pu harness passes the one it starts on).
+const branchAt = args.indexOf("--branch");
+const branch = branchAt >= 0 ? args[branchAt + 1] : undefined;
 const dir = projectDir();
 const root = pluginRoot();
 if (!root) {
   process.stdout.write("harness-init: can't find the plugin's own folder, so there is no template to enrol from\n");
   process.exit(1);
 }
-const { home, steps } = enrolPlan(dir, root);
+const { home, steps } = enrolPlan(dir, root, branch ? { branch } : {});
 const say = (line: string = ""): boolean => process.stdout.write(line + "\n");
 
 say(`harness-init: ${dir}${apply ? "" : " (dry run: nothing is changed)"}`);

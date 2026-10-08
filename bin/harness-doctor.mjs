@@ -7647,6 +7647,8 @@ function snapshotConfig(config2, repo, now = /* @__PURE__ */ new Date()) {
 }
 
 // src/lib/home.ts
+var readRepoRecord = (home) => readJson(join3(home, "repo.json"));
+var harnessBranches = (home) => readRepoRecord(home)?.harness_branches ?? [];
 var HARNESS_HOOKS = ["pre-commit", "commit-msg", "post-commit"];
 var GIT_HOOKS = [
   "applypatch-msg",
@@ -7846,7 +7848,8 @@ function homeChecks(dir2, home, add) {
   } else if (missing.length) {
     add("git-hooks", "fail", `${folder} is missing ${missing.join(", ")} (/harness:init writes them)`);
   } else {
-    add("git-hooks", "pass", `${HARNESS_HOOKS.join(", ")}${own.length ? `, then the repository's own ${own.join(", ")}` : ""}`);
+    const branches = harnessBranches(home);
+    add("git-hooks", "pass", `${HARNESS_HOOKS.join(", ")}${own.length ? `, then the repository's own ${own.join(", ")}` : ""}; commits are gated on ${branches.length ? branches.join(", ") : "no branch yet (pu harness marks the one it starts on)"}`);
   }
   const settings = readJson2(join4(home, "settings.json")) ?? {};
   const denied = new Set(settings.permissions?.deny ?? []);

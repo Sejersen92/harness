@@ -3,7 +3,7 @@
 // The Harness's git hooks, for commits made outside Claude Code as well as inside it, run by the
 // dispatcher in templates/githooks/harness, which enrolment puts in the repository's home.
 //
-// - pre-commit: the same check as commit-gate (lib/gate.ts). With no pass for what is staged, it
+// - pre-commit, on a Harness branch (any branch in a repository set up the old way): the same check as commit-gate (lib/gate.ts). With no pass for what is staged, it
 //   runs harness-eval itself and lets the commit through if that passes (decided 2026-10-07), so a
 //   commit by hand needs no separate step. Exit 1 stops the commit.
 // - commit-msg: strips AI attribution trailers when routing.yaml's commits.strip_ai_attribution says to
@@ -18,6 +18,7 @@ import { join } from "node:path";
 import { loadConfig, pluginRoot } from "../lib/config.ts";
 import { readMarker } from "../lib/eval.ts";
 import { checkMarker, stripAttribution } from "../lib/gate.ts";
+import { currentBranch, harnessBranches, recordBranch } from "../lib/home.ts";
 import { emitEvent } from "../lib/spool.ts";
 import { messageOf } from "../lib/types.ts";
 
@@ -48,6 +49,10 @@ if (hook === "commit-msg") {
 if (config.mode === "off") process.exit(0);
 
 if (hook === "pre-commit") {
+  // Outside Claude Code, the gate is for Harness branches only (ANY-REPO.md, H3): the tool enables, it
+  // doesn't block, so a person's hotfix on any other branch goes straight to the repository's own hooks.
+  // A repository still set up the old way has no list, and keeps gating every commit until it moves.
+  if (config.layout.kind === "home" && !harnessBranches(config.layout.root).includes(currentBranch(dir))) process.exit(0);
   const first = checkMarker(dir, config.layout.markerPath, config.markerTtlMinutes);
   if (first.decision === "allow") process.exit(0);
 
@@ -66,6 +71,8 @@ if (hook === "pre-commit") {
 
 if (hook === "post-commit") {
   if (!process.env.CLAUDE_CODE_SESSION_ID) process.exit(0);
+  // A commit made in a Harness session makes its branch a Harness branch, should the session have switched.
+  if (config.layout.kind === "home") recordBranch(config.layout.root, dir, currentBranch(dir));
   try {
     const sha = git("rev-parse", "HEAD");
     let files = 0, added = 0, removed = 0;

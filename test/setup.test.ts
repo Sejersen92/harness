@@ -145,7 +145,8 @@ test("the repository's own hooks still run, after the Harness's, and a failing o
   mkdirSync(repoHome(dir), { recursive: true });
   writeFileSync(join(repoHome(dir), "routing.yaml"), PASSING);
 
-  const applied = run("harness-init", "--apply");
+  // Commits here are gated: this is the branch the Harness is started on.
+  const applied = run("harness-init", "--apply", "--branch", git(["branch", "--show-current"]).stdout.trim());
   assert.match(applied.stdout, /then the repository's own pre-commit, pre-push/);
   assert.equal(setting("harness.previousHooksPath"), ".husky");
   assert.deepEqual(readdirSync(join(repoHome(dir), "githooks")).sort(), ["commit-msg", "harness", "post-commit", "pre-commit", "pre-push"], "its helper file is not taken for a hook");
@@ -162,6 +163,49 @@ test("the repository's own hooks still run, after the Harness's, and a failing o
   git(["add", "a.txt"]);
   const refused = git(["commit", "-q", "-m", "refused"], { HUSKY_FAIL: "1" });
   assert.notEqual(refused.status, 0, "the repository's failing hook stops the commit");
+});
+
+test("outside Claude Code, only Harness branches are gated; any other commit goes straight through", (t) => {
+  const { dir, harnessHome, git, run } = makeRepo();
+  useHarnessHome(t, harnessHome);
+  const main = git(["branch", "--show-current"]).stdout.trim();
+  // An eval that always fails, so a gated commit can't pass and an ungated one shows it was never asked.
+  mkdirSync(repoHome(dir), { recursive: true });
+  writeFileSync(join(repoHome(dir), "routing.yaml"), PASSING.replace('process.exit(0)', 'process.exit(1)'));
+  git(["switch", "-q", "-c", "feat/harness-work"]);
+  const applied = run("harness-init", "--apply", "--branch", "feat/harness-work");
+  assert.match(applied.stdout, /mark feat\/harness-work as a Harness branch/);
+  assert.match(applied.stdout, /pass\s+git-hooks\s+.*commits are gated on feat\/harness-work/);
+
+  writeFileSync(join(dir, "a.txt"), "one\n");
+  git(["add", "a.txt"]);
+  const gated = git(["commit", "-q", "-m", "on the Harness branch"]);
+  assert.notEqual(gated.status, 0, "a Harness branch's commit needs a passing eval");
+  assert.match(gated.stderr, /running harness-eval now/);
+
+  git(["stash", "-q"]);
+  git(["switch", "-q", main]);
+  git(["stash", "pop", "-q"]);
+  git(["add", "a.txt"]);
+  const hotfix = git(["commit", "-q", "-m", "a hand fix on another branch"]);
+  assert.equal(hotfix.status, 0, hotfix.stderr);
+  assert.doesNotMatch(hotfix.stderr, /harness-eval/, "the eval was never run");
+});
+
+test("a Harness session's branch becomes a Harness branch, and deleted branches drop off the list", (t) => {
+  const { dir, harnessHome, git, run } = makeRepo();
+  useHarnessHome(t, harnessHome);
+  mkdirSync(repoHome(dir), { recursive: true });
+  writeFileSync(join(repoHome(dir), "routing.yaml"), PASSING);
+  git(["switch", "-q", "-c", "old"]);
+  run("harness-init", "--apply", "--branch", "old");
+  git(["switch", "-q", "-c", "next"]);
+  git(["branch", "-q", "-D", "old"]);
+
+  const env: NodeJS.ProcessEnv = { ...process.env, CLAUDE_PROJECT_DIR: dir, HARNESS_HOME: harnessHome, CLAUDE_PLUGIN_ROOT: root };
+  const start = spawnSync("node", [join(root, "bin", "hook-session-start.mjs")], { cwd: dir, env, input: "{}", encoding: "utf8" });
+  assert.equal(start.status, 0, start.stderr);
+  assert.deepEqual(JSON.parse(readFileSync(join(repoHome(dir), "repo.json"), "utf8")).harness_branches, ["next"]);
 });
 
 test("forget puts the clone back as it was, and its dry run changes nothing", (t) => {
