@@ -1507,7 +1507,7 @@ var require_stringify = __commonJS({
         props.push(doc.directives.tagString(tag));
       return props.join(" ");
     }
-    function stringify2(item, ctx, onComment, onChompKeep) {
+    function stringify3(item, ctx, onComment, onChompKeep) {
       if (identity.isPair(item))
         return item.toString(ctx, onComment, onChompKeep);
       if (identity.isAlias(item)) {
@@ -1536,7 +1536,7 @@ var require_stringify = __commonJS({
 ${ctx.indent}${str}`;
     }
     exports.createStringifyContext = createStringifyContext;
-    exports.stringify = stringify2;
+    exports.stringify = stringify3;
   }
 });
 
@@ -1546,7 +1546,7 @@ var require_stringifyPair = __commonJS({
     "use strict";
     var identity = require_identity();
     var Scalar = require_Scalar();
-    var stringify2 = require_stringify();
+    var stringify3 = require_stringify();
     var stringifyComment = require_stringifyComment();
     function stringifyPair({ key, value }, ctx, onComment, onChompKeep) {
       const { allNullValues, doc, indent, indentStep, options: { commentString, indentSeq, simpleKeys } } = ctx;
@@ -1568,7 +1568,7 @@ var require_stringifyPair = __commonJS({
       });
       let keyCommentDone = false;
       let chompKeep = false;
-      let str = stringify2.stringify(key, ctx, () => keyCommentDone = true, () => chompKeep = true);
+      let str = stringify3.stringify(key, ctx, () => keyCommentDone = true, () => chompKeep = true);
       if (!explicitKey && !ctx.inFlow && str.length > 1024) {
         if (simpleKeys)
           throw new Error("With simple keys, single line scalar must not span more than 1024 characters");
@@ -1620,7 +1620,7 @@ ${indent}:`;
         ctx.indent = ctx.indent.substring(2);
       }
       let valueCommentDone = false;
-      const valueStr = stringify2.stringify(value, ctx, () => valueCommentDone = true, () => chompKeep = true);
+      const valueStr = stringify3.stringify(value, ctx, () => valueCommentDone = true, () => chompKeep = true);
       let ws = " ";
       if (keyComment || vsb || vcb) {
         ws = vsb ? "\n" : "";
@@ -1761,7 +1761,7 @@ var require_addPairToJSMap = __commonJS({
     "use strict";
     var log = require_log();
     var merge = require_merge();
-    var stringify2 = require_stringify();
+    var stringify3 = require_stringify();
     var identity = require_identity();
     var toJS = require_toJS();
     function addPairToJSMap(ctx, map, { key, value }) {
@@ -1797,7 +1797,7 @@ var require_addPairToJSMap = __commonJS({
       if (typeof jsKey !== "object")
         return String(jsKey);
       if (identity.isNode(key) && ctx?.doc) {
-        const strCtx = stringify2.createStringifyContext(ctx.doc, {});
+        const strCtx = stringify3.createStringifyContext(ctx.doc, {});
         strCtx.anchors = /* @__PURE__ */ new Set();
         for (const node of ctx.anchors.keys())
           strCtx.anchors.add(node.anchor);
@@ -1864,12 +1864,12 @@ var require_stringifyCollection = __commonJS({
   "node_modules/yaml/dist/stringify/stringifyCollection.js"(exports) {
     "use strict";
     var identity = require_identity();
-    var stringify2 = require_stringify();
+    var stringify3 = require_stringify();
     var stringifyComment = require_stringifyComment();
     function stringifyCollection(collection, ctx, options) {
       const flow = ctx.inFlow ?? collection.flow;
-      const stringify3 = flow ? stringifyFlowCollection : stringifyBlockCollection;
-      return stringify3(collection, ctx, options);
+      const stringify4 = flow ? stringifyFlowCollection : stringifyBlockCollection;
+      return stringify4(collection, ctx, options);
     }
     function stringifyBlockCollection({ comment, items }, ctx, { blockItemPrefix, flowChars, itemIndent, onChompKeep, onComment }) {
       const { indent, options: { commentString } } = ctx;
@@ -1894,7 +1894,7 @@ var require_stringifyCollection = __commonJS({
           }
         }
         chompKeep = false;
-        let str2 = stringify2.stringify(item, itemCtx, () => comment2 = null, () => chompKeep = true);
+        let str2 = stringify3.stringify(item, itemCtx, () => comment2 = null, () => chompKeep = true);
         if (comment2)
           str2 += stringifyComment.lineComment(str2, itemIndent, commentString(comment2));
         if (chompKeep && comment2)
@@ -1961,7 +1961,7 @@ ${indent}${line}` : "\n";
         }
         if (comment)
           reqNewline = true;
-        let str = stringify2.stringify(item, itemCtx, () => comment = null);
+        let str = stringify3.stringify(item, itemCtx, () => comment = null);
         reqNewline || (reqNewline = lines.length > linesAtValue || str.includes("\n"));
         if (i < items.length - 1) {
           str += ",";
@@ -3322,7 +3322,7 @@ var require_stringifyDocument = __commonJS({
   "node_modules/yaml/dist/stringify/stringifyDocument.js"(exports) {
     "use strict";
     var identity = require_identity();
-    var stringify2 = require_stringify();
+    var stringify3 = require_stringify();
     var stringifyComment = require_stringifyComment();
     function stringifyDocument(doc, options) {
       const lines = [];
@@ -3337,7 +3337,7 @@ var require_stringifyDocument = __commonJS({
       }
       if (hasDirectives)
         lines.push("---");
-      const ctx = stringify2.createStringifyContext(doc, options);
+      const ctx = stringify3.createStringifyContext(doc, options);
       const { commentString } = ctx.options;
       if (doc.commentBefore) {
         if (lines.length !== 1)
@@ -3359,7 +3359,7 @@ var require_stringifyDocument = __commonJS({
           contentComment = doc.contents.comment;
         }
         const onChompKeep = contentComment ? void 0 : () => chompKeep = true;
-        let body = stringify2.stringify(doc.contents, ctx, () => contentComment = null, onChompKeep);
+        let body = stringify3.stringify(doc.contents, ctx, () => contentComment = null, onChompKeep);
         if (contentComment)
           body += stringifyComment.lineComment(body, "", commentString(contentComment));
         if ((body[0] === "|" || body[0] === ">") && lines[lines.length - 1] === "---") {
@@ -3367,7 +3367,7 @@ var require_stringifyDocument = __commonJS({
         } else
           lines.push(body);
       } else {
-        lines.push(stringify2.stringify(doc.contents, ctx));
+        lines.push(stringify3.stringify(doc.contents, ctx));
       }
       if (doc.directives?.docEnd) {
         if (doc.comment) {
@@ -5503,7 +5503,7 @@ var require_cst_scalar = __commonJS({
 var require_cst_stringify = __commonJS({
   "node_modules/yaml/dist/parse/cst-stringify.js"(exports) {
     "use strict";
-    var stringify2 = (cst) => "type" in cst ? stringifyToken(cst) : stringifyItem(cst);
+    var stringify3 = (cst) => "type" in cst ? stringifyToken(cst) : stringifyItem(cst);
     function stringifyToken(token) {
       switch (token.type) {
         case "block-scalar": {
@@ -5556,7 +5556,7 @@ var require_cst_stringify = __commonJS({
         res += stringifyToken(value);
       return res;
     }
-    exports.stringify = stringify2;
+    exports.stringify = stringify3;
   }
 });
 
@@ -7267,7 +7267,7 @@ var require_public_api = __commonJS({
       }
       return doc;
     }
-    function parse2(src, reviver, options) {
+    function parse3(src, reviver, options) {
       let _reviver = void 0;
       if (typeof reviver === "function") {
         _reviver = reviver;
@@ -7286,7 +7286,7 @@ var require_public_api = __commonJS({
       }
       return doc.toJS(Object.assign({ reviver: _reviver }, options));
     }
-    function stringify2(value, replacer, options) {
+    function stringify3(value, replacer, options) {
       let _replacer = null;
       if (typeof replacer === "function" || Array.isArray(replacer)) {
         _replacer = replacer;
@@ -7308,10 +7308,10 @@ var require_public_api = __commonJS({
         return value.toString(options);
       return new Document.Document(value, _replacer, options).toString(options);
     }
-    exports.parse = parse2;
+    exports.parse = parse3;
     exports.parseAllDocuments = parseAllDocuments;
     exports.parseDocument = parseDocument;
-    exports.stringify = stringify2;
+    exports.stringify = stringify3;
   }
 });
 
@@ -7499,18 +7499,37 @@ function loadConfig(dir2 = projectDir()) {
 
 // src/lib/setup.ts
 import { execFileSync as execFileSync3 } from "node:child_process";
-import { existsSync as existsSync4, mkdirSync as mkdirSync3, readFileSync as readFileSync4, realpathSync, rmSync as rmSync3, writeFileSync as writeFileSync3 } from "node:fs";
+import { existsSync as existsSync5, mkdirSync as mkdirSync4, readFileSync as readFileSync5, realpathSync, rmSync as rmSync3, writeFileSync as writeFileSync4 } from "node:fs";
 import { join as join4, resolve as resolve3 } from "node:path";
 
-// src/lib/home.ts
+// src/lib/ci.ts
+import { existsSync as existsSync2, mkdirSync, readFileSync as readFileSync2, writeFileSync } from "node:fs";
 var import_yaml2 = __toESM(require_dist(), 1);
+var CI_CONFIG = ".github/harness-eval.yml";
+var CI_WORKFLOW = ".github/workflows/harness-eval.yml";
+function readCiStages(path) {
+  if (!existsSync2(path)) return { problem: `there is no ${path}` };
+  let yaml;
+  try {
+    yaml = (0, import_yaml2.parse)(readFileSync2(path, "utf8"));
+  } catch (error) {
+    return { problem: `${path} is not valid YAML: ${error.message.split("\n")[0]}` };
+  }
+  const stages = yaml?.eval?.stages;
+  return Array.isArray(stages) ? { stages } : { problem: `${path} has no eval.stages list` };
+}
+var canonical = (stages) => JSON.stringify(stages.map((s) => ({ name: s.name, run: s.run, cwd: s.cwd ?? null, env: s.env ?? null, timeout_minutes: s.timeout_minutes ?? null })));
+var sameStages = (a, b) => canonical(a) === canonical(b);
+
+// src/lib/home.ts
+var import_yaml3 = __toESM(require_dist(), 1);
 import { execFileSync as execFileSync2 } from "node:child_process";
-import { chmodSync, existsSync as existsSync3, mkdirSync as mkdirSync2, readdirSync as readdirSync2, readFileSync as readFileSync3, rmSync as rmSync2, statSync, writeFileSync as writeFileSync2 } from "node:fs";
+import { chmodSync, existsSync as existsSync4, mkdirSync as mkdirSync3, readdirSync as readdirSync2, readFileSync as readFileSync4, rmSync as rmSync2, statSync, writeFileSync as writeFileSync3 } from "node:fs";
 import { homedir as homedir2 } from "node:os";
 import { isAbsolute, join as join3, relative } from "node:path";
 
 // src/lib/spool.ts
-import { appendFileSync, existsSync as existsSync2, mkdirSync, readdirSync, readFileSync as readFileSync2, renameSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync as existsSync3, mkdirSync as mkdirSync2, readdirSync, readFileSync as readFileSync3, renameSync, rmSync, writeFileSync as writeFileSync2 } from "node:fs";
 import { join as join2, resolve as resolve2 } from "node:path";
 
 // src/lib/types.ts
@@ -7522,10 +7541,10 @@ var messageOf = (error) => error instanceof Error ? error.message : String(error
 var MAX_LINE_BYTES = 4096;
 var registryPath = () => join2(harnessHome(), "spools.json");
 var pluginRecordPath = () => join2(harnessHome(), "plugin.json");
-var readRegistry = (path) => existsSync2(path) ? JSON.parse(readFileSync2(path, "utf8")) : { version: 1, spools: [] };
+var readRegistry = (path) => existsSync3(path) ? JSON.parse(readFileSync3(path, "utf8")) : { version: 1, spools: [] };
 function writeRegistry(path, registry) {
-  mkdirSync(join2(path, ".."), { recursive: true });
-  writeFileSync(`${path}.tmp`, JSON.stringify(registry, null, 2) + "\n");
+  mkdirSync2(join2(path, ".."), { recursive: true });
+  writeFileSync2(`${path}.tmp`, JSON.stringify(registry, null, 2) + "\n");
   renameSync(`${path}.tmp`, path);
 }
 function registerSpool(spool, now = /* @__PURE__ */ new Date()) {
@@ -7544,10 +7563,10 @@ function recordFailure(config2, why) {
   process.stderr.write(`harness: metadata not written: ${why}
 `);
   try {
-    mkdirSync(config2.metadataDir, { recursive: true });
+    mkdirSync2(config2.metadataDir, { recursive: true });
     const file = join2(config2.metadataDir, "emit-failures");
-    const count2 = existsSync2(file) ? Number.parseInt(readFileSync2(file, "utf8"), 10) || 0 : 0;
-    writeFileSync(file, `${count2 + 1}
+    const count2 = existsSync3(file) ? Number.parseInt(readFileSync3(file, "utf8"), 10) || 0 : 0;
+    writeFileSync2(file, `${count2 + 1}
 `);
   } catch {
   }
@@ -7559,8 +7578,8 @@ function appendLine(config2, file, record) {
     return false;
   }
   try {
-    const firstLineInFile = !existsSync2(file);
-    mkdirSync(join2(file, ".."), { recursive: true });
+    const firstLineInFile = !existsSync3(file);
+    mkdirSync2(join2(file, ".."), { recursive: true });
     appendFileSync(file, line + "\n", { flag: "a" });
     if (firstLineInFile) registerSpool(config2);
     return true;
@@ -7573,18 +7592,18 @@ function sweep(config2, now) {
   const today = utcNow(now).slice(0, 10);
   const marker = join2(config2.metadataDir, "state", "swept");
   try {
-    if (existsSync2(marker) && readFileSync2(marker, "utf8").trim() === today) return;
+    if (existsSync3(marker) && readFileSync3(marker, "utf8").trim() === today) return;
     const cutoff = new Date(now.getTime() - config2.retentionDays * 864e5).toISOString().slice(0, 10);
     const folders = [["events", (n) => n.slice(0, 10)], ["routing-log", (n) => `${n.slice(0, 7)}-31`]];
     for (const [folder, toDate] of folders) {
       const dir2 = join2(config2.metadataDir, folder);
-      if (!existsSync2(dir2)) continue;
+      if (!existsSync3(dir2)) continue;
       for (const name of readdirSync(dir2).filter((n) => n.endsWith(".jsonl"))) {
         if (toDate(name) < cutoff) rmSync(join2(dir2, name));
       }
     }
-    mkdirSync(join2(config2.metadataDir, "state"), { recursive: true });
-    writeFileSync(marker, today);
+    mkdirSync2(join2(config2.metadataDir, "state"), { recursive: true });
+    writeFileSync2(marker, today);
   } catch (error) {
     recordFailure(config2, `retention sweep: ${messageOf(error)}`);
   }
@@ -7621,7 +7640,7 @@ function emitEvent(config2, type, fields = {}, data = {}, now = /* @__PURE__ */ 
 var TIERS = ["T1", "T2", "T3", "T4"];
 function snapshotConfig(config2, repo, now = /* @__PURE__ */ new Date()) {
   const path = join2(config2.metadataDir, "configs", `${config2.config_sha256}.json`);
-  if (existsSync2(path)) return;
+  if (existsSync3(path)) return;
   const tiers = {};
   for (const tier of TIERS) {
     const t = config2.tiers[tier];
@@ -7640,8 +7659,8 @@ function snapshotConfig(config2, repo, now = /* @__PURE__ */ new Date()) {
     gate: { marker_ttl_minutes: config2.markerTtlMinutes }
   };
   try {
-    mkdirSync(join2(path, ".."), { recursive: true });
-    writeFileSync(`${path}.tmp`, JSON.stringify(snapshot, null, 2) + "\n");
+    mkdirSync2(join2(path, ".."), { recursive: true });
+    writeFileSync2(`${path}.tmp`, JSON.stringify(snapshot, null, 2) + "\n");
     renameSync(`${path}.tmp`, path);
   } catch (error) {
     recordFailure(config2, `config snapshot: ${messageOf(error)}`);
@@ -7704,7 +7723,7 @@ var git2 = (dir2, ...args) => {
 };
 var readJson = (path) => {
   try {
-    return JSON.parse(readFileSync3(path, "utf8"));
+    return JSON.parse(readFileSync4(path, "utf8"));
   } catch {
     return null;
   }
@@ -7735,7 +7754,7 @@ function ownHooksDir(dir2, previous) {
 }
 function ownHooks(dir2, previous) {
   const folder = ownHooksDir(dir2, previous);
-  if (!existsSync3(folder)) return [];
+  if (!existsSync4(folder)) return [];
   return readdirSync2(folder).filter((name) => GIT_HOOKS.includes(name) && statSync(join3(folder, name)).isFile()).sort();
 }
 function hooksState(dir2, home) {
@@ -7745,10 +7764,10 @@ function hooksState(dir2, home) {
 }
 function homes() {
   const root = join3(harnessHome(), "repos");
-  if (!existsSync3(root)) return [];
+  if (!existsSync4(root)) return [];
   return readdirSync2(root, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => join3(root, e.name)).map((home) => ({ home, repoDir: readJson(join3(home, "repo.json"))?.repo_dir ?? null }));
 }
-var orphans = () => homes().filter(({ repoDir }) => !repoDir || !existsSync3(join3(repoDir, ".git"))).map(({ home }) => home);
+var orphans = () => homes().filter(({ repoDir }) => !repoDir || !existsSync4(join3(repoDir, ".git"))).map(({ home }) => home);
 
 // src/lib/setup.ts
 var MIN_CLAUDE_CODE = [2, 1, 284];
@@ -7772,7 +7791,7 @@ var git3 = (dir2, ...args) => {
 };
 var readJson2 = (path) => {
   try {
-    return JSON.parse(readFileSync4(path, "utf8"));
+    return JSON.parse(readFileSync5(path, "utf8"));
   } catch {
     return null;
   }
@@ -7794,7 +7813,7 @@ function checks(dir2, { pluginRoot: pluginRoot2, claudeVersion = readClaudeVersi
   else add("claude-code", atLeast(version(claudeVersion), MIN_CLAUDE_CODE) ? "pass" : "fail", `Claude Code ${claudeVersion} (needs ${MIN_CLAUDE_CODE.join(".")}+)`);
   const recorded = readJson2(pluginRecordPath());
   if (!recorded?.root) add("plugin-recorded", "fail", `${pluginRecordPath()} is missing: start Claude Code once with the plugin so git hooks can find it`);
-  else if (!existsSync4(join4(recorded.root, "bin", "harness-git-hook.mjs"))) add("plugin-recorded", "fail", `${pluginRecordPath()} points at ${recorded.root}, which has no bin/harness-git-hook.mjs`);
+  else if (!existsSync5(join4(recorded.root, "bin", "harness-git-hook.mjs"))) add("plugin-recorded", "fail", `${pluginRecordPath()} points at ${recorded.root}, which has no bin/harness-git-hook.mjs`);
   else if (pluginRoot2 && realpathSync.native(recorded.root).toLowerCase() !== realpathSync.native(pluginRoot2).toLowerCase()) add("plugin-recorded", "warn", `git hooks use ${recorded.root}, not this copy (${pluginRoot2})`);
   else add("plugin-recorded", "pass", `git hooks use ${recorded.root} (${recorded.version})`);
   if (config2.mode === "off") {
@@ -7810,9 +7829,9 @@ function checks(dir2, { pluginRoot: pluginRoot2, claudeVersion = readClaudeVersi
   if (!config2.metadataDir) add("spool-writable", "warn", "not enrolled, so there is no spool yet");
   else {
     try {
-      mkdirSync3(config2.metadataDir, { recursive: true });
+      mkdirSync4(config2.metadataDir, { recursive: true });
       const probe = join4(config2.metadataDir, `.doctor-${process.pid}`);
-      writeFileSync3(probe, "");
+      writeFileSync4(probe, "");
       rmSync3(probe);
       add("spool-writable", "pass", config2.metadataDir);
     } catch (error) {
@@ -7821,6 +7840,13 @@ function checks(dir2, { pluginRoot: pluginRoot2, claudeVersion = readClaudeVersi
   }
   if (config2.layout?.kind === "home") homeChecks(dir2, config2.layout.root, add);
   else if (config2.layout) repositoryChecks(dir2, add);
+  const ciConfig = join4(dir2, CI_CONFIG);
+  if (config2.layout && (existsSync5(ciConfig) || existsSync5(join4(dir2, CI_WORKFLOW)))) {
+    const read = readCiStages(ciConfig);
+    if ("problem" in read) add("ci", "warn", `${CI_WORKFLOW} runs the stages in ${CI_CONFIG}, but ${read.problem} (harness-init --ci writes it)`);
+    else if (sameStages(read.stages, config2.stages)) add("ci", "pass", `${CI_CONFIG} has the same ${read.stages.length} stage(s) as ${config2.layout.routingYaml}`);
+    else add("ci", "warn", `the stages in ${CI_CONFIG} differ from those in ${config2.layout.routingYaml}; change both together, or CI checks something the local gate doesn't`);
+  }
   try {
     const spelled = resolve3(dir2);
     const real = realpathSync.native(spelled);
@@ -7844,7 +7870,7 @@ function homeChecks(dir2, home, add) {
   const hooks = hooksState(dir2, home);
   const folder = githooksDir(home);
   const own = ownHooks(dir2, hooks.previous);
-  const missing = ["harness", ...HARNESS_HOOKS, ...own].filter((h) => !existsSync4(join4(folder, h)));
+  const missing = ["harness", ...HARNESS_HOOKS, ...own].filter((h) => !existsSync5(join4(folder, h)));
   if (!hooks.ours) {
     add("git-hooks", "fail", `core.hooksPath is ${hooks.current ? `"${hooks.current}"` : "not set"}, not ${folder}: commits made outside Claude Code are not gated (something, such as husky's install, may have changed it; /harness:init puts it back)`);
   } else if (missing.length) {
@@ -7869,7 +7895,7 @@ function homeChecks(dir2, home, add) {
 }
 function repositoryChecks(dir2, add) {
   const hooksPath = git3(dir2, "config", "core.hooksPath");
-  const missingHooks = HOOKS.filter((h) => !existsSync4(join4(dir2, ".githooks", h)));
+  const missingHooks = HOOKS.filter((h) => !existsSync5(join4(dir2, ".githooks", h)));
   if (hooksPath !== ".githooks") add("git-hooks", "fail", `core.hooksPath is ${hooksPath ? `"${hooksPath}"` : "not set"}: commits made outside Claude Code are not gated`);
   else if (missingHooks.length) add("git-hooks", "fail", `.githooks is missing ${missingHooks.join(", ")}`);
   else add("git-hooks", "pass", "pre-commit, commit-msg and post-commit are on");
@@ -7896,7 +7922,7 @@ function repositoryChecks(dir2, add) {
 }
 function readSafely(path) {
   try {
-    return readFileSync4(path, "utf8");
+    return readFileSync5(path, "utf8");
   } catch {
     return "";
   }

@@ -1,4 +1,4 @@
-// harness-eval [--task PLAN-7.2 ...] [--ci]
+// harness-eval [--task PLAN-7.2 ...] [--ci [--config <path>]]
 //
 // Runs routing.yaml's eval.stages against what is staged, and on a pass writes the marker the commit
 // gate checks: .claude/state/eval-pass.json, holding sha256(git diff --cached --binary) and HEAD. It is
@@ -9,13 +9,20 @@
 // being part of the commit the marker vouches for. --ci evaluates the checkout as it is, and writes
 // no marker.
 //
+// --config <path> takes the stages from that file (eval.stages) instead of routing.yaml, for a CI runner,
+// which has no home (C1). It only goes with --ci, since a marker belongs to a home.
+//
 // Exit 0 pass, 1 fail, 2 refused (nothing to evaluate, or not a state worth evaluating).
-import { isAbsolute, join, relative } from "node:path";
-import { loadConfig } from "../lib/config.ts";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { isAbsolute, join, relative, resolve } from "node:path";
+import { readCiStages } from "../lib/ci.ts";
+import { loadConfig, projectDir } from "../lib/config.ts";
 import {
   clearMarker, hasStagedChanges, passMarker, runStages, stagedDiffSha256, stageProblems, unstaged, writeMarker,
 } from "../lib/eval.ts";
 import { emitEvent } from "../lib/spool.ts";
+import type { Stage } from "../lib/types.ts";
 
 const args = process.argv.slice(2);
 const ci = args.includes("--ci");
@@ -28,6 +35,27 @@ const refuse = (why: string, details: string[] = []): never => {
   if (details.length > 20) say(`  ... and ${details.length - 20} more`);
   return process.exit(2);
 };
+
+const configAt = args.indexOf("--config");
+if (configAt >= 0) {
+  const path = args[configAt + 1];
+  if (!ci) refuse("--config goes only with --ci: outside CI the stages come from routing.yaml, and a pass marker belongs to a home");
+  if (!path || path.startsWith("-")) refuse("--config needs the path of a file holding eval.stages, such as .github/harness-eval.yml");
+  const dir = projectDir();
+  const read = readCiStages(resolve(dir, path!));
+  if ("problem" in read) refuse(read.problem);
+  else {
+    const problem = stageProblems(read.stages);
+    if (problem) refuse(problem.replace("routing.yaml", path!));
+    say(`harness-eval: ${read.stages.length} stage(s) for the checkout (ci, stages from ${path})`);
+    // No home on a runner, so the stage logs go to a temporary folder; a failure's last lines are printed.
+    const logDir = mkdtempSync(join(tmpdir(), "harness-eval-"));
+    const failed = report(runStages(dir, read.stages, logDir, { onStage: progress }), logDir, (p) => p);
+    if (failed) process.exit(1);
+    say("harness-eval: PASS (ci, no marker written)");
+    process.exit(0);
+  }
+}
 
 const config = loadConfig();
 if (config.mode === "off") {
@@ -65,14 +93,7 @@ say(`harness-eval: ${config.stages.length} stage(s) for ${ci ? "the checkout (ci
 emit("eval.started", { task_ids: taskIds, diff_sha256: diffSha256, ci });
 
 const logDir = join(config.metadataDir, "state", "eval");
-const outcome = runStages(config.dir, config.stages, logDir, {
-  // A progress line that the result overwrites only works on a terminal; in a log it is noise.
-  onStage: (stage) => process.stdout.isTTY && process.stdout.write(`  ....  ${stage.name}\r`),
-});
-
-for (const stage of outcome.stages) {
-  say(`  ${stage.status.padEnd(7)} ${stage.name.padEnd(24)} ${stage.status === "skipped" ? "" : `${(stage.duration_ms / 1000).toFixed(1)}s`}`);
-}
+const outcome = runStages(config.dir, config.stages, logDir, { onStage: progress });
 
 emit("eval.completed", {
   result: outcome.result,
@@ -83,16 +104,7 @@ emit("eval.completed", {
   ...(outcome.failed_acs.length ? { attribution: "task" } : {}),
 });
 
-if (outcome.failed) {
-  const tail = outcome.failed.output.trimEnd().split(/\r?\n/).slice(-60);
-  say();
-  say(`--- ${outcome.failed.stage}: last ${tail.length} lines (full log: ${shown(join(logDir, `${outcome.failed.stage}.log`))}) ---`);
-  for (const line of tail) say(line);
-  say("---");
-  if (outcome.failed_acs.length) say(`failing acceptance criteria: ${outcome.failed_acs.join(", ")}`);
-  say(`harness-eval: FAIL at ${outcome.failed.stage}`);
-  process.exit(1);
-}
+if (report(outcome, logDir, shown)) process.exit(1);
 
 if (ci) {
   say("harness-eval: PASS (ci, no marker written)");
@@ -109,3 +121,24 @@ if (stagedDiffSha256(config.dir) !== diffSha256 || unstaged(config.dir).length) 
 writeMarker(config.layout.markerPath, passMarker(config.dir, { diffSha256, taskIds, configSha256: config.config_sha256 }));
 say(`harness-eval: PASS - ${shown(config.layout.markerPath)} written; a commit of this staged diff is allowed for ${config.markerTtlMinutes} minutes`);
 process.exit(0);
+
+/** A progress line that the result overwrites. It only works on a terminal; in a log it is noise. */
+function progress(stage: Stage): void {
+  if (process.stdout.isTTY) process.stdout.write(`  ....  ${stage.name}\r`);
+}
+
+/** Prints each stage's result and, on a failure, its last lines. Returns whether a stage failed. */
+function report(outcome: ReturnType<typeof runStages>, logDir: string, shown: (path: string) => string): boolean {
+  for (const stage of outcome.stages) {
+    say(`  ${stage.status.padEnd(7)} ${stage.name.padEnd(24)} ${stage.status === "skipped" ? "" : `${(stage.duration_ms / 1000).toFixed(1)}s`}`);
+  }
+  if (!outcome.failed) return false;
+  const tail = outcome.failed.output.trimEnd().split(/\r?\n/).slice(-60);
+  say();
+  say(`--- ${outcome.failed.stage}: last ${tail.length} lines (full log: ${shown(join(logDir, `${outcome.failed.stage}.log`))}) ---`);
+  for (const line of tail) say(line);
+  say("---");
+  if (outcome.failed_acs.length) say(`failing acceptance criteria: ${outcome.failed_acs.join(", ")}`);
+  say(`harness-eval: FAIL at ${outcome.failed.stage}`);
+  return true;
+}

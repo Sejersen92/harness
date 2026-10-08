@@ -139,9 +139,16 @@ PU's `eval.yml` runs `harness-eval --ci`, which reads the stages from the checke
 - An owned repository commits `.github/harness-eval.yml`, holding only `eval.stages`, plus the workflow, which passes `--config`.
 - **Owned** means the remote's owner is in PU's personal owners (`RepoIdentity.PersonalOwners`, today github.com/sejersen92). Enrolling an owned repository without the two CI files offers to add them as a commit on a Harness branch. That is the one committed change the Harness ever proposes, and only in a repository Mikkel owns.
 
+**As built (C1, 0.8.0):**
+- `harness-init --ci` writes the two files, and `--apply` is needed before it changes anything. It never overwrites a file that exists, and it doesn't commit. Its `ci:` line reports `present`, `missing`, `partial` or `declined`, and `pu harness` reads that line, as it reads `home:`.
+- `harness-init --ci --decline` records the owner's no as `ci_declined` in `repo.json`, so `pu harness` stops offering. `--apply` still writes the files afterwards.
+- The workflow always sets up Node. It adds the .NET SDK when a stage runs `dotnet`, and runs `npm ci` (or `npm install` where there's no lock file) once in each folder a stage runs npm in. Anything else a stage needs, the owner adds.
+- With `--config`, `harness-eval` runs only with `--ci`, because a pass marker belongs to a home. Stage logs go to a temporary folder, and a failing stage's last lines are printed.
+- The doctor's `ci` line appears only when either file exists. It passes when the stages match routing.yaml, and warns when they differ or when the stage file is missing.
+
 The costs:
 - **The stages are written twice:** in the home's routing.yaml and in the CI file. The doctor warns when they differ.
-- **Every owned repository needs the `HARNESS_READ_TOKEN` secret**, because the harness repository is private and the workflow checks it out. That's a step per repository today (see open questions).
+- ~~Every owned repository needs the `HARNESS_READ_TOKEN` secret.~~ Not any more: the harness repository went public on 2026-10-08 (open question 1), so the workflow checks it out with no token.
 
 ## The intake gate
 
@@ -222,7 +229,7 @@ This doesn't block anything else in this design. It's its own track, R1 to R3 in
 | **H4** | harness | **Done, 0.7.0.** The intake gate: the orchestrator's brief and intake step, `intake.max_ambiguity`, the `plan.intake` event, and a PreToolUse check on `Agent` that enforces it. Plus the score review: `task.scored.review`, kept in the routing log. | H1 |
 | **V1** | DocumentService + web | Show the reviews: pass `rubric.review` and the plan's intake rounds through to the task page ("agent 3 → you 6: touches payments", "ambiguity 0 after 2 rounds"). | H4 |
 | **P2** | PU CLI | `pu harness` enrols automatically when there's no home, records the branch as a Harness branch, and passes `--settings` and `--add-dir`; `pu harness forget [--all]`. | H2 |
-| **C1** | harness | `harness-eval --ci --config`; enrolling an owned repository offers the two CI files. | H2 |
+| **C1** | harness + PU CLI | **Done, 0.8.0.** `harness-eval --ci --config`; `harness-init --ci [--apply \| --decline]` writes the two CI files; the doctor's `ci` check. `pu harness` offers the files in an owned repository and commits them on the Harness branch. | H2 |
 | **M** | PU | Migrate PU: the home from its `routing.yaml`; delete `routing.yaml`, `.githooks/` and the `.gitignore` block; CI moves to `--config`; drop the fallback. | P2, H3, C1 |
 | **W** | work PC | `pu update`, then `pu harness` in a work repository, on one real task. **Done when that task commits through the gate and shows on the Routing page in the Work bucket.** | M |
 
@@ -242,15 +249,11 @@ The hub track (see "One hub") runs alongside and blocks nothing:
 2. **Every repository Mikkel owns gets the eval in CI.**
 3. **The 10 tasks stay in the baseline.** The baseline continues, and the plugin version tells the versions apart.
 4. **Enrolment is automatic** on `pu harness`.
+5. **The harness repository is public** (Mikkel, 2026-10-08), so CI checks it out with no `HARNESS_READ_TOKEN`. This was open question 1, with option (b) chosen. To keep the work address out of a public history, `Sejersen92/harness` was recreated: its history was rewritten to the GitHub noreply address, with identical content, and the old repository, PRs #1–#22 included, stays private as `Sejersen92/harness-archive`.
 
 ## Open questions
 
-1. **`HARNESS_READ_TOKEN` in every owned repository.** CI checks out the private harness repository, so each owned repository needs the secret. The options:
-   - (a) `pu harness` sets it with `gh secret set` from a token kept locally. That's one more credential on disk.
-   - (b) Make the harness repository public. It holds no secrets, but it's your call.
-   - (c) Publish `harness-eval` as a release asset that a workflow can download without a token, if the repository is public anyway.
-
-   (b) is the simplest by far, and makes (c) unnecessary.
+None at the moment.
 
 ## Briefs
 

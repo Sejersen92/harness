@@ -25,6 +25,8 @@ export interface RepoRecord {
   enrolled: string;
   /** The branches the Harness has worked on: the git pre-commit hook gates these and no others (H3). */
   harness_branches?: string[];
+  /** When the owner said no to the CI files (harness-init --ci --decline), so pu harness stops offering them. */
+  ci_declined?: string;
 }
 
 export const readRepoRecord = (home: string): RepoRecord | null => readJson<RepoRecord>(join(home, "repo.json"));
@@ -48,6 +50,13 @@ export function recordBranch(home: string, dir: string, branch: string): void {
   } catch {
     // A branch that isn't recorded is only ungated outside Claude Code; inside it, every commit is.
   }
+}
+
+/** Records that the owner declined the CI files. Does nothing for a home with no repo.json. */
+export function declineCi(home: string, now: Date = new Date()): void {
+  const record = readRepoRecord(home);
+  if (!record) return;
+  writeFileSync(join(home, "repo.json"), JSON.stringify({ ...record, ci_declined: utcNow(now) }, null, 2) + "\n");
 }
 
 /** The branch checked out in a clone, or "" when HEAD is detached. */
