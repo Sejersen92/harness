@@ -7753,7 +7753,8 @@ if (hook === "commit-msg") {
 }
 if (config.mode === "off") process.exit(0);
 if (hook === "pre-commit") {
-  if (config.layout.kind === "home" && !harnessBranches(config.layout.root).includes(currentBranch(dir))) process.exit(0);
+  const inSession = Boolean(process.env.CLAUDE_CODE_SESSION_ID);
+  if (config.layout.kind === "home" && !inSession && !harnessBranches(config.layout.root).includes(currentBranch(dir))) process.exit(0);
   const first = checkMarker(dir, config.layout.markerPath, config.markerTtlMinutes);
   if (first.decision === "allow") process.exit(0);
   say(`harness: no eval pass for this commit (${first.detail}), so running harness-eval now.`);

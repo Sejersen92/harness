@@ -52,7 +52,11 @@ if (hook === "pre-commit") {
   // Outside Claude Code, the gate is for Harness branches only (ANY-REPO.md, H3): the tool enables, it
   // doesn't block, so a person's hotfix on any other branch goes straight to the repository's own hooks.
   // A repository still set up the old way has no list, and keeps gating every commit until it moves.
-  if (config.layout.kind === "home" && !harnessBranches(config.layout.root).includes(currentBranch(dir))) process.exit(0);
+  // Inside Claude Code every commit is gated, recorded branch or not: a branch is recorded only after
+  // its first commit (post-commit), and the in-session gate reads the session's project, which a
+  // `cd other-repo && git commit` leaves - so a session's first commit on a new branch went ungated.
+  const inSession = Boolean(process.env.CLAUDE_CODE_SESSION_ID);
+  if (config.layout.kind === "home" && !inSession && !harnessBranches(config.layout.root).includes(currentBranch(dir))) process.exit(0);
   const first = checkMarker(dir, config.layout.markerPath, config.markerTtlMinutes);
   if (first.decision === "allow") process.exit(0);
 

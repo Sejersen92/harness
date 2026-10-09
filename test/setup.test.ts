@@ -192,6 +192,25 @@ test("outside Claude Code, only Harness branches are gated; any other commit goe
   assert.doesNotMatch(hotfix.stderr, /harness-eval/, "the eval was never run");
 });
 
+test("inside Claude Code, a commit on a branch not recorded yet is gated too", (t) => {
+  // A branch is recorded as a Harness branch only after its first commit (post-commit), and the
+  // in-session gate reads the session's project, which a `cd other-repo && git commit` leaves. So
+  // without this, a session's first commit on a new branch went through unevaluated.
+  const { dir, harnessHome, git, run } = makeRepo();
+  useHarnessHome(t, harnessHome);
+  mkdirSync(repoHome(dir), { recursive: true });
+  writeFileSync(join(repoHome(dir), "routing.yaml"), PASSING.replace('process.exit(0)', 'process.exit(1)'));
+  git(["switch", "-q", "-c", "feat/harness-work"]);
+  run("harness-init", "--apply", "--branch", "feat/harness-work");
+  git(["switch", "-q", "-c", "fix/brand-new"]);
+
+  writeFileSync(join(dir, "a.txt"), "one\n");
+  git(["add", "a.txt"]);
+  const first = git(["commit", "-q", "-m", "first commit on a new branch"], { CLAUDE_CODE_SESSION_ID: "11111111-2222-4333-8444-555555555555" });
+  assert.notEqual(first.status, 0, "the failing eval stops it");
+  assert.match(first.stderr, /running harness-eval now/);
+});
+
 test("a Harness session's branch becomes a Harness branch, and deleted branches drop off the list", (t) => {
   const { dir, harnessHome, git, run } = makeRepo();
   useHarnessHome(t, harnessHome);
