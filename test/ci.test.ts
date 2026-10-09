@@ -194,6 +194,46 @@ test("the workflow sets up .NET only for a dotnet stage, and installs npm depend
   assert.doesNotMatch(plain, /setup-dotnet|Install dependencies/);
 });
 
+test("the workflow sets up and installs with the package manager a stage runs: pnpm, yarn, bun", () => {
+  const workflow = (dir: string, stages: Stage[]) =>
+    (parse(ciWorkflowText(dir, stages)) as { jobs: { eval: { steps: Record<string, unknown>[] } } }).jobs.eval.steps;
+  const installs = (steps: Record<string, unknown>[]) => steps.filter((s) => String(s.name ?? "").startsWith("Install")).map((s) => s.run);
+
+  // pnpm with a packageManager field: action-setup reads the version from it, before setup-node.
+  const pnpm = mkdtempSync(join(tmpdir(), "harness-ci-pnpm-"));
+  writeFileSync(join(pnpm, "package.json"), JSON.stringify({ packageManager: "pnpm@11.8.0" }));
+  writeFileSync(join(pnpm, "pnpm-lock.yaml"), "");
+  const steps = workflow(pnpm, [{ name: "lint", run: "pnpm run lint" }, { name: "build", run: "pnpm build" }]);
+  const setup = steps.findIndex((s) => s.uses === "pnpm/action-setup@v4");
+  assert.ok(setup >= 0 && setup < steps.findIndex((s) => s.uses === "actions/setup-node@v4"), "pnpm is set up before Node");
+  assert.equal(steps[setup].with, undefined, "the version comes from packageManager");
+  assert.deepEqual(installs(steps), ["pnpm install --frozen-lockfile"], "once for the folder, locked");
+  assert.doesNotMatch(JSON.stringify(steps), /(?<!p)npm (ci|install)/);
+
+  // pnpm with no field and no lock file: told the latest, installed unlocked.
+  const loose = mkdtempSync(join(tmpdir(), "harness-ci-pnpm-loose-"));
+  const looseSteps = workflow(loose, [{ name: "build", run: "pnpm run build" }]);
+  assert.deepEqual(looseSteps.find((s) => s.uses === "pnpm/action-setup@v4")?.with, { version: "latest" });
+  assert.deepEqual(installs(looseSteps), ["pnpm install"]);
+
+  // A pnpm workspace member: the root's lock file makes it a locked install, in the member's folder.
+  mkdirSync(join(pnpm, "web"));
+  const member = workflow(pnpm, [{ name: "web-build", run: "pnpm run build", cwd: "web" }]);
+  assert.deepEqual(member.filter((s) => s.name === "Install dependencies (web)").map((s) => [s.run, s["working-directory"]]), [["pnpm install --frozen-lockfile", "web"]]);
+
+  const yarn = mkdtempSync(join(tmpdir(), "harness-ci-yarn-"));
+  writeFileSync(join(yarn, "yarn.lock"), "");
+  const yarnSteps = workflow(yarn, [{ name: "test", run: "yarn run test" }]);
+  assert.ok(yarnSteps.some((s) => s.run === "corepack enable"));
+  assert.deepEqual(installs(yarnSteps), ["yarn install --frozen-lockfile"]);
+
+  const bun = mkdtempSync(join(tmpdir(), "harness-ci-bun-"));
+  writeFileSync(join(bun, "bun.lock"), "");
+  const bunSteps = workflow(bun, [{ name: "test", run: "bun run test" }]);
+  assert.ok(bunSteps.some((s) => s.uses === "oven-sh/setup-bun@v2"));
+  assert.deepEqual(installs(bunSteps), ["bun install --frozen-lockfile"]);
+});
+
 // The doctor.
 
 test("doctor: the same stages in both places pass; different ones warn; a workflow without its stage file warns", (t) => {

@@ -7369,16 +7369,51 @@ var require_dist = __commonJS({
 
 // src/lib/ci.ts
 var import_yaml = __toESM(require_dist(), 1);
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync as existsSync2, mkdirSync, readFileSync as readFileSync2, writeFileSync } from "node:fs";
+import { dirname, join as join2 } from "node:path";
+
+// src/lib/packages.ts
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+var LOCK_FILES = [
+  ["pnpm", "pnpm-lock.yaml"],
+  ["yarn", "yarn.lock"],
+  ["bun", "bun.lock"],
+  ["bun", "bun.lockb"],
+  ["npm", "package-lock.json"]
+];
+function declaredPackageManager(folder) {
+  try {
+    const field = JSON.parse(readFileSync(join(folder, "package.json"), "utf8")).packageManager;
+    const name = typeof field === "string" ? field.split("@")[0] : "";
+    return LOCK_FILES.some(([pm]) => pm === name) ? name : null;
+  } catch {
+    return null;
+  }
+}
+function lockFile(folder) {
+  const found = LOCK_FILES.find(([, file]) => existsSync(join(folder, file)));
+  return found ? { pm: found[0], file: found[1] } : null;
+}
+function packageManager(folder, repoRoot = folder) {
+  for (const dir2 of folder === repoRoot ? [folder] : [folder, repoRoot]) {
+    const pm = declaredPackageManager(dir2) ?? lockFile(dir2)?.pm;
+    if (pm) return pm;
+  }
+  return "npm";
+}
+var runScript = (pm, script) => `${pm} run ${script}`;
+var PACKAGE_MANAGER_COMMAND = /^\s*(npm|pnpm|yarn|bun)\b/;
+
+// src/lib/ci.ts
 var CI_CONFIG = ".github/harness-eval.yml";
 var CI_WORKFLOW = ".github/workflows/harness-eval.yml";
 var HARNESS_REPOSITORY = "Sejersen92/harness";
 function readCiStages(path) {
-  if (!existsSync(path)) return { problem: `there is no ${path}` };
+  if (!existsSync2(path)) return { problem: `there is no ${path}` };
   let yaml;
   try {
-    yaml = (0, import_yaml.parse)(readFileSync(path, "utf8"));
+    yaml = (0, import_yaml.parse)(readFileSync2(path, "utf8"));
   } catch (error) {
     return { problem: `${path} is not valid YAML: ${error.message.split("\n")[0]}` };
   }
@@ -7397,7 +7432,12 @@ function ciConfigText(stages) {
   ].join("\n");
 }
 function ciWorkflowText(dir2, stages) {
-  const npmFolders = [...new Set(stages.filter((s) => /^\s*npm\b/.test(s.run)).map((s) => s.cwd ?? "."))];
+  const jsFolders = /* @__PURE__ */ new Map();
+  for (const stage of stages) {
+    const pm = PACKAGE_MANAGER_COMMAND.exec(stage.run)?.[1];
+    if (pm && !jsFolders.has(stage.cwd ?? ".")) jsFolders.set(stage.cwd ?? ".", pm);
+  }
+  const uses = new Set(jsFolders.values());
   const dotnet = stages.some((s) => /^\s*dotnet\b/.test(s.run));
   const lines = [
     "# The Harness eval on every pull request: the stages in .github/harness-eval.yml, run by the same",
@@ -7424,18 +7464,17 @@ function ciWorkflowText(dir2, stages) {
     "      - uses: actions/checkout@v4",
     "        with:",
     `          repository: ${HARNESS_REPOSITORY}`,
-    "          path: .harness-plugin",
-    "",
-    "      - uses: actions/setup-node@v4",
-    "        with:",
-    "          node-version: 22"
+    "          path: .harness-plugin"
   ];
+  if (uses.has("pnpm")) lines.push("", ...pnpmSetup(dir2, [...jsFolders].filter(([, pm]) => pm === "pnpm").map(([f]) => f)));
+  lines.push("", "      - uses: actions/setup-node@v4", "        with:", "          node-version: 22");
+  if (uses.has("yarn")) lines.push("", "      # Yarn, at the version package.json's packageManager names.", "      - run: corepack enable");
+  if (uses.has("bun")) lines.push("", "      - uses: oven-sh/setup-bun@v2");
   if (dotnet) {
     lines.push("", "      - uses: actions/setup-dotnet@v4", "        with:", '          dotnet-version: "10.0.x"');
   }
-  for (const folder of npmFolders) {
-    const install = existsSync(join(dir2, folder, "package-lock.json")) ? "npm ci" : "npm install";
-    lines.push("", `      - name: Install dependencies${folder === "." ? "" : ` (${folder})`}`, `        run: ${install}`);
+  for (const [folder, pm] of jsFolders) {
+    lines.push("", `      - name: Install dependencies${folder === "." ? "" : ` (${folder})`}`, `        run: ${installCommand(dir2, folder, pm)}`);
     if (folder !== ".") lines.push(`        working-directory: ${folder}`);
   }
   lines.push(
@@ -7448,10 +7487,22 @@ function ciWorkflowText(dir2, stages) {
   );
   return lines.join("\n");
 }
+function installCommand(dir2, folder, pm) {
+  const locked = [join2(dir2, folder), dir2].some((d) => lockFile(d)?.pm === pm);
+  if (pm === "npm") return locked ? "npm ci" : "npm install";
+  return locked ? `${pm} install --frozen-lockfile` : `${pm} install`;
+}
+function pnpmSetup(dir2, folders) {
+  const step = ["      - uses: pnpm/action-setup@v4"];
+  if (declaredPackageManager(dir2) === "pnpm") return ["      # pnpm, at the version package.json's packageManager names.", ...step];
+  const declared = folders.find((f) => declaredPackageManager(join2(dir2, f)) === "pnpm");
+  if (declared) return [`      # pnpm, at the version ${declared}/package.json's packageManager names.`, ...step, "        with:", `          package_json_file: ${declared}/package.json`];
+  return ["      # No packageManager field names a pnpm version: pin one here, or set the field in package.json.", ...step, "        with:", "          version: latest"];
+}
 function ciPlan(dir2, stages, declined) {
-  const config = join(dir2, CI_CONFIG);
-  const workflow = join(dir2, CI_WORKFLOW);
-  const have = [existsSync(config), existsSync(workflow)];
+  const config = join2(dir2, CI_CONFIG);
+  const workflow = join2(dir2, CI_WORKFLOW);
+  const have = [existsSync2(config), existsSync2(workflow)];
   const state = have.every(Boolean) ? "present" : have.some(Boolean) ? "partial" : declined ? "declined" : "missing";
   const steps2 = [];
   if (!have[0]) steps2.push({ what: `write ${CI_CONFIG} (stages: ${stages.map((s) => s.name).join(", ")})`, apply: () => write(config, ciConfigText(stages)) });
@@ -7466,9 +7517,9 @@ function write(path, text) {
 // src/lib/config.ts
 var import_yaml2 = __toESM(require_dist(), 1);
 import { execFileSync } from "node:child_process";
-import { existsSync as existsSync2, readFileSync as readFileSync2 } from "node:fs";
+import { existsSync as existsSync3, readFileSync as readFileSync3 } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname as dirname2, join as join2, resolve } from "node:path";
+import { basename, dirname as dirname2, join as join3, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // src/lib/ids.ts
@@ -7485,12 +7536,12 @@ var git = (cwd, ...args2) => {
     return null;
   }
 };
-var harnessHome = () => process.env.HARNESS_HOME || join2(homedir(), ".harness");
+var harnessHome = () => process.env.HARNESS_HOME || join3(homedir(), ".harness");
 var normalisedPath = (dir2) => resolve(dir2).replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
 function repoHome(dir2) {
   const key = normalisedPath(dir2);
   const name = basename(key).replace(/[^a-z0-9._-]+/g, "-") || "repo";
-  return join2(harnessHome(), "repos", `${name}-${sha256(key).slice(0, 8)}`);
+  return join3(harnessHome(), "repos", `${name}-${sha256(key).slice(0, 8)}`);
 }
 var NOT_ENROLLED = "not enrolled";
 function projectDir(cwd = process.cwd()) {
@@ -7499,7 +7550,7 @@ function projectDir(cwd = process.cwd()) {
 function pluginRoot() {
   if (process.env.CLAUDE_PLUGIN_ROOT) return process.env.CLAUDE_PLUGIN_ROOT;
   let dir2 = dirname2(fileURLToPath(import.meta.url));
-  while (!existsSync2(join2(dir2, ".claude-plugin", "plugin.json"))) {
+  while (!existsSync3(join3(dir2, ".claude-plugin", "plugin.json"))) {
     const parent = dirname2(dir2);
     if (parent === dir2) return null;
     dir2 = parent;
@@ -7519,10 +7570,10 @@ var DEFAULT_TEST_GLOBS = [
 ];
 function loadConfig(dir2 = projectDir()) {
   const home2 = repoHome(dir2);
-  const homed = existsSync2(join2(home2, "routing.yaml"));
-  if (!homed && !existsSync2(join2(dir2, "routing.yaml"))) return { dir: dir2, mode: "off", reason: NOT_ENROLLED, home: home2 };
-  const routingYaml = join2(homed ? home2 : dir2, "routing.yaml");
-  const bytes = readFileSync2(routingYaml);
+  const homed = existsSync3(join3(home2, "routing.yaml"));
+  if (!homed && !existsSync3(join3(dir2, "routing.yaml"))) return { dir: dir2, mode: "off", reason: NOT_ENROLLED, home: home2 };
+  const routingYaml = join3(homed ? home2 : dir2, "routing.yaml");
+  const bytes = readFileSync3(routingYaml);
   const yaml = (0, import_yaml2.parse)(bytes.toString("utf8")) ?? {};
   const metadata = yaml.metadata ?? {};
   const layout = homed ? {
@@ -7530,15 +7581,15 @@ function loadConfig(dir2 = projectDir()) {
     root: home2,
     routingYaml,
     metadataDir: home2,
-    markerPath: join2(home2, "state", "eval-pass.json"),
-    planPath: join2(home2, "PLAN.md")
+    markerPath: join3(home2, "state", "eval-pass.json"),
+    planPath: join3(home2, "PLAN.md")
   } : {
     kind: "repository",
     root: dir2,
     routingYaml,
-    metadataDir: join2(dir2, metadata.dir ?? ".harness"),
-    markerPath: join2(dir2, ".claude", "state", "eval-pass.json"),
-    planPath: join2(dir2, "PLAN.md")
+    metadataDir: join3(dir2, metadata.dir ?? ".harness"),
+    markerPath: join3(dir2, ".claude", "state", "eval-pass.json"),
+    planPath: join3(dir2, "PLAN.md")
   };
   return {
     dir: dir2,
@@ -7564,23 +7615,23 @@ function loadConfig(dir2 = projectDir()) {
 // src/lib/home.ts
 var import_yaml3 = __toESM(require_dist(), 1);
 import { execFileSync as execFileSync2 } from "node:child_process";
-import { chmodSync, existsSync as existsSync4, mkdirSync as mkdirSync3, readdirSync as readdirSync2, readFileSync as readFileSync4, rmSync as rmSync2, statSync, writeFileSync as writeFileSync3 } from "node:fs";
+import { chmodSync, existsSync as existsSync5, mkdirSync as mkdirSync3, readdirSync as readdirSync2, readFileSync as readFileSync5, rmSync as rmSync2, statSync, writeFileSync as writeFileSync3 } from "node:fs";
 import { homedir as homedir2 } from "node:os";
-import { isAbsolute, join as join4, relative } from "node:path";
+import { isAbsolute, join as join5, relative } from "node:path";
 
 // src/lib/spool.ts
-import { appendFileSync, existsSync as existsSync3, mkdirSync as mkdirSync2, readdirSync, readFileSync as readFileSync3, renameSync, rmSync, writeFileSync as writeFileSync2 } from "node:fs";
-import { join as join3, resolve as resolve2 } from "node:path";
+import { appendFileSync, existsSync as existsSync4, mkdirSync as mkdirSync2, readdirSync, readFileSync as readFileSync4, renameSync, rmSync, writeFileSync as writeFileSync2 } from "node:fs";
+import { join as join4, resolve as resolve2 } from "node:path";
 
 // src/lib/types.ts
 var messageOf = (error) => error instanceof Error ? error.message : String(error);
 
 // src/lib/spool.ts
-var registryPath = () => join3(harnessHome(), "spools.json");
-var pluginRecordPath = () => join3(harnessHome(), "plugin.json");
-var readRegistry = (path) => existsSync3(path) ? JSON.parse(readFileSync3(path, "utf8")) : { version: 1, spools: [] };
+var registryPath = () => join4(harnessHome(), "spools.json");
+var pluginRecordPath = () => join4(harnessHome(), "plugin.json");
+var readRegistry = (path) => existsSync4(path) ? JSON.parse(readFileSync4(path, "utf8")) : { version: 1, spools: [] };
 function writeRegistry(path, registry) {
-  mkdirSync2(join3(path, ".."), { recursive: true });
+  mkdirSync2(join4(path, ".."), { recursive: true });
   writeFileSync2(`${path}.tmp`, JSON.stringify(registry, null, 2) + "\n");
   renameSync(`${path}.tmp`, path);
 }
@@ -7601,8 +7652,8 @@ function recordFailure(config, why) {
 `);
   try {
     mkdirSync2(config.metadataDir, { recursive: true });
-    const file = join3(config.metadataDir, "emit-failures");
-    const count = existsSync3(file) ? Number.parseInt(readFileSync3(file, "utf8"), 10) || 0 : 0;
+    const file = join4(config.metadataDir, "emit-failures");
+    const count = existsSync4(file) ? Number.parseInt(readFileSync4(file, "utf8"), 10) || 0 : 0;
     writeFileSync2(file, `${count + 1}
 `);
   } catch {
@@ -7610,7 +7661,7 @@ function recordFailure(config, why) {
 }
 
 // src/lib/home.ts
-var readRepoRecord = (home2) => readJson(join4(home2, "repo.json"));
+var readRepoRecord = (home2) => readJson(join5(home2, "repo.json"));
 var harnessBranches = (home2) => readRepoRecord(home2)?.harness_branches ?? [];
 function recordBranch(home2, dir2, branch2) {
   const record = readRepoRecord(home2);
@@ -7619,14 +7670,14 @@ function recordBranch(home2, dir2, branch2) {
   if (known.includes(branch2)) return;
   const alive = known.filter((b) => git2(dir2, "show-ref", "--verify", "--quiet", `refs/heads/${b}`) !== null);
   try {
-    writeFileSync3(join4(home2, "repo.json"), JSON.stringify({ ...record, harness_branches: [...alive, branch2] }, null, 2) + "\n");
+    writeFileSync3(join5(home2, "repo.json"), JSON.stringify({ ...record, harness_branches: [...alive, branch2] }, null, 2) + "\n");
   } catch {
   }
 }
 function declineCi(home2, now = /* @__PURE__ */ new Date()) {
   const record = readRepoRecord(home2);
   if (!record) return;
-  writeFileSync3(join4(home2, "repo.json"), JSON.stringify({ ...record, ci_declined: utcNow(now) }, null, 2) + "\n");
+  writeFileSync3(join5(home2, "repo.json"), JSON.stringify({ ...record, ci_declined: utcNow(now) }, null, 2) + "\n");
 }
 var HARNESS_HOOKS = ["pre-commit", "commit-msg", "post-commit"];
 var GIT_HOOKS = [
@@ -7670,7 +7721,7 @@ var GIT_DENY = [
   "Bash(gh repo delete*)",
   "Bash(gh secret*)"
 ];
-var githooksDir = (home2) => join4(home2, "githooks");
+var githooksDir = (home2) => join5(home2, "githooks");
 var forward = (path) => path.replace(/\\/g, "/");
 var git2 = (dir2, ...args2) => {
   try {
@@ -7681,14 +7732,14 @@ var git2 = (dir2, ...args2) => {
 };
 var readJson = (path) => {
   try {
-    return JSON.parse(readFileSync4(path, "utf8"));
+    return JSON.parse(readFileSync5(path, "utf8"));
   } catch {
     return null;
   }
 };
 var readSafely = (path) => {
   try {
-    return readFileSync4(path, "utf8");
+    return readFileSync5(path, "utf8");
   } catch {
     return "";
   }
@@ -7717,26 +7768,26 @@ var homeSettings = (home2) => ({
 function ownHooksDir(dir2, previous) {
   if (!previous) {
     const common = git2(dir2, "rev-parse", "--git-common-dir") ?? ".git";
-    return join4(isAbsolute(common) ? common : join4(dir2, common), "hooks");
+    return join5(isAbsolute(common) ? common : join5(dir2, common), "hooks");
   }
-  if (previous.startsWith("~/")) return join4(homedir2(), previous.slice(2));
-  return isAbsolute(previous) || /^[A-Za-z]:/.test(previous) ? previous : join4(dir2, previous);
+  if (previous.startsWith("~/")) return join5(homedir2(), previous.slice(2));
+  return isAbsolute(previous) || /^[A-Za-z]:/.test(previous) ? previous : join5(dir2, previous);
 }
 function ownHooks(dir2, previous) {
   const folder = ownHooksDir(dir2, previous);
-  if (!existsSync4(folder)) return [];
-  return readdirSync2(folder).filter((name) => GIT_HOOKS.includes(name) && statSync(join4(folder, name)).isFile()).sort();
+  if (!existsSync5(folder)) return [];
+  return readdirSync2(folder).filter((name) => GIT_HOOKS.includes(name) && statSync(join5(folder, name)).isFile()).sort();
 }
 var wrapper = (name) => `#!/bin/sh
 exec "$(dirname "$0")/harness" ${name} "$@"
 `;
 function hookFiles(pluginRoot2, own) {
-  const files = /* @__PURE__ */ new Map([["harness", readFileSync4(join4(pluginRoot2, "templates", "githooks", "harness"), "utf8")]]);
+  const files = /* @__PURE__ */ new Map([["harness", readFileSync5(join5(pluginRoot2, "templates", "githooks", "harness"), "utf8")]]);
   for (const name of [.../* @__PURE__ */ new Set([...HARNESS_HOOKS, ...own])].sort()) files.set(name, wrapper(name));
   return files;
 }
 function routingYamlFor(dir2, pluginRoot2) {
-  const template = readFileSync4(join4(pluginRoot2, "templates", "routing.yaml"), "utf8");
+  const template = readFileSync5(join5(pluginRoot2, "templates", "routing.yaml"), "utf8");
   const stages = detectStages(dir2);
   const block = stages.length ? `  stages:
 ${(0, import_yaml3.stringify)(stages, { flow: false }).split("\n").filter(Boolean).map((l) => `    ${l}`).join("\n")}` : "  stages: []             # none detected: add the build and test commands this repository uses";
@@ -7746,19 +7797,20 @@ function detectStages(dir2) {
   const stages = [];
   const shallow = [".", ...readdirSync2(dir2, { withFileTypes: true }).filter((e) => e.isDirectory() && !e.name.startsWith(".") && e.name !== "node_modules").map((e) => e.name)];
   for (const sub of shallow) {
-    const root2 = join4(dir2, sub);
+    const root2 = join5(dir2, sub);
     const solution = readdirSync2(root2).filter((f) => /\.(sln|slnx)$/.test(f))[0];
-    const testProject = solution ? null : readdirSync2(root2, { withFileTypes: true }).filter((e) => e.isDirectory() && /\.Tests?$/.test(e.name) && readdirSync2(join4(root2, e.name)).some((f) => f.endsWith(".csproj"))).map((e) => e.name)[0];
+    const testProject = solution ? null : readdirSync2(root2, { withFileTypes: true }).filter((e) => e.isDirectory() && /\.Tests?$/.test(e.name) && readdirSync2(join5(root2, e.name)).some((f) => f.endsWith(".csproj"))).map((e) => e.name)[0];
     const dotnet = solution ?? testProject;
     if (dotnet) {
       const where = sub === "." ? dotnet : `${sub}/${dotnet}`;
       stages.push({ name: `${sub === "." ? "" : `${sub}-`}build`, run: `dotnet build ${where} --nologo -v q` });
       stages.push({ name: `${sub === "." ? "" : `${sub}-`}test`, run: `dotnet test ${where} --no-build --nologo` });
     }
-    const pkg = readJson(join4(root2, "package.json"));
+    const pkg = readJson(join5(root2, "package.json"));
+    const pm = packageManager(root2, dir2);
     for (const script of ["lint", "test", "build"]) {
       if (!pkg?.scripts?.[script]) continue;
-      stages.push({ name: `${sub === "." ? "" : `${sub}-`}${script}`.replace(/^-/, ""), run: `npm run ${script}`, ...sub === "." ? {} : { cwd: sub } });
+      stages.push({ name: `${sub === "." ? "" : `${sub}-`}${script}`.replace(/^-/, ""), run: runScript(pm, script), ...sub === "." ? {} : { cwd: sub } });
     }
   }
   return stages;
@@ -7772,38 +7824,38 @@ function hooksState(dir2, home2) {
 function enrolPlan(dir2, pluginRoot2, { branch: branch2, now = /* @__PURE__ */ new Date() } = {}) {
   const home2 = repoHome(dir2);
   const steps2 = [];
-  if (!existsSync4(join4(home2, "routing.yaml"))) {
-    const old = join4(dir2, "routing.yaml");
-    if (existsSync4(old)) {
-      steps2.push({ what: `copy routing.yaml into ${home2} (the repository's copy is left as it is)`, apply: () => writeHome(home2, "routing.yaml", readFileSync4(old)) });
+  if (!existsSync5(join5(home2, "routing.yaml"))) {
+    const old = join5(dir2, "routing.yaml");
+    if (existsSync5(old)) {
+      steps2.push({ what: `copy routing.yaml into ${home2} (the repository's copy is left as it is)`, apply: () => writeHome(home2, "routing.yaml", readFileSync5(old)) });
     } else {
       const { text, stages } = routingYamlFor(dir2, pluginRoot2);
-      steps2.push({ what: `write ${join4(home2, "routing.yaml")} (mode observe; stages: ${stages.join(", ") || "none detected"})`, apply: () => writeHome(home2, "routing.yaml", text) });
+      steps2.push({ what: `write ${join5(home2, "routing.yaml")} (mode observe; stages: ${stages.join(", ") || "none detected"})`, apply: () => writeHome(home2, "routing.yaml", text) });
     }
   }
-  if (!existsSync4(join4(home2, "repo.json"))) {
+  if (!existsSync5(join5(home2, "repo.json"))) {
     const record = { schema: "harness.repo/v1", repo_dir: dir2, enrolled: utcNow(now) };
-    steps2.push({ what: `write ${join4(home2, "repo.json")}`, apply: () => writeHome(home2, "repo.json", JSON.stringify(record, null, 2) + "\n") });
+    steps2.push({ what: `write ${join5(home2, "repo.json")}`, apply: () => writeHome(home2, "repo.json", JSON.stringify(record, null, 2) + "\n") });
   }
   const settings = JSON.stringify(homeSettings(home2), null, 2) + "\n";
-  if (readSafely(join4(home2, "settings.json")) !== settings) {
-    steps2.push({ what: `write ${join4(home2, "settings.json")} (${homeDeny(home2).length} deny rules for Harness sessions, worktrees from HEAD)`, apply: () => writeHome(home2, "settings.json", settings) });
+  if (readSafely(join5(home2, "settings.json")) !== settings) {
+    steps2.push({ what: `write ${join5(home2, "settings.json")} (${homeDeny(home2).length} deny rules for Harness sessions, worktrees from HEAD)`, apply: () => writeHome(home2, "settings.json", settings) });
   }
   const hooks = hooksState(dir2, home2);
   const own = ownHooks(dir2, hooks.previous);
   const files = hookFiles(pluginRoot2, own);
   const folder = githooksDir(home2);
-  const present = existsSync4(folder) ? readdirSync2(folder) : [];
-  const stale = [...files].some(([name, text]) => readSafely(join4(folder, name)) !== text) || present.some((name) => !files.has(name));
+  const present = existsSync5(folder) ? readdirSync2(folder) : [];
+  const stale = [...files].some(([name, text]) => readSafely(join5(folder, name)) !== text) || present.some((name) => !files.has(name));
   if (stale) {
     steps2.push({
       what: `write the git hooks in ${folder}: the Harness's ${HARNESS_HOOKS.join(", ")}${own.length ? `, then the repository's own ${own.join(", ")}` : ""}`,
       apply: () => {
         mkdirSync3(folder, { recursive: true });
-        for (const name of present) if (!files.has(name)) rmSync2(join4(folder, name), { force: true });
+        for (const name of present) if (!files.has(name)) rmSync2(join5(folder, name), { force: true });
         for (const [name, text] of files) {
-          writeFileSync3(join4(folder, name), text);
-          chmodSync(join4(folder, name), 493);
+          writeFileSync3(join5(folder, name), text);
+          chmodSync(join5(folder, name), 493);
         }
       }
     });
@@ -7827,19 +7879,19 @@ function enrolPlan(dir2, pluginRoot2, { branch: branch2, now = /* @__PURE__ */ n
 }
 function writeHome(home2, name, content) {
   mkdirSync3(home2, { recursive: true });
-  writeFileSync3(join4(home2, name), content);
+  writeFileSync3(join5(home2, name), content);
 }
 function homes() {
-  const root2 = join4(harnessHome(), "repos");
-  if (!existsSync4(root2)) return [];
-  return readdirSync2(root2, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => join4(root2, e.name)).map((home2) => ({ home: home2, repoDir: readJson(join4(home2, "repo.json"))?.repo_dir ?? null }));
+  const root2 = join5(harnessHome(), "repos");
+  if (!existsSync5(root2)) return [];
+  return readdirSync2(root2, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => join5(root2, e.name)).map((home2) => ({ home: home2, repoDir: readJson(join5(home2, "repo.json"))?.repo_dir ?? null }));
 }
-var orphans = () => homes().filter(({ repoDir }) => !repoDir || !existsSync4(join4(repoDir, ".git"))).map(({ home: home2 }) => home2);
+var orphans = () => homes().filter(({ repoDir }) => !repoDir || !existsSync5(join5(repoDir, ".git"))).map(({ home: home2 }) => home2);
 
 // src/lib/setup.ts
 import { execFileSync as execFileSync3 } from "node:child_process";
-import { existsSync as existsSync5, mkdirSync as mkdirSync4, readFileSync as readFileSync5, realpathSync, rmSync as rmSync3, writeFileSync as writeFileSync4 } from "node:fs";
-import { join as join5, resolve as resolve3 } from "node:path";
+import { existsSync as existsSync6, mkdirSync as mkdirSync4, readFileSync as readFileSync6, realpathSync, rmSync as rmSync3, writeFileSync as writeFileSync4 } from "node:fs";
+import { join as join6, resolve as resolve3 } from "node:path";
 var MIN_CLAUDE_CODE = [2, 1, 284];
 var MIN_NODE = 22;
 var DENY = [
@@ -7861,7 +7913,7 @@ var git3 = (dir2, ...args2) => {
 };
 var readJson2 = (path) => {
   try {
-    return JSON.parse(readFileSync5(path, "utf8"));
+    return JSON.parse(readFileSync6(path, "utf8"));
   } catch {
     return null;
   }
@@ -7883,11 +7935,11 @@ function checks(dir2, { pluginRoot: pluginRoot2, claudeVersion = readClaudeVersi
   else add("claude-code", atLeast(version(claudeVersion), MIN_CLAUDE_CODE) ? "pass" : "fail", `Claude Code ${claudeVersion} (needs ${MIN_CLAUDE_CODE.join(".")}+)`);
   const recorded = readJson2(pluginRecordPath());
   if (!recorded?.root) add("plugin-recorded", "fail", `${pluginRecordPath()} is missing: start Claude Code once with the plugin so git hooks can find it`);
-  else if (!existsSync5(join5(recorded.root, "bin", "harness-git-hook.mjs"))) add("plugin-recorded", "fail", `${pluginRecordPath()} points at ${recorded.root}, which has no bin/harness-git-hook.mjs`);
+  else if (!existsSync6(join6(recorded.root, "bin", "harness-git-hook.mjs"))) add("plugin-recorded", "fail", `${pluginRecordPath()} points at ${recorded.root}, which has no bin/harness-git-hook.mjs`);
   else if (pluginRoot2 && realpathSync.native(recorded.root).toLowerCase() !== realpathSync.native(pluginRoot2).toLowerCase()) add("plugin-recorded", "warn", `git hooks use ${recorded.root}, not this copy (${pluginRoot2})`);
   else add("plugin-recorded", "pass", `git hooks use ${recorded.root} (${recorded.version})`);
   if (config.mode === "off") {
-    add("routing-yaml", "fail", config.reason === NOT_ENROLLED ? `not enrolled: there is no ${join5(config.home, "routing.yaml")} (/harness:init enrols the repository)` : "mode is off or not recognised");
+    add("routing-yaml", "fail", config.reason === NOT_ENROLLED ? `not enrolled: there is no ${join6(config.home, "routing.yaml")} (/harness:init enrols the repository)` : "mode is off or not recognised");
   } else {
     const tiers = ["T1", "T2", "T3", "T4"].filter((t) => Number.isInteger(config.tiers?.[t]?.max_score) && typeof config.tiers?.[t]?.model === "string");
     if (tiers.length < 4) add("routing-yaml", "fail", `tiers ${["T1", "T2", "T3", "T4"].filter((t) => !tiers.includes(t)).join(", ")} are missing or malformed`);
@@ -7900,7 +7952,7 @@ function checks(dir2, { pluginRoot: pluginRoot2, claudeVersion = readClaudeVersi
   else {
     try {
       mkdirSync4(config.metadataDir, { recursive: true });
-      const probe = join5(config.metadataDir, `.doctor-${process.pid}`);
+      const probe = join6(config.metadataDir, `.doctor-${process.pid}`);
       writeFileSync4(probe, "");
       rmSync3(probe);
       add("spool-writable", "pass", config.metadataDir);
@@ -7910,8 +7962,8 @@ function checks(dir2, { pluginRoot: pluginRoot2, claudeVersion = readClaudeVersi
   }
   if (config.layout?.kind === "home") homeChecks(dir2, config.layout.root, add);
   else if (config.layout) repositoryChecks(dir2, add);
-  const ciConfig = join5(dir2, CI_CONFIG);
-  if (config.layout && (existsSync5(ciConfig) || existsSync5(join5(dir2, CI_WORKFLOW)))) {
+  const ciConfig = join6(dir2, CI_CONFIG);
+  if (config.layout && (existsSync6(ciConfig) || existsSync6(join6(dir2, CI_WORKFLOW)))) {
     const read = readCiStages(ciConfig);
     if ("problem" in read) add("ci", "warn", `${CI_WORKFLOW} runs the stages in ${CI_CONFIG}, but ${read.problem} (harness-init --ci writes it)`);
     else if (sameStages(read.stages, config.stages)) add("ci", "pass", `${CI_CONFIG} has the same ${read.stages.length} stage(s) as ${config.layout.routingYaml}`);
@@ -7926,7 +7978,7 @@ function checks(dir2, { pluginRoot: pluginRoot2, claudeVersion = readClaudeVersi
   } catch (error) {
     add("path-casing", "warn", messageOf(error));
   }
-  const failures = Number.parseInt(readSafely2(join5(config.metadataDir ?? config.home, "emit-failures")), 10) || 0;
+  const failures = Number.parseInt(readSafely2(join6(config.metadataDir ?? config.home, "emit-failures")), 10) || 0;
   add("emit-failures", failures ? "warn" : "pass", failures ? `${failures} metadata write(s) failed; see stderr from the hooks` : "none");
   const lost = orphans();
   add(
@@ -7940,7 +7992,7 @@ function homeChecks(dir2, home2, add) {
   const hooks = hooksState(dir2, home2);
   const folder = githooksDir(home2);
   const own = ownHooks(dir2, hooks.previous);
-  const missing = ["harness", ...HARNESS_HOOKS, ...own].filter((h) => !existsSync5(join5(folder, h)));
+  const missing = ["harness", ...HARNESS_HOOKS, ...own].filter((h) => !existsSync6(join6(folder, h)));
   if (!hooks.ours) {
     add("git-hooks", "fail", `core.hooksPath is ${hooks.current ? `"${hooks.current}"` : "not set"}, not ${folder}: commits made outside Claude Code are not gated (something, such as husky's install, may have changed it; /harness:init puts it back)`);
   } else if (missing.length) {
@@ -7949,13 +8001,13 @@ function homeChecks(dir2, home2, add) {
     const branches = harnessBranches(home2);
     add("git-hooks", "pass", `${HARNESS_HOOKS.join(", ")}${own.length ? `, then the repository's own ${own.join(", ")}` : ""}; commits are gated on ${branches.length ? branches.join(", ") : "no branch yet (pu harness marks the one it starts on)"}`);
   }
-  const settings = readJson2(join5(home2, "settings.json")) ?? {};
+  const settings = readJson2(join6(home2, "settings.json")) ?? {};
   const denied = new Set(settings.permissions?.deny ?? []);
   const missingDeny = homeDeny(home2).filter((rule) => !denied.has(rule));
   add(
     "permissions",
     missingDeny.length ? "warn" : "pass",
-    missingDeny.length ? `${missingDeny.length} deny rule(s) missing from ${join5(home2, "settings.json")} (/harness:init writes them)` : `${denied.size} deny rules for Harness sessions, in ${join5(home2, "settings.json")}`
+    missingDeny.length ? `${missingDeny.length} deny rule(s) missing from ${join6(home2, "settings.json")} (/harness:init writes them)` : `${denied.size} deny rules for Harness sessions, in ${join6(home2, "settings.json")}`
   );
   add(
     "worktree-base",
@@ -7965,13 +8017,13 @@ function homeChecks(dir2, home2, add) {
 }
 function repositoryChecks(dir2, add) {
   const hooksPath = git3(dir2, "config", "core.hooksPath");
-  const missingHooks = HOOKS.filter((h) => !existsSync5(join5(dir2, ".githooks", h)));
+  const missingHooks = HOOKS.filter((h) => !existsSync6(join6(dir2, ".githooks", h)));
   if (hooksPath !== ".githooks") add("git-hooks", "fail", `core.hooksPath is ${hooksPath ? `"${hooksPath}"` : "not set"}: commits made outside Claude Code are not gated`);
   else if (missingHooks.length) add("git-hooks", "fail", `.githooks is missing ${missingHooks.join(", ")}`);
   else add("git-hooks", "pass", "pre-commit, commit-msg and post-commit are on");
   const notIgnored = GITIGNORE.filter((p) => git3(dir2, "check-ignore", "-q", "--no-index", p.replace(/^\//, "").replace(/\/$/, "/x")) === null);
   add("gitignore", notIgnored.length ? "warn" : "pass", notIgnored.length ? `not ignored: ${notIgnored.join(", ")}` : GITIGNORE.join(", "));
-  const settings = readJson2(join5(dir2, ".claude", "settings.json")) ?? {};
+  const settings = readJson2(join6(dir2, ".claude", "settings.json")) ?? {};
   add(
     "attribution-off",
     settings.attribution?.commit === "" ? "pass" : "warn",
@@ -7992,7 +8044,7 @@ function repositoryChecks(dir2, add) {
 }
 function readSafely2(path) {
   try {
-    return readFileSync5(path, "utf8");
+    return readFileSync6(path, "utf8");
   } catch {
     return "";
   }

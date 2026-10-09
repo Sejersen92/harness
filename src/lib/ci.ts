@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { parse, stringify } from "yaml";
 import type { Step } from "./home.ts";
+import { declaredPackageManager, lockFile, PACKAGE_MANAGER_COMMAND, type PackageManager } from "./packages.ts";
 import type { Stage } from "./types.ts";
 
 /** The stages CI runs, relative to the repository root. */
@@ -47,11 +48,17 @@ export function ciConfigText(stages: readonly Stage[]): string {
 
 /**
  * .github/workflows/harness-eval.yml for these stages. Node is always set up, because harness-eval is
- * Node. The .NET SDK is added when a stage runs dotnet, and npm dependencies are installed in each folder
- * a stage runs npm in. Anything else a stage needs is the owner's to add.
+ * Node. The .NET SDK is added when a stage runs dotnet. Dependencies are installed once in each folder a
+ * stage runs a package manager in, with that package manager (npm, pnpm, yarn or bun), which is set up
+ * first when it isn't npm. Anything else a stage needs is the owner's to add.
  */
 export function ciWorkflowText(dir: string, stages: readonly Stage[]): string {
-  const npmFolders = [...new Set(stages.filter((s) => /^\s*npm\b/.test(s.run)).map((s) => s.cwd ?? "."))];
+  const jsFolders = new Map<string, PackageManager>();
+  for (const stage of stages) {
+    const pm = PACKAGE_MANAGER_COMMAND.exec(stage.run)?.[1] as PackageManager | undefined;
+    if (pm && !jsFolders.has(stage.cwd ?? ".")) jsFolders.set(stage.cwd ?? ".", pm);
+  }
+  const uses = new Set(jsFolders.values());
   const dotnet = stages.some((s) => /^\s*dotnet\b/.test(s.run));
   const lines = [
     "# The Harness eval on every pull request: the stages in .github/harness-eval.yml, run by the same",
@@ -79,17 +86,16 @@ export function ciWorkflowText(dir: string, stages: readonly Stage[]): string {
     "        with:",
     `          repository: ${HARNESS_REPOSITORY}`,
     "          path: .harness-plugin",
-    "",
-    "      - uses: actions/setup-node@v4",
-    "        with:",
-    "          node-version: 22",
   ];
+  if (uses.has("pnpm")) lines.push("", ...pnpmSetup(dir, [...jsFolders].filter(([, pm]) => pm === "pnpm").map(([f]) => f)));
+  lines.push("", "      - uses: actions/setup-node@v4", "        with:", "          node-version: 22");
+  if (uses.has("yarn")) lines.push("", "      # Yarn, at the version package.json's packageManager names.", "      - run: corepack enable");
+  if (uses.has("bun")) lines.push("", "      - uses: oven-sh/setup-bun@v2");
   if (dotnet) {
     lines.push("", "      - uses: actions/setup-dotnet@v4", "        with:", '          dotnet-version: "10.0.x"');
   }
-  for (const folder of npmFolders) {
-    const install = existsSync(join(dir, folder, "package-lock.json")) ? "npm ci" : "npm install";
-    lines.push("", `      - name: Install dependencies${folder === "." ? "" : ` (${folder})`}`, `        run: ${install}`);
+  for (const [folder, pm] of jsFolders) {
+    lines.push("", `      - name: Install dependencies${folder === "." ? "" : ` (${folder})`}`, `        run: ${installCommand(dir, folder, pm)}`);
     if (folder !== ".") lines.push(`        working-directory: ${folder}`);
   }
   lines.push(
@@ -101,6 +107,28 @@ export function ciWorkflowText(dir: string, stages: readonly Stage[]): string {
     "",
   );
   return lines.join("\n");
+}
+
+/**
+ * The install step's command for a folder: the locked install where the folder, or the repository root
+ * for a workspace member, has this package manager's lock file, else a plain one.
+ */
+function installCommand(dir: string, folder: string, pm: PackageManager): string {
+  const locked = [join(dir, folder), dir].some((d) => lockFile(d)?.pm === pm);
+  if (pm === "npm") return locked ? "npm ci" : "npm install";
+  return locked ? `${pm} install --frozen-lockfile` : `${pm} install`;
+}
+
+/**
+ * pnpm/action-setup, which installs the version a packageManager field names: the root's, else the first
+ * pnpm folder's. With neither, it is told the latest, and the comment says to pin it.
+ */
+function pnpmSetup(dir: string, folders: string[]): string[] {
+  const step = ["      - uses: pnpm/action-setup@v4"];
+  if (declaredPackageManager(dir) === "pnpm") return ["      # pnpm, at the version package.json's packageManager names.", ...step];
+  const declared = folders.find((f) => declaredPackageManager(join(dir, f)) === "pnpm");
+  if (declared) return [`      # pnpm, at the version ${declared}/package.json's packageManager names.`, ...step, "        with:", `          package_json_file: ${declared}/package.json`];
+  return ["      # No packageManager field names a pnpm version: pin one here, or set the field in package.json.", ...step, "        with:", "          version: latest"];
 }
 
 /** Where a repository stands on the two CI files, as harness-init --ci reports it on its ci: line. */
