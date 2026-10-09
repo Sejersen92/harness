@@ -283,6 +283,27 @@ test("stages are found for npm scripts and for a .NET test project", () => {
   ]);
 });
 
+test("stages run a package.json script with the package manager the repository uses, not always npm", () => {
+  const stage = (files: Record<string, string>, pkg: Record<string, unknown> = {}) => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-pm-"));
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ scripts: { lint: "eslint" }, ...pkg }));
+    for (const [file, text] of Object.entries(files)) writeFileSync(join(dir, file), text);
+    return detectStages(dir)[0].run;
+  };
+  assert.equal(stage({}), "npm run lint", "nothing says otherwise: npm");
+  assert.equal(stage({ "pnpm-lock.yaml": "" }), "pnpm run lint");
+  assert.equal(stage({ "yarn.lock": "" }), "yarn run lint");
+  assert.equal(stage({ "bun.lock": "" }), "bun run lint");
+  assert.equal(stage({ "package-lock.json": "{}" }, { packageManager: "pnpm@11.8.0" }), "pnpm run lint", "the packageManager field wins over a stray lock file");
+
+  // A workspace member has no lock file of its own: the root's decides.
+  const dir = mkdtempSync(join(tmpdir(), "harness-pm-ws-"));
+  writeFileSync(join(dir, "pnpm-lock.yaml"), "");
+  mkdirSync(join(dir, "web"));
+  writeFileSync(join(dir, "web", "package.json"), JSON.stringify({ scripts: { build: "next build" } }));
+  assert.deepEqual(detectStages(dir), [{ name: "web-build", run: "pnpm run build", cwd: "web" }]);
+});
+
 test("an old Claude Code fails the doctor; a missing one only warns", () => {
   const { dir } = makeRepo();
   assert.equal(status(checks(dir, { pluginRoot: root, claudeVersion: "2.1.236 (Claude Code)" }), "claude-code"), "fail");

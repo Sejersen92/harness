@@ -10,6 +10,7 @@ import { isAbsolute, join, relative } from "node:path";
 import { stringify } from "yaml";
 import { harnessHome, normalisedPath, repoHome } from "./config.ts";
 import { utcNow } from "./ids.ts";
+import { packageManager, runScript } from "./packages.ts";
 import { registerSpool, registryPath, unregisterSpool } from "./spool.ts";
 
 /** One change enrol or forget would make: what it is, in words, and the function that makes it. */
@@ -187,7 +188,10 @@ export function routingYamlFor(dir: string, pluginRoot: string): { text: string;
   return { text: template.replace(/^ {2}stages: \[\].*$/m, block), stages: stages.map((s) => s.name) };
 }
 
-/** Eval stages for a new routing.yaml, from what the repository has: npm scripts and .NET projects. */
+/**
+ * Eval stages for a new routing.yaml, from what the repository has: package.json scripts, run with the
+ * folder's package manager (npm, pnpm, yarn or bun), and .NET projects.
+ */
 export function detectStages(dir: string): { name: string; run: string; cwd?: string }[] {
   const stages: { name: string; run: string; cwd?: string }[] = [];
   const shallow = [".", ...readdirSync(dir, { withFileTypes: true })
@@ -208,9 +212,10 @@ export function detectStages(dir: string): { name: string; run: string; cwd?: st
       stages.push({ name: `${sub === "." ? "" : `${sub}-`}test`, run: `dotnet test ${where} --no-build --nologo` });
     }
     const pkg = readJson<{ scripts?: Record<string, string> }>(join(root, "package.json"));
+    const pm = packageManager(root, dir);
     for (const script of ["lint", "test", "build"]) {
       if (!pkg?.scripts?.[script]) continue;
-      stages.push({ name: `${sub === "." ? "" : `${sub}-`}${script}`.replace(/^-/, ""), run: `npm run ${script}`, ...(sub === "." ? {} : { cwd: sub }) });
+      stages.push({ name: `${sub === "." ? "" : `${sub}-`}${script}`.replace(/^-/, ""), run: runScript(pm, script), ...(sub === "." ? {} : { cwd: sub }) });
     }
   }
   return stages;

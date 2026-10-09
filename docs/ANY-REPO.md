@@ -56,7 +56,7 @@ No home means the Harness is off for that repository, just as no `routing.yaml` 
 
 `harness-init` enrols (built in H2, 0.5.0; `/harness:init` runs it). Without `--apply` it **shows the plan and changes nothing**; `pu harness` runs it with `--apply` (see below). Each step leaves what is already right alone:
 
-1. Write `<home>/routing.yaml`: the repository's own `routing.yaml` copied in, for a repository set up the old way (its copy is left for the person to delete), or else the template with the stages detected from the repository (`detectStages`: .NET solutions and test projects, npm lint/test/build).
+1. Write `<home>/routing.yaml`: the repository's own `routing.yaml` copied in, for a repository set up the old way (its copy is left for the person to delete), or else the template with the stages detected from the repository (`detectStages`: .NET solutions and test projects, and lint/test/build scripts run with the package manager the repository uses: its `packageManager` field, else its lock file, else npm).
 2. Write `<home>/repo.json`.
 3. Write `<home>/settings.json`: the deny rules for this home (see below), and worktrees from HEAD.
 4. Write `<home>/githooks/`: the dispatcher, and a wrapper for the Harness's three hooks plus each hook the repository already has.
@@ -142,7 +142,7 @@ PU's `eval.yml` runs `harness-eval --ci`, which reads the stages from the checke
 **As built (C1, 0.8.0):**
 - `harness-init --ci` writes the two files, and `--apply` is needed before it changes anything. It never overwrites a file that exists, and it doesn't commit. Its `ci:` line reports `present`, `missing`, `partial` or `declined`, and `pu harness` reads that line, as it reads `home:`.
 - `harness-init --ci --decline` records the owner's no as `ci_declined` in `repo.json`, so `pu harness` stops offering. `--apply` still writes the files afterwards.
-- The workflow always sets up Node. It adds the .NET SDK when a stage runs `dotnet`, and runs `npm ci` (or `npm install` where there's no lock file) once in each folder a stage runs npm in. Anything else a stage needs, the owner adds.
+- The workflow always sets up Node. It adds the .NET SDK when a stage runs `dotnet`, and installs dependencies once in each folder a stage runs a package manager in, with that one: `npm ci`, or `pnpm`/`yarn`/`bun install --frozen-lockfile`, where the folder or the repository root has its lock file, else a plain install. pnpm, yarn (through corepack) and bun are set up first; pnpm at the version `packageManager` names. Anything else a stage needs, the owner adds.
 - With `--config`, `harness-eval` runs only with `--ci`, because a pass marker belongs to a home. Stage logs go to a temporary folder, and a failing stage's last lines are printed.
 - The doctor's `ci` line appears only when either file exists. It passes when the stages match routing.yaml, and warns when they differ or when the stage file is missing.
 
