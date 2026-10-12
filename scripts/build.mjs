@@ -9,6 +9,7 @@ const entries = {
   "harness-forget": "src/cli/harness-forget.ts",
   "harness-git-hook": "src/cli/harness-git-hook.ts",
   "harness-init": "src/cli/harness-init.ts",
+  "harness-policy": "src/cli/policy.ts",
   "hook-pre-tool-use": "src/hooks/pre-tool-use.ts",
   "hook-session-start": "src/hooks/session-start.ts",
   "hook-subagent-start": "src/hooks/subagent-start.ts",
