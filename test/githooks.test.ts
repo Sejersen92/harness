@@ -2,12 +2,13 @@
 // repository is with templates/githooks and core.hooksPath, finding the plugin through plugin.json.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync, type SpawnSyncReturns } from "node:child_process";
+import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { stripAttribution } from "../src/lib/gate.ts";
 import { describe, root, validatorFor, type Line } from "./validators.ts";
+import { cleanEnv, spawnGit } from "./git.ts";
 
 type Git = (args: string[], extra?: NodeJS.ProcessEnv, input?: string) => SpawnSyncReturns<string>;
 type Repo = { dir: string; git: Git };
@@ -20,13 +21,13 @@ function makeRepo({ stage = PASS, plugin = true }: { stage?: string; plugin?: bo
   const dir = mkdtempSync(join(tmpdir(), "harness-githooks-"));
   const home = join(dir, ".harness-home");
   const env: NodeJS.ProcessEnv = {
-    ...process.env, HARNESS_HOME: home,
+    ...cleanEnv(), HARNESS_HOME: home,
     GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t",
   };
   delete env.CLAUDE_CODE_SESSION_ID;
   delete env.CLAUDE_PROJECT_DIR;
   const git: Git = (args, extra = {}, input = undefined) =>
-    spawnSync("git", ["-C", dir, "-c", "core.autocrlf=false", ...args], { env: { ...env, ...extra }, input, encoding: "utf8" });
+    spawnGit(["-C", dir, "-c", "core.autocrlf=false", ...args], { env: { ...env, ...extra }, input, encoding: "utf8" });
 
   git(["init", "-q"]);
   writeFileSync(join(dir, ".gitignore"), ".harness/\n.harness-home/\n.claude/state/\n");
@@ -106,7 +107,7 @@ test("commit -a is evaluated on everything it takes", () => {
 test("a fresh pass for exactly this diff lets the commit through without running the eval again", () => {
   const repo = makeRepo();
   change(repo);
-  const evaluated = spawnSync("node", [join(root, "bin", "harness-eval.mjs")], { cwd: repo.dir, env: { ...process.env, CLAUDE_PROJECT_DIR: repo.dir, CLAUDE_CODE_SESSION_ID: "", HARNESS_HOME: join(repo.dir, ".harness-home") }, encoding: "utf8" });
+  const evaluated = spawnSync("node", [join(root, "bin", "harness-eval.mjs")], { cwd: repo.dir, env: { ...cleanEnv(), CLAUDE_PROJECT_DIR: repo.dir, CLAUDE_CODE_SESSION_ID: "", HARNESS_HOME: join(repo.dir, ".harness-home") }, encoding: "utf8" });
   assert.equal(evaluated.status, 0, evaluated.stdout);
 
   const result = repo.git(["commit", "-m", "already evaluated"]);
@@ -159,7 +160,7 @@ test("inside Claude Code the commit is recorded as commit.created, with the task
   writeFileSync(join(repo.dir, "tracked.txt"), "one\ntwo\nthree\n");
   writeFileSync(join(repo.dir, "new.txt"), "x\n");
   repo.git(["add", "-A"]);
-  const env = { ...process.env, CLAUDE_PROJECT_DIR: repo.dir, CLAUDE_CODE_SESSION_ID: SESSION, HARNESS_HOME: join(repo.dir, ".harness-home") };
+  const env = { ...cleanEnv(), CLAUDE_PROJECT_DIR: repo.dir, CLAUDE_CODE_SESSION_ID: SESSION, HARNESS_HOME: join(repo.dir, ".harness-home") };
   assert.equal(spawnSync("node", [join(root, "bin", "harness-eval.mjs"), "--task", "PLAN-1.1"], { cwd: repo.dir, env, encoding: "utf8" }).status, 0);
 
   assert.equal(repo.git(["commit", "-m", "PLAN-1.1"], { CLAUDE_CODE_SESSION_ID: SESSION }).status, 0);

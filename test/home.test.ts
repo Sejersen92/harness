@@ -2,13 +2,14 @@
 // ~/.harness/repos/<name>-<hash>/, and the repository itself is left exactly as it was.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadConfig, NOT_ENROLLED, repoHome } from "../src/lib/config.ts";
 import { isMarkerPath } from "../src/lib/gate.ts";
 import { root, type Line } from "./validators.ts";
+import { cleanEnv, git as runGit } from "./git.ts";
 
 const SESSION = "11111111-2222-4333-8444-555555555555";
 const ROUTING = [
@@ -42,12 +43,12 @@ function makeRepo() {
   const dir = mkdtempSync(join(tmpdir(), "harness-home-repo-"));
   const harnessHome = mkdtempSync(join(tmpdir(), "harness-home-"));
   const git = (...args: string[]): string =>
-    execFileSync("git", ["-C", dir, "-c", "user.name=t", "-c", "user.email=t@t", "-c", "core.autocrlf=false", ...args], { encoding: "utf8" });
+    runGit(["-C", dir, "-c", "user.name=t", "-c", "user.email=t@t", "-c", "core.autocrlf=false", ...args], { encoding: "utf8" });
   git("init", "-q");
   writeFileSync(join(dir, "readme.txt"), "one\n");
   git("add", "-A");
   git("commit", "-q", "-m", "init");
-  const env: NodeJS.ProcessEnv = { ...process.env, CLAUDE_CODE_SESSION_ID: SESSION, CLAUDE_PROJECT_DIR: dir, CLAUDE_PLUGIN_ROOT: root, HARNESS_HOME: harnessHome };
+  const env: NodeJS.ProcessEnv = { ...cleanEnv(), CLAUDE_CODE_SESSION_ID: SESSION, CLAUDE_PROJECT_DIR: dir, CLAUDE_PLUGIN_ROOT: root, HARNESS_HOME: harnessHome };
   const node = (script: string, args: string[] = [], input?: string) =>
     spawnSync("node", [join(root, "bin", `${script}.mjs`), ...args], { cwd: dir, env, encoding: "utf8", input });
   return { dir, harnessHome, git, node };

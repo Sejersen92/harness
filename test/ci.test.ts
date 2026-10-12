@@ -13,6 +13,7 @@ import { repoHome } from "../src/lib/config.ts";
 import { checks } from "../src/lib/setup.ts";
 import type { Stage } from "../src/lib/types.ts";
 import { root } from "./validators.ts";
+import { cleanEnv, spawnGit } from "./git.ts";
 
 const ok = (name: string): Stage => ({ name, run: `node -e "process.exit(0)"` });
 const failing = (name: string, text: string): Stage => ({ name, run: `node -e "console.log('${text}'); process.exit(1)"` });
@@ -23,11 +24,11 @@ function makeRepo() {
   const harnessHome = mkdtempSync(join(tmpdir(), "harness-ci-home-"));
   writeFileSync(join(harnessHome, "plugin.json"), JSON.stringify({ root, version: "test" }));
   const env: NodeJS.ProcessEnv = {
-    ...process.env, CLAUDE_PROJECT_DIR: dir, HARNESS_HOME: harnessHome,
+    ...cleanEnv(), CLAUDE_PROJECT_DIR: dir, HARNESS_HOME: harnessHome,
     GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t",
   };
   delete env.CLAUDE_CODE_SESSION_ID;
-  const git = (...args: string[]) => spawnSync("git", ["-C", dir, "-c", "core.autocrlf=false", ...args], { env, encoding: "utf8" });
+  const git = (...args: string[]) => spawnGit(["-C", dir, "-c", "core.autocrlf=false", ...args], { env, encoding: "utf8" });
   git("init", "-q");
   writeFileSync(join(dir, "package.json"), JSON.stringify({ scripts: { test: "node --test", build: "node build.mjs" } }));
   writeFileSync(join(dir, "package-lock.json"), "{}");

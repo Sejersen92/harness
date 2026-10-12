@@ -2,7 +2,7 @@
 // checks that every line they write satisfies the v1 schemas.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,13 +10,14 @@ import { parseReport } from "../src/lib/ids.ts";
 import { buildRecord } from "../src/lib/tasklog.ts";
 import type { Config } from "../src/lib/types.ts";
 import { describe, root, validatorFor, type Line } from "./validators.ts";
+import { cleanEnv, git } from "./git.ts";
 
 const SESSION = "11111111-2222-4333-8444-555555555555";
 
 function makeRepo({ routing = true }: { routing?: boolean } = {}): string {
   const dir = mkdtempSync(join(tmpdir(), "harness-test-"));
-  execFileSync("git", ["init", "-q", dir]);
-  execFileSync("git", ["-C", dir, "remote", "add", "origin", "https://github.com/example/Sample-Repo.git"]);
+  git(["init", "-q", dir]);
+  git(["-C", dir, "remote", "add", "origin", "https://github.com/example/Sample-Repo.git"]);
   if (routing) writeFileSync(join(dir, "routing.yaml"), readFileSync(join(root, "templates", "routing.yaml")));
   writeFileSync(join(dir, "PLAN.md"), [
     "# Plan",
@@ -40,7 +41,7 @@ function makeRepo({ routing = true }: { routing?: boolean } = {}): string {
 }
 
 // HARNESS_HOME keeps the spool registry inside the test repo: a test must never touch the real ~/.harness.
-const env = (dir: string): NodeJS.ProcessEnv => ({ ...process.env, CLAUDE_CODE_SESSION_ID: SESSION, CLAUDE_PROJECT_DIR: dir, CLAUDE_PLUGIN_ROOT: root, HARNESS_HOME: join(dir, ".harness-home") });
+const env = (dir: string): NodeJS.ProcessEnv => ({ ...cleanEnv(), CLAUDE_CODE_SESSION_ID: SESSION, CLAUDE_PROJECT_DIR: dir, CLAUDE_PLUGIN_ROOT: root, HARNESS_HOME: join(dir, ".harness-home") });
 
 const emit = (dir: string, ...args: string[]) =>
   spawnSync("node", [join(root, "bin", "harness-emit.mjs"), ...args], { cwd: dir, env: env(dir), encoding: "utf8" });

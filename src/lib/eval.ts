@@ -84,6 +84,15 @@ export function stageProblems(stages: readonly Stage[]): string | null {
   return null;
 }
 
+/**
+ * A copy of `env` without the GIT_* variables a git hook exports (GIT_DIR, GIT_INDEX_FILE,
+ * GIT_WORK_TREE, GIT_PREFIX, ...), keeping GIT_CONFIG_*. A stage that inherited them would point its
+ * git commands at the hook's repository instead of the one being evaluated.
+ */
+export function withoutGitEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  return Object.fromEntries(Object.entries(env).filter(([k]) => !/^GIT_/i.test(k) || /^GIT_CONFIG_/i.test(k)));
+}
+
 const AC_ID = /PLAN-\d+(?:\.\d+)+\/AC-\d+/g;
 
 /**
@@ -107,7 +116,7 @@ export function runStages(
     const started = Date.now();
     const run = spawnSync(stage.run, {
       cwd: resolve(dir, stage.cwd ?? "."),
-      env: { ...process.env, ...Object.fromEntries(Object.entries(stage.env ?? {}).map(([k, v]) => [k, String(v)])) },
+      env: { ...withoutGitEnv(), ...Object.fromEntries(Object.entries(stage.env ?? {}).map(([k, v]) => [k, String(v)])) },
       shell: true,
       windowsHide: true,
       maxBuffer: 256 << 20,

@@ -2,13 +2,15 @@
 // the PreToolUse hook decides for them against a real repository, harness-eval and marker.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_TEST_GLOBS } from "../src/lib/config.ts";
 import { isCommit, isMarkerPath, isTestPath } from "../src/lib/gate.ts";
 import { describe, root, validatorFor, type Line } from "./validators.ts";
+import { cleanEnv, git } from "./git.ts";
 
 type Repo = { dir: string; g: (...args: string[]) => Buffer };
 
@@ -71,7 +73,7 @@ test("the marker is recognised however its path is spelled", () => {
 
 function makeRepo({ mode = "observe" }: { mode?: string } = {}): Repo {
   const dir = mkdtempSync(join(tmpdir(), "harness-gate-"));
-  const g = (...args: string[]): Buffer => execFileSync("git", ["-C", dir, "-c", "user.name=t", "-c", "user.email=t@t", "-c", "core.autocrlf=false", ...args], { stdio: ["ignore", "pipe", "pipe"] });
+  const g = (...args: string[]): Buffer => git(["-C", dir, "-c", "user.name=t", "-c", "user.email=t@t", "-c", "core.autocrlf=false", ...args], { stdio: ["ignore", "pipe", "pipe"] });
   g("init", "-q");
   writeFileSync(join(dir, ".gitignore"), ".harness/\n.harness-home/\n.claude/state/\n");
   writeFileSync(join(dir, "tracked.txt"), "one\n");
@@ -90,7 +92,7 @@ function makeRepo({ mode = "observe" }: { mode?: string } = {}): Repo {
   return { dir, g };
 }
 
-const env = (dir: string): NodeJS.ProcessEnv => ({ ...process.env, CLAUDE_CODE_SESSION_ID: SESSION, CLAUDE_PROJECT_DIR: dir, CLAUDE_PLUGIN_ROOT: root, HARNESS_HOME: join(dir, ".harness-home") });
+const env = (dir: string): NodeJS.ProcessEnv => ({ ...cleanEnv(), CLAUDE_CODE_SESSION_ID: SESSION, CLAUDE_PROJECT_DIR: dir, CLAUDE_PLUGIN_ROOT: root, HARNESS_HOME: join(dir, ".harness-home") });
 
 const evaluate = (dir: string) => spawnSync("node", [join(root, "bin", "harness-eval.mjs")], { cwd: dir, env: env(dir), encoding: "utf8" });
 
@@ -179,7 +181,7 @@ test("a pass on another HEAD is a diff_mismatch", () => {
   stage(repo, "four\n");
   // Point the marker at what is staged now, so HEAD is the only thing that differs.
   const marker = JSON.parse(readFileSync(join(repo.dir, ".claude", "state", "eval-pass.json"), "utf8"));
-  marker.diff_sha256 = execFileSync("node", ["-e", "const c=require('crypto');process.stdout.write(c.createHash('sha256').update(require('child_process').execFileSync('git',['diff','--cached','--binary'])).digest('hex'))"], { cwd: repo.dir, encoding: "utf8" });
+  marker.diff_sha256 = createHash("sha256").update(git(["diff", "--cached", "--binary"], { cwd: repo.dir })).digest("hex");
   writeFileSync(join(repo.dir, ".claude", "state", "eval-pass.json"), JSON.stringify(marker));
 
   const out = decided(commit(repo.dir));

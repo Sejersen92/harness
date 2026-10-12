@@ -3,11 +3,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, root, validatorFor, type Line } from "./validators.ts";
+import { cleanEnv, git } from "./git.ts";
 
 type Repo = { dir: string; g: (...args: string[]) => Buffer };
 
@@ -18,7 +19,7 @@ const fail = (name: string, text: string = ""): string => `    - { name: ${name}
 
 function makeRepo(stageLines: string[], { mode = "observe" }: { mode?: string } = {}): Repo {
   const dir = mkdtempSync(join(tmpdir(), "harness-eval-"));
-  const g = (...args: string[]): Buffer => execFileSync("git", ["-C", dir, "-c", "user.name=t", "-c", "user.email=t@t", "-c", "core.autocrlf=false", ...args], { stdio: ["ignore", "pipe", "pipe"] });
+  const g = (...args: string[]): Buffer => git(["-C", dir, "-c", "user.name=t", "-c", "user.email=t@t", "-c", "core.autocrlf=false", ...args], { stdio: ["ignore", "pipe", "pipe"] });
   g("init", "-q");
   writeFileSync(join(dir, ".gitignore"), ".harness/\n.harness-home/\n.claude/state/\n");
   writeFileSync(join(dir, "routing.yaml"), [
@@ -34,8 +35,8 @@ function makeRepo(stageLines: string[], { mode = "observe" }: { mode?: string } 
   return { dir, g };
 }
 
-const run = (dir: string, args: string[] = [], { session = true }: { session?: boolean } = {}) => {
-  const env: NodeJS.ProcessEnv = { ...process.env, CLAUDE_PROJECT_DIR: dir, CLAUDE_PLUGIN_ROOT: root, HARNESS_HOME: join(dir, ".harness-home") };
+const run = (dir: string, args: string[] = [], { session = true, extraEnv = {} }: { session?: boolean; extraEnv?: NodeJS.ProcessEnv } = {}) => {
+  const env: NodeJS.ProcessEnv = { ...cleanEnv(), CLAUDE_PROJECT_DIR: dir, CLAUDE_PLUGIN_ROOT: root, HARNESS_HOME: join(dir, ".harness-home"), ...extraEnv };
   delete env.CLAUDE_CODE_SESSION_ID;
   if (session) env.CLAUDE_CODE_SESSION_ID = SESSION;
   return spawnSync("node", [join(root, "bin", "harness-eval.mjs"), ...args], { cwd: dir, env, encoding: "utf8" });
@@ -69,9 +70,9 @@ test("a pass writes the marker with the staged diff's hash and HEAD, and records
   assert.equal(result.status, 0, result.stdout + result.stderr);
   assert.match(result.stdout, /PASS/);
   const written = JSON.parse(readFileSync(marker(repo.dir), "utf8"));
-  const diff = execFileSync("git", ["-C", repo.dir, "diff", "--cached", "--binary"]);
+  const diff = git(["-C", repo.dir, "diff", "--cached", "--binary"]);
   assert.equal(written.diff_sha256, createHash("sha256").update(diff).digest("hex"));
-  assert.equal(written.head, execFileSync("git", ["-C", repo.dir, "rev-parse", "HEAD"], { encoding: "utf8" }).trim());
+  assert.equal(written.head, git(["-C", repo.dir, "rev-parse", "HEAD"], { encoding: "utf8" }).trim());
   assert.deepEqual(written.task_ids, ["PLAN-1.1"]);
 
   const [started, completed] = events(repo.dir);
@@ -175,4 +176,84 @@ test("with the Harness off there is nothing to gate", () => {
   const result = run(repo.dir);
   assert.equal(result.status, 0);
   assert.match(result.stdout, /off/);
+});
+
+// PLAN-1.1: a git hook exports GIT_DIR, GIT_INDEX_FILE, GIT_WORK_TREE and GIT_PREFIX. A stage that
+// inherits them runs its git commands against that repository instead of its own. harness-eval runs
+// here with --ci --config, so its only git commands are the stage's; the GIT_* variables below are
+// set on the harness-eval child alone and always point at a throwaway repository, never this one.
+
+/** Everything in a repository a stray git command could rewrite: its config, refs, HEAD and index bytes. */
+const snapshot = ({ dir, g }: Repo) => ({
+  config: readFileSync(join(dir, ".git", "config"), "utf8"),
+  refs: g("for-each-ref").toString(),
+  head: readFileSync(join(dir, ".git", "HEAD"), "utf8"),
+  index: createHash("sha256").update(readFileSync(join(dir, ".git", "index"))).digest("hex"),
+});
+
+test("PLAN-1.1/AC-2 a stage's git commands run in the evaluated repository, not one inherited GIT_* variables point at", () => {
+  const repo = makeRepo([
+    "    - { name: git-writes, run: 'git branch harness-probe && git rm -q --cached routing.yaml && git config core.bare true' }",
+  ]);
+  const other = makeRepo([pass("build")]);
+  const before = snapshot(other);
+
+  const result = run(repo.dir, ["--ci", "--config", "routing.yaml"], {
+    session: false,
+    extraEnv: {
+      GIT_DIR: join(other.dir, ".git"),
+      GIT_INDEX_FILE: join(other.dir, ".git", "index"),
+      GIT_WORK_TREE: other.dir,
+    },
+  });
+
+  const after = snapshot(other);
+  assert.equal(after.config, before.config, "PLAN-1.1/AC-2 the stage rewrote the other repository's config");
+  assert.equal(after.refs, before.refs, "PLAN-1.1/AC-2 the stage changed the other repository's refs");
+  assert.equal(after.head, before.head, "PLAN-1.1/AC-2 the stage changed the other repository's HEAD");
+  assert.equal(after.index, before.index, "PLAN-1.1/AC-2 the stage rewrote the other repository's index");
+  // And the stage did run, in its own repository, so an unchanged repository above is not a vacuous pass.
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(readFileSync(join(repo.dir, ".git", "config"), "utf8"), /bare = true/);
+  assert.match(repo.g("for-each-ref").toString(), /refs\/heads\/harness-probe/);
+});
+
+test("PLAN-1.1/AC-1 a stage gets no inherited GIT_* variable but GIT_CONFIG_*, and its own env is applied after", () => {
+  const repo = makeRepo([
+    "    - name: env-probe",
+    "      run: node env-probe.cjs",
+    "      env: { GIT_AUTHOR_NAME: from-the-stage, GIT_COMMITTER_NAME: only-in-the-stage }",
+  ]);
+  writeFileSync(join(repo.dir, "env-probe.cjs"), [
+    "const fs = require(\"fs\");",
+    "const seen = Object.fromEntries(Object.entries(process.env).filter(([k]) => /^GIT_/i.test(k)));",
+    "fs.writeFileSync(\"env-probe.json\", JSON.stringify(seen));",
+    "",
+  ].join("\n"));
+  // None of these is a real repository: the values only have to be recognisable if they leak through.
+  const nowhere = join(tmpdir(), "harness-no-such-repo");
+
+  const result = run(repo.dir, ["--ci", "--config", "routing.yaml"], {
+    session: false,
+    extraEnv: {
+      GIT_DIR: join(nowhere, ".git"),
+      GIT_INDEX_FILE: join(nowhere, ".git", "index"),
+      GIT_WORK_TREE: nowhere,
+      GIT_PREFIX: "sub/",
+      GIT_AUTHOR_NAME: "from-the-hook",
+      GIT_CONFIG_COUNT: "1",
+      GIT_CONFIG_KEY_0: "harness.probe",
+      GIT_CONFIG_VALUE_0: "kept",
+    },
+  });
+
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  const seen = JSON.parse(readFileSync(join(repo.dir, "env-probe.json"), "utf8")) as Record<string, string>;
+  assert.deepEqual(seen, {
+    GIT_AUTHOR_NAME: "from-the-stage",
+    GIT_COMMITTER_NAME: "only-in-the-stage",
+    GIT_CONFIG_COUNT: "1",
+    GIT_CONFIG_KEY_0: "harness.probe",
+    GIT_CONFIG_VALUE_0: "kept",
+  }, "PLAN-1.1/AC-1 the stage's GIT_* environment");
 });

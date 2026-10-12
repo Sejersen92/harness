@@ -10,7 +10,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "tsc -p . && tsc -p test",
-    "test": "node --experimental-strip-types --no-warnings=ExperimentalWarning --test test/*.test.ts",
+    "test": "node --experimental-strip-types --no-warnings=ExperimentalWarning --import ./test/setup-env.ts --test test/*.test.ts",
     "check:bin": "npm run build && git diff --exit-code -- bin"
   },
   "devDependencies": {
