@@ -7420,8 +7420,36 @@ function readCiStages(path) {
   const stages = yaml?.eval?.stages;
   return Array.isArray(stages) ? { stages } : { problem: `${path} has no eval.stages list` };
 }
-var canonical = (stages) => JSON.stringify(stages.map((s) => ({ name: s.name, run: s.run, cwd: s.cwd ?? null, env: s.env ?? null, timeout_minutes: s.timeout_minutes ?? null })));
-var sameStages = (a, b) => canonical(a) === canonical(b);
+function stageDrift(ci, home2) {
+  const out = [];
+  const repeats = (list, file) => {
+    const counts = /* @__PURE__ */ new Map();
+    for (const s of list) counts.set(s.name, (counts.get(s.name) ?? 0) + 1);
+    for (const [name, n] of counts) if (n > 1) out.push(`stage ${name} appears ${n} times in ${file}`);
+  };
+  repeats(ci, ".github/harness-eval.yml");
+  repeats(home2, "routing.yaml");
+  const byName = (list) => new Map(list.map((s) => [s.name, s]));
+  const c = byName(ci), h = byName(home2);
+  const str = (v) => v === void 0 || v === null ? null : String(v);
+  for (const [name, a] of c) {
+    const b = h.get(name);
+    if (!b) {
+      out.push(`stage ${name} is only in .github/harness-eval.yml`);
+      continue;
+    }
+    for (const field of ["run", "cwd", "timeout_minutes"])
+      if (str(a[field]) !== str(b[field])) out.push(`stage ${name}: ${field} differs`);
+    const ea = a.env ?? {}, eb = b.env ?? {};
+    for (const k of Object.keys(ea)) {
+      if (!(k in eb)) out.push(`stage ${name}: env ${k} is in .github/harness-eval.yml but not in routing.yaml`);
+      else if (str(ea[k]) !== str(eb[k])) out.push(`stage ${name}: env ${k} differs`);
+    }
+    for (const k of Object.keys(eb)) if (!(k in ea)) out.push(`stage ${name}: env ${k} is in routing.yaml but not in .github/harness-eval.yml`);
+  }
+  for (const name of h.keys()) if (!c.has(name)) out.push(`stage ${name} is only in routing.yaml`);
+  return out;
+}
 function ciConfigText(stages) {
   return [
     "# The stages harness-eval runs on every pull request, from .github/workflows/harness-eval.yml.",
@@ -7966,8 +7994,11 @@ function checks(dir2, { pluginRoot: pluginRoot2, claudeVersion = readClaudeVersi
   if (config.layout && (existsSync6(ciConfig) || existsSync6(join6(dir2, CI_WORKFLOW)))) {
     const read = readCiStages(ciConfig);
     if ("problem" in read) add("ci", "warn", `${CI_WORKFLOW} runs the stages in ${CI_CONFIG}, but ${read.problem} (harness-init --ci writes it)`);
-    else if (sameStages(read.stages, config.stages)) add("ci", "pass", `${CI_CONFIG} has the same ${read.stages.length} stage(s) as ${config.layout.routingYaml}`);
-    else add("ci", "warn", `the stages in ${CI_CONFIG} differ from those in ${config.layout.routingYaml}; change both together, or CI checks something the local gate doesn't`);
+    else {
+      const drift = stageDrift(read.stages, config.stages);
+      if (drift.length === 0) add("ci", "pass", `${CI_CONFIG} has the same ${read.stages.length} stage(s) as ${config.layout.routingYaml}`);
+      else add("ci", "warn", `the stages in ${CI_CONFIG} differ from those in ${config.layout.routingYaml}: ${drift.join("; ")}; change both together, or CI checks something the local gate doesn't`);
+    }
   }
   try {
     const spelled = resolve3(dir2);

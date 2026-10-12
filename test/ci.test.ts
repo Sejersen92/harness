@@ -7,8 +7,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parse } from "yaml";
-import { CI_CONFIG, CI_WORKFLOW, ciConfigText, ciWorkflowText, readCiStages, sameStages } from "../src/lib/ci.ts";
+import { parse, stringify } from "yaml";
+import { CI_CONFIG, CI_WORKFLOW, ciConfigText, ciWorkflowText, readCiStages, sameStages, stageDrift } from "../src/lib/ci.ts";
 import { repoHome } from "../src/lib/config.ts";
 import { checks } from "../src/lib/setup.ts";
 import type { Stage } from "../src/lib/types.ts";
@@ -262,4 +262,172 @@ test("sameStages compares what runs, not how the YAML was written", () => {
   assert.ok(sameStages(a, [{ cwd: "web", run: "npm run build", name: "build" }]));
   assert.ok(!sameStages(a, [{ name: "build", run: "npm run build" }]));
   assert.ok(!sameStages(a, [...a, ok("test")]));
+});
+
+// PLAN-1.5: the doctor names the drift between the home's eval.stages and .github/harness-eval.yml.
+
+/**
+ * An enrolled repository whose home routing.yaml has `home` as its eval.stages and whose CI stage file
+ * has `ci`, and a way to read the doctor's ci line for it.
+ */
+function drift(t: TestContext, home: Stage[], ci: Stage[]) {
+  const repo = makeRepo();
+  useHarnessHome(t, repo.harnessHome);
+  const init = repo.run("harness-init", "--apply");
+  assert.equal(init.status, 0, init.stdout + init.stderr);
+  const routing = join(repoHome(repo.dir), "routing.yaml");
+  const yaml = parse(readFileSync(routing, "utf8")) as { eval: { stages: Stage[] } };
+  yaml.eval.stages = home;
+  writeFileSync(routing, stringify(yaml));
+  writeCiConfig(repo.dir, ci);
+  const line = () => checks(repo.dir, { pluginRoot: root, claudeVersion: "2.1.300" }).find((r) => r.name === "ci");
+  return { ...repo, line };
+}
+
+const webBuild = (extra: Partial<Stage> = {}): Stage => ({ name: "web-build", run: "npm run build", cwd: "web", timeout_minutes: 10, ...extra });
+const unitTests: Stage = { name: "unit-tests", run: "npm test" };
+
+test("PLAN-1.5/AC-1 doctor warns, naming the stage and the key, when CI's env has a key the home's routing.yaml lacks", (t) => {
+  const { line } = drift(t, [webBuild(), unitTests], [webBuild({ env: { ALLOW_LOCAL_UPSTREAM: "1" } }), unitTests]);
+  const ci = line();
+  assert.equal(ci?.status, "warn", JSON.stringify(ci));
+  assert.match(ci!.detail, /\bweb-build\b/, `the detail names the stage: ${ci!.detail}`);
+  assert.match(ci!.detail, /\bALLOW_LOCAL_UPSTREAM\b/, `the detail names the env key: ${ci!.detail}`);
+});
+
+test("PLAN-1.5/AC-1 harness-doctor (the built bin) prints the ci warning with the stage and the key", (t) => {
+  const { run } = drift(t, [webBuild(), unitTests], [webBuild({ env: { ALLOW_LOCAL_UPSTREAM: "1" } }), unitTests]);
+  const result = run("harness-doctor");
+  const ciLine = result.stdout.split(/\r?\n/).find((l) => /^\s*\S+\s+ci\s/.test(l));
+  assert.ok(ciLine, `a ci line in:\n${result.stdout}`);
+  assert.match(ciLine!, /^\s*warn\s+ci\s/);
+  assert.match(ciLine!, /\bweb-build\b/);
+  assert.match(ciLine!, /\bALLOW_LOCAL_UPSTREAM\b/);
+});
+
+test("PLAN-1.5/AC-1 doctor warns, naming the stage and the key, when the home's env has a key CI lacks", (t) => {
+  const { line } = drift(t, [webBuild({ env: { ALLOW_LOCAL_UPSTREAM: "1" } }), unitTests], [webBuild(), unitTests]);
+  const ci = line();
+  assert.equal(ci?.status, "warn", JSON.stringify(ci));
+  assert.match(ci!.detail, /\bweb-build\b/);
+  assert.match(ci!.detail, /\bALLOW_LOCAL_UPSTREAM\b/);
+});
+
+test("PLAN-1.5/AC-2 doctor warns, naming the stage and the field, for a differing run", (t) => {
+  const { line } = drift(t, [webBuild(), unitTests], [webBuild({ run: "npm run build:ci" }), unitTests]);
+  const ci = line();
+  assert.equal(ci?.status, "warn", JSON.stringify(ci));
+  assert.match(ci!.detail, /\bweb-build\b/);
+  assert.match(ci!.detail, /\brun\b/);
+});
+
+test("PLAN-1.5/AC-2 doctor warns, naming the stage and the field, for a differing cwd", (t) => {
+  const { line } = drift(t, [webBuild(), unitTests], [webBuild({ cwd: "app" }), unitTests]);
+  const ci = line();
+  assert.equal(ci?.status, "warn", JSON.stringify(ci));
+  assert.match(ci!.detail, /\bweb-build\b/);
+  assert.match(ci!.detail, /\bcwd\b/);
+});
+
+test("PLAN-1.5/AC-2 doctor warns, naming the stage and the field, for a differing timeout_minutes", (t) => {
+  const { line } = drift(t, [webBuild(), unitTests], [webBuild({ timeout_minutes: 30 }), unitTests]);
+  const ci = line();
+  assert.equal(ci?.status, "warn", JSON.stringify(ci));
+  assert.match(ci!.detail, /\bweb-build\b/);
+  assert.match(ci!.detail, /\btimeout_minutes\b/);
+});
+
+test("PLAN-1.5/AC-2 doctor warns, naming the stage and the key, for a differing env value", (t) => {
+  const { line } = drift(t,
+    [webBuild({ env: { ALLOW_LOCAL_UPSTREAM: "1", NODE_ENV: "production" } }), unitTests],
+    [webBuild({ env: { ALLOW_LOCAL_UPSTREAM: "0", NODE_ENV: "production" } }), unitTests]);
+  const ci = line();
+  assert.equal(ci?.status, "warn", JSON.stringify(ci));
+  assert.match(ci!.detail, /\bweb-build\b/);
+  assert.match(ci!.detail, /\bALLOW_LOCAL_UPSTREAM\b/);
+  assert.doesNotMatch(ci!.detail, /\bNODE_ENV\b/, "only the key that differs is named");
+});
+
+test("PLAN-1.5/AC-2 doctor warns, naming the stage, for a stage only in CI", (t) => {
+  const { line } = drift(t, [webBuild()], [webBuild(), unitTests]);
+  const ci = line();
+  assert.equal(ci?.status, "warn", JSON.stringify(ci));
+  assert.match(ci!.detail, /\bunit-tests\b/);
+  assert.doesNotMatch(ci!.detail, /\bweb-build\b/, "the stage that agrees is not named");
+});
+
+test("PLAN-1.5/AC-2 doctor warns, naming the stage, for a stage only in the home's routing.yaml", (t) => {
+  const { line } = drift(t, [webBuild(), unitTests], [webBuild()]);
+  const ci = line();
+  assert.equal(ci?.status, "warn", JSON.stringify(ci));
+  assert.match(ci!.detail, /\bunit-tests\b/);
+  assert.doesNotMatch(ci!.detail, /\bweb-build\b/, "the stage that agrees is not named");
+});
+
+test("PLAN-1.5/AC-3 the same env keys in a different order are not drift", (t) => {
+  const { line } = drift(t,
+    [webBuild({ env: { ALLOW_LOCAL_UPSTREAM: "1", NODE_ENV: "production" } }), unitTests],
+    [webBuild({ env: { NODE_ENV: "production", ALLOW_LOCAL_UPSTREAM: "1" } }), unitTests]);
+  const ci = line();
+  assert.equal(ci?.status, "pass", JSON.stringify(ci));
+});
+
+test("PLAN-1.5/AC-3 the same env value as a number in one file and a string in the other is not drift", (t) => {
+  const { line } = drift(t,
+    [webBuild({ env: { ALLOW_LOCAL_UPSTREAM: 1 } }), unitTests],
+    [webBuild({ env: { ALLOW_LOCAL_UPSTREAM: "1" } }), unitTests]);
+  const ci = line();
+  assert.equal(ci?.status, "pass", JSON.stringify(ci));
+});
+
+const lint = (run: string): Stage => ({ name: "lint-check", run });
+
+test("PLAN-1.5/AC-2 doctor warns, naming the stage, when CI repeats a stage name the home has once", (t) => {
+  const { line } = drift(t, [lint("npm run lint:z")], [lint("npm run lint:x"), lint("npm run lint:z")]);
+  const ci = line();
+  assert.equal(ci?.status, "warn", JSON.stringify(ci));
+  assert.match(ci!.detail, /\blint-check\b/, `the detail names the repeated stage: ${ci!.detail}`);
+  assert.doesNotMatch(ci!.detail, /[\r\n]/, "the detail is one line");
+});
+
+test("PLAN-1.5/AC-2 doctor warns, naming the stage, when a stage name is repeated in the home's routing.yaml", (t) => {
+  const { line } = drift(t, [lint("npm run lint:x"), lint("npm run lint:z")], [lint("npm run lint:z")]);
+  const ci = line();
+  assert.equal(ci?.status, "warn", JSON.stringify(ci));
+  assert.match(ci!.detail, /\blint-check\b/, `the detail names the repeated stage: ${ci!.detail}`);
+  assert.doesNotMatch(ci!.detail, /[\r\n]/, "the detail is one line");
+});
+
+test("PLAN-1.5/AC-2 stageDrift reports a repeated stage name in either list, even with identical commands", () => {
+  const ciDup = stageDrift([lint("npm run lint:x"), lint("npm run lint:z")], [lint("npm run lint:z")]);
+  assert.ok(ciDup.some((l) => /\blint-check\b/.test(l)), `CI repeats the name: ${JSON.stringify(ciDup)}`);
+  const homeDup = stageDrift([lint("npm run lint:z")], [lint("npm run lint:x"), lint("npm run lint:z")]);
+  assert.ok(homeDup.some((l) => /\blint-check\b/.test(l)), `the home repeats the name: ${JSON.stringify(homeDup)}`);
+  const sameDup = stageDrift([lint("npm run lint:z"), lint("npm run lint:z")], [lint("npm run lint:z")]);
+  assert.ok(sameDup.some((l) => /\blint-check\b/.test(l)), `identical duplicate: ${JSON.stringify(sameDup)}`);
+});
+
+test("PLAN-1.5/AC-3 the same stages in a different order are not drift", (t) => {
+  const { line } = drift(t, [webBuild(), unitTests], [unitTests, webBuild()]);
+  const ci = line();
+  assert.equal(ci?.status, "pass", JSON.stringify(ci));
+});
+
+test("PLAN-1.5/AC-4 no .github/harness-eval.yml and no workflow: no ci line", (t) => {
+  const { dir, harnessHome, run } = makeRepo();
+  useHarnessHome(t, harnessHome);
+  run("harness-init", "--apply");
+  assert.equal(existsSync(join(dir, CI_CONFIG)), false);
+  assert.equal(existsSync(join(dir, CI_WORKFLOW)), false);
+  assert.equal(checks(dir, { pluginRoot: root, claudeVersion: "2.1.300" }).find((r) => r.name === "ci"), undefined);
+  assert.doesNotMatch(run("harness-doctor").stdout, /^\s*\S+\s+ci\s/m);
+});
+
+test("PLAN-1.5/AC-5 package.json, plugin.json and (if it carries one) marketplace.json are version 0.9.0", () => {
+  const json = (path: string) => JSON.parse(readFileSync(join(root, path), "utf8")) as { version?: string; plugins?: { name?: string; version?: string }[] };
+  assert.equal(json("package.json").version, "0.9.0");
+  assert.equal(json(".claude-plugin/plugin.json").version, "0.9.0");
+  const marketplace = json(".claude-plugin/marketplace.json");
+  if (marketplace.version !== undefined) assert.equal(marketplace.version, "0.9.0");
+  for (const plugin of marketplace.plugins ?? []) if (plugin.version !== undefined) assert.equal(plugin.version, "0.9.0", `marketplace plugin ${plugin.name}`);
 });

@@ -29,11 +29,36 @@ export function readCiStages(path: string): { stages: Stage[] } | { problem: str
   return Array.isArray(stages) ? { stages: stages as Stage[] } : { problem: `${path} has no eval.stages list` };
 }
 
-/** A stage with only the fields that change what runs, in one order, so two lists compare by content. */
-const canonical = (stages: readonly Stage[]): string =>
-  JSON.stringify(stages.map((s) => ({ name: s.name, run: s.run, cwd: s.cwd ?? null, env: s.env ?? null, timeout_minutes: s.timeout_minutes ?? null })));
+/** The differences between the stages in .github/harness-eval.yml (ci) and routing.yaml (home), one line each. A repeated stage name in either file is drift. */
+export function stageDrift(ci: readonly Stage[], home: readonly Stage[]): string[] {
+  const out: string[] = [];
+  const repeats = (list: readonly Stage[], file: string) => {
+    const counts = new Map<string, number>();
+    for (const s of list) counts.set(s.name, (counts.get(s.name) ?? 0) + 1);
+    for (const [name, n] of counts) if (n > 1) out.push(`stage ${name} appears ${n} times in ${file}`);
+  };
+  repeats(ci, ".github/harness-eval.yml");
+  repeats(home, "routing.yaml");
+  const byName = (list: readonly Stage[]) => new Map(list.map((s) => [s.name, s] as const));
+  const c = byName(ci), h = byName(home);
+  const str = (v: unknown): string | null => (v === undefined || v === null ? null : String(v));
+  for (const [name, a] of c) {
+    const b = h.get(name);
+    if (!b) { out.push(`stage ${name} is only in .github/harness-eval.yml`); continue; }
+    for (const field of ["run", "cwd", "timeout_minutes"] as const)
+      if (str(a[field]) !== str(b[field])) out.push(`stage ${name}: ${field} differs`);
+    const ea = (a.env ?? {}) as Record<string, unknown>, eb = (b.env ?? {}) as Record<string, unknown>;
+    for (const k of Object.keys(ea)) {
+      if (!(k in eb)) out.push(`stage ${name}: env ${k} is in .github/harness-eval.yml but not in routing.yaml`);
+      else if (str(ea[k]) !== str(eb[k])) out.push(`stage ${name}: env ${k} differs`);
+    }
+    for (const k of Object.keys(eb)) if (!(k in ea)) out.push(`stage ${name}: env ${k} is in routing.yaml but not in .github/harness-eval.yml`);
+  }
+  for (const name of h.keys()) if (!c.has(name)) out.push(`stage ${name} is only in routing.yaml`);
+  return out;
+}
 
-export const sameStages = (a: readonly Stage[], b: readonly Stage[]): boolean => canonical(a) === canonical(b);
+export const sameStages = (a: readonly Stage[], b: readonly Stage[]): boolean => stageDrift(a, b).length === 0;
 
 /** .github/harness-eval.yml for these stages. */
 export function ciConfigText(stages: readonly Stage[]): string {
