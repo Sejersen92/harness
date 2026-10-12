@@ -3,7 +3,7 @@
 // orchestrator's estimate, never in place of it.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -11,6 +11,7 @@ import { intakeVerdict, plansIn } from "../src/lib/intake.ts";
 import { buildRecord } from "../src/lib/tasklog.ts";
 import type { Config, HarnessEvent } from "../src/lib/types.ts";
 import { root, validatorFor, type Line } from "./validators.ts";
+import { cleanEnv, git } from "./git.ts";
 
 const SESSION = "11111111-2222-4333-8444-555555555555";
 
@@ -55,9 +56,9 @@ test("a dispatch's plans come from its header line only", () => {
 
 test("the hook refuses a Harness agent for a plan without a settled intake, and lets it through after", () => {
   const dir = mkdtempSync(join(tmpdir(), "harness-intake-"));
-  execFileSync("git", ["init", "-q", dir]);
+  git(["init", "-q", dir]);
   writeFileSync(join(dir, "routing.yaml"), readFileSync(join(root, "templates", "routing.yaml")));
-  const env: NodeJS.ProcessEnv = { ...process.env, CLAUDE_CODE_SESSION_ID: SESSION, CLAUDE_PROJECT_DIR: dir, CLAUDE_PLUGIN_ROOT: root, HARNESS_HOME: join(dir, ".harness-home") };
+  const env: NodeJS.ProcessEnv = { ...cleanEnv(), CLAUDE_CODE_SESSION_ID: SESSION, CLAUDE_PROJECT_DIR: dir, CLAUDE_PLUGIN_ROOT: root, HARNESS_HOME: join(dir, ".harness-home") };
   const dispatch = (subagent_type: string, prompt: string): Line | null => {
     const result = spawnSync("node", [join(root, "bin", "hook-pre-tool-use.mjs")], {
       cwd: dir, env, encoding: "utf8",

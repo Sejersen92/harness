@@ -7,10 +7,10 @@ import type { Config, HarnessEvent } from "./types.ts";
 
 // The data of each event type this reads, as harness-emit and the hooks write it (schema/ has the
 // contract). An event read back from the spool is typed by its type, the way JSON is read into a model.
-interface ScoredData { scores: Record<string, number>; total: number; score_band: string; overrides: string[]; tier_planned: string; review?: Record<string, unknown> }
+interface ScoredData { scores: Record<string, number>; total: number; score_band: string; overrides: string[]; tier_planned: string; review?: Record<string, unknown>; policy_fit?: string; recommendation?: Record<string, unknown> }
 interface StoppedData { report: string; partial: boolean; duration_ms?: number; model_requested?: string; model?: string; effort?: string }
 interface EvalCompletedData { result: string; failed_acs: string[]; stages: unknown[]; attribution?: string }
-interface DispatchedData { group?: string; isolation?: string }
+interface DispatchedData { group?: string; isolation?: string; model_source?: string }
 interface CompletedData { outcome: string; final_tier: string }
 interface CommitData { commit_sha: string; files_changed: number; lines_added: number; lines_removed: number }
 const dataOf = <T>(event: HarnessEvent): T => event.data as T;
@@ -93,7 +93,9 @@ export function buildRecord(
   const commit = last(ofType("commit.created"));
 
   const score = dataOf<ScoredData>(scored);
-  const rubric: ScoredData & { justifications?: Record<string, string> } = {
+  const lastDispatch = last(dispatched);
+  const dispatch = lastDispatch ? dataOf<DispatchedData>(lastDispatch) : undefined;
+  const rubric: ScoredData & { justifications?: Record<string, string>; model_source?: string } = {
     scores: score.scores,
     total: score.total,
     score_band: score.score_band,
@@ -101,11 +103,14 @@ export function buildRecord(
     tier_planned: score.tier_planned,
     // The person's agreement or overrule, with the orchestrator's original estimate (H4).
     ...(score.review ? { review: score.review } : {}),
+    // The run's fit check against the policy, and where the latest dispatch's model came from. A run's
+    // override is evidence, not policy. Each is omitted when its event had none.
+    ...(score.policy_fit ? { policy_fit: score.policy_fit } : {}),
+    ...(score.recommendation ? { recommendation: score.recommendation } : {}),
+    ...(dispatch?.model_source ? { model_source: dispatch.model_source } : {}),
   };
   if (config.includeJustifications && plan && Object.keys(plan.justifications).length) rubric.justifications = plan.justifications;
 
-  const lastDispatch = last(dispatched);
-  const dispatch = lastDispatch ? dataOf<DispatchedData>(lastDispatch) : undefined;
   const done = dataOf<CompletedData>(completed);
   const commitData = commit ? dataOf<CommitData>(commit) : null;
   const record: RoutingRecord = {

@@ -4,7 +4,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { CI_CONFIG, CI_WORKFLOW, readCiStages, sameStages } from "./ci.ts";
+import { CI_CONFIG, CI_WORKFLOW, readCiStages, stageDrift } from "./ci.ts";
 import { loadConfig, NOT_ENROLLED } from "./config.ts";
 import { GIT_DENY, githooksDir, HARNESS_HOOKS, harnessBranches, homeDeny, hooksState, orphans, ownHooks } from "./home.ts";
 import { pluginRecordPath } from "./spool.ts";
@@ -124,8 +124,11 @@ export function checks(
   if (config.layout && (existsSync(ciConfig) || existsSync(join(dir, CI_WORKFLOW)))) {
     const read = readCiStages(ciConfig);
     if ("problem" in read) add("ci", "warn", `${CI_WORKFLOW} runs the stages in ${CI_CONFIG}, but ${read.problem} (harness-init --ci writes it)`);
-    else if (sameStages(read.stages, config.stages)) add("ci", "pass", `${CI_CONFIG} has the same ${read.stages.length} stage(s) as ${config.layout.routingYaml}`);
-    else add("ci", "warn", `the stages in ${CI_CONFIG} differ from those in ${config.layout.routingYaml}; change both together, or CI checks something the local gate doesn't`);
+    else {
+      const drift = stageDrift(read.stages, config.stages);
+      if (drift.length === 0) add("ci", "pass", `${CI_CONFIG} has the same ${read.stages.length} stage(s) as ${config.layout.routingYaml}`);
+      else add("ci", "warn", `the stages in ${CI_CONFIG} differ from those in ${config.layout.routingYaml}: ${drift.join("; ")}; change both together, or CI checks something the local gate doesn't`);
+    }
   }
 
   try {

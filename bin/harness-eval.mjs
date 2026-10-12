@@ -7553,6 +7553,9 @@ function stageProblems(stages) {
   }
   return null;
 }
+function withoutGitEnv(env = process.env) {
+  return Object.fromEntries(Object.entries(env).filter(([k]) => !/^GIT_/i.test(k) || /^GIT_CONFIG_/i.test(k)));
+}
 var AC_ID = /PLAN-\d+(?:\.\d+)+\/AC-\d+/g;
 function runStages(dir, stages, logDir2, { onStage = () => {
 } } = {}) {
@@ -7568,7 +7571,7 @@ function runStages(dir, stages, logDir2, { onStage = () => {
     const started = Date.now();
     const run = spawnSync(stage.run, {
       cwd: resolve2(dir, stage.cwd ?? "."),
-      env: { ...process.env, ...Object.fromEntries(Object.entries(stage.env ?? {}).map(([k, v]) => [k, String(v)])) },
+      env: { ...withoutGitEnv(), ...Object.fromEntries(Object.entries(stage.env ?? {}).map(([k, v]) => [k, String(v)])) },
       shell: true,
       windowsHide: true,
       maxBuffer: 256 << 20,

@@ -31,6 +31,7 @@
     "rubric": {
       "type": "object",
       "required": ["scores", "total", "score_band", "overrides", "tier_planned"],
+      "allOf": [{ "$ref": "harness.events.v1.json#/$defs/fit_check" }],
       "properties": {
         "scores": { "$ref": "harness.events.v1.json#/$defs/scores" },
         "justifications": {
@@ -43,7 +44,10 @@
         "score_band": { "$ref": "harness.events.v1.json#/$defs/tier" },
         "overrides": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
         "tier_planned": { "$ref": "harness.events.v1.json#/$defs/tier" },
-        "review": { "description": "The person's review of the score, copied from task.scored (H4).", "$ref": "harness.events.v1.json#/$defs/data/task.scored/properties/review" }
+        "review": { "description": "The person's review of the score, copied from task.scored (H4).", "$ref": "harness.events.v1.json#/$defs/data/task.scored/properties/review" },
+        "policy_fit": { "description": "The run's fit check, copied from task.scored. Absent when task.scored had none.", "$ref": "harness.events.v1.json#/$defs/policy_fit" },
+        "recommendation": { "description": "The fit check's recommendation, copied from task.scored. Only when policy_fit is recommended.", "$ref": "harness.events.v1.json#/$defs/recommendation" },
+        "model_source": { "description": "policy or override, copied from the task's latest task.dispatched. A run's override is evidence, not policy. Absent when that dispatch had none.", "$ref": "harness.events.v1.json#/$defs/model_source" }
       }
     },
     "scope": {

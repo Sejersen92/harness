@@ -11,6 +11,7 @@ import { repoHome } from "../src/lib/config.ts";
 import { detectStages, homeDeny } from "../src/lib/home.ts";
 import { checks, type CheckResult } from "../src/lib/setup.ts";
 import { root } from "./validators.ts";
+import { cleanEnv, spawnGit } from "./git.ts";
 
 /** A routing.yaml whose one stage passes, so a commit's eval is quick and certain. */
 const PASSING = [
@@ -33,12 +34,12 @@ function makeRepo() {
   const harnessHome = mkdtempSync(join(tmpdir(), "harness-setup-home-"));
   writeFileSync(join(harnessHome, "plugin.json"), JSON.stringify({ root, version: "test" }));
   const env: NodeJS.ProcessEnv = {
-    ...process.env, CLAUDE_PROJECT_DIR: dir, HARNESS_HOME: harnessHome,
+    ...cleanEnv(), CLAUDE_PROJECT_DIR: dir, HARNESS_HOME: harnessHome,
     GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t",
   };
   delete env.CLAUDE_CODE_SESSION_ID;
   const git = (args: string[], extra: NodeJS.ProcessEnv = {}) =>
-    spawnSync("git", ["-C", dir, "-c", "core.autocrlf=false", ...args], { env: { ...env, ...extra }, encoding: "utf8" });
+    spawnGit(["-C", dir, "-c", "core.autocrlf=false", ...args], { env: { ...env, ...extra }, encoding: "utf8" });
   git(["init", "-q"]);
   writeFileSync(join(dir, "package.json"), JSON.stringify({ scripts: { lint: "eslint", test: "vitest run", build: "next build", dev: "next dev" } }));
   git(["add", "-A"]);
@@ -221,7 +222,7 @@ test("a Harness session's branch becomes a Harness branch, and deleted branches 
   git(["switch", "-q", "-c", "next"]);
   git(["branch", "-q", "-D", "old"]);
 
-  const env: NodeJS.ProcessEnv = { ...process.env, CLAUDE_PROJECT_DIR: dir, HARNESS_HOME: harnessHome, CLAUDE_PLUGIN_ROOT: root };
+  const env: NodeJS.ProcessEnv = { ...cleanEnv(), CLAUDE_PROJECT_DIR: dir, HARNESS_HOME: harnessHome, CLAUDE_PLUGIN_ROOT: root };
   const start = spawnSync("node", [join(root, "bin", "hook-session-start.mjs")], { cwd: dir, env, input: "{}", encoding: "utf8" });
   assert.equal(start.status, 0, start.stderr);
   assert.deepEqual(JSON.parse(readFileSync(join(repoHome(dir), "repo.json"), "utf8")).harness_branches, ["next"]);

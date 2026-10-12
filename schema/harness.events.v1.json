@@ -55,6 +55,43 @@
     "tier": { "enum": ["T1", "T2", "T3", "T4"] },
     "mode": { "description": "mode: off writes no events at all, so it never appears here.", "enum": ["observe", "route"] },
     "effort": { "enum": ["low", "medium", "high", "xhigh", "max"] },
+    "model_alias": { "description": "A model alias as the policy and routing.yaml name it, not a full model id.", "enum": ["haiku", "sonnet", "opus"] },
+    "policy_fit": {
+      "description": "The run's fit check, made at the score review: fits when the policy's model and effort for the task's tier suit the task, recommended when the orchestrator recommends another.",
+      "enum": ["fits", "recommended"]
+    },
+    "recommendation": {
+      "description": "The model and effort the orchestrator's fit check recommends instead of the policy's, with its reason. A run's override is evidence, not policy: it never changes the policy.",
+      "type": "object",
+      "required": ["model", "effort", "reason"],
+      "properties": {
+        "model": { "$ref": "#/$defs/model_alias" },
+        "effort": { "$ref": "#/$defs/effort" },
+        "reason": { "type": "string", "minLength": 1, "maxLength": 200 }
+      }
+    },
+    "model_source": {
+      "description": "Where the dispatched model choice came from: policy (the tier's model and effort, as rendered into routing.yaml) or override (the person adjusted the model at the score review). In observe mode an overridden task passes its alias and is left out of the baseline count.",
+      "enum": ["policy", "override"]
+    },
+    "fit_check": {
+      "description": "policy_fit and recommendation, kept consistent: a recommendation is required when policy_fit is recommended, forbidden when it is fits, and never present without policy_fit.",
+      "properties": {
+        "policy_fit": { "$ref": "#/$defs/policy_fit" },
+        "recommendation": { "$ref": "#/$defs/recommendation" }
+      },
+      "dependentRequired": { "recommendation": ["policy_fit"] },
+      "allOf": [
+        {
+          "if": { "required": ["policy_fit"], "properties": { "policy_fit": { "const": "recommended" } } },
+          "then": { "required": ["recommendation"] }
+        },
+        {
+          "if": { "required": ["policy_fit"], "properties": { "policy_fit": { "const": "fits" } } },
+          "then": { "not": { "required": ["recommendation"] } }
+        }
+      ]
+    },
     "count": { "type": "integer", "minimum": 0 },
     "task_ids": { "type": "array", "items": { "$ref": "#/$defs/task_id" }, "uniqueItems": true },
     "producer": {
@@ -147,7 +184,10 @@
       "task.scored": {
         "type": "object",
         "required": ["scores", "total", "score_band", "overrides", "tier_planned"],
+        "allOf": [{ "$ref": "#/$defs/fit_check" }],
         "properties": {
+          "policy_fit": { "description": "The run's fit check against the policy's model and effort for tier_planned. Absent: no fit check was made, as before the policy existed.", "$ref": "#/$defs/policy_fit" },
+          "recommendation": { "description": "Only when policy_fit is recommended: the model and effort recommended instead, and why.", "$ref": "#/$defs/recommendation" },
           "scores": { "$ref": "#/$defs/scores" },
           "total": { "type": "integer", "minimum": 0, "maximum": 12 },
           "score_band": { "description": "C7: the tier the raw total implies, before overrides.", "$ref": "#/$defs/tier" },
@@ -201,7 +241,8 @@
           "model_requested": { "description": "What routing asked for: an alias from routing.yaml, or \"inherit\" in observe mode. What actually ran comes from the transcript (C13).", "type": "string", "minLength": 1 },
           "effort": { "$ref": "#/$defs/effort" },
           "group": { "type": "string", "minLength": 1 },
-          "isolation": { "enum": ["none", "worktree"] }
+          "isolation": { "enum": ["none", "worktree"] },
+          "model_source": { "description": "Whether this dispatch's model came from the policy or from the person's override at the score review. Absent: not recorded, as before the policy existed.", "$ref": "#/$defs/model_source" }
         }
       },
       "task.redispatched": {
