@@ -7752,6 +7752,8 @@ function buildRecord(config2, taskId2, events = readEvents(config2), previous = 
   const gates = events.filter((e) => e.type === "gate.decision" && window(e));
   const commit = last(ofType("commit.created"));
   const score = dataOf(scored);
+  const lastDispatch = last(dispatched);
+  const dispatch = lastDispatch ? dataOf(lastDispatch) : void 0;
   const rubric = {
     scores: score.scores,
     total: score.total,
@@ -7759,11 +7761,14 @@ function buildRecord(config2, taskId2, events = readEvents(config2), previous = 
     overrides: score.overrides,
     tier_planned: score.tier_planned,
     // The person's agreement or overrule, with the orchestrator's original estimate (H4).
-    ...score.review ? { review: score.review } : {}
+    ...score.review ? { review: score.review } : {},
+    // The run's fit check against the policy, and where the latest dispatch's model came from. A run's
+    // override is evidence, not policy. Each is omitted when its event had none.
+    ...score.policy_fit ? { policy_fit: score.policy_fit } : {},
+    ...score.recommendation ? { recommendation: score.recommendation } : {},
+    ...dispatch?.model_source ? { model_source: dispatch.model_source } : {}
   };
   if (config2.includeJustifications && plan && Object.keys(plan.justifications).length) rubric.justifications = plan.justifications;
-  const lastDispatch = last(dispatched);
-  const dispatch = lastDispatch ? dataOf(lastDispatch) : void 0;
   const done = dataOf(completed);
   const commitData = commit ? dataOf(commit) : null;
   const record = {

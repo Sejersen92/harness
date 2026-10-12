@@ -268,3 +268,51 @@ test("SessionStart hands the session the path to harness-emit", () => {
   // ...and records where the plugin lives, for the repository's git hooks.
   assert.equal(JSON.parse(readFileSync(join(dir, ".harness-home", "plugin.json"), "utf8")).root, root);
 });
+
+test("PLAN-1.3/AC-4 the routing-log record carries policy_fit, recommendation and model_source from its events", () => {
+  const dir = makeRepo();
+  const recommendation = { model: "opus", effort: "high", reason: "Touches the payment flow" };
+  emit(dir, "task.scored", "--task", "PLAN-1.1", "--data", JSON.stringify({
+    scores: { ambiguity: 0, blast: 1, coupling: 1, novelty: 0, reversibility: 0, verification: 1 }, total: 3, score_band: "T2", overrides: [], tier_planned: "T2",
+    policy_fit: "recommended", recommendation,
+  }));
+  // Two dispatches: the record takes model_source from the latest one.
+  emit(dir, "task.dispatched", "--task", "PLAN-1.1", "--data", '{"tier":"T2","agent_type":"harness:impl-t2","model_requested":"sonnet","effort":"medium","isolation":"none","model_source":"policy"}');
+  emit(dir, "task.dispatched", "--task", "PLAN-1.1", "--data", '{"tier":"T2","agent_type":"harness:impl-t2","model_requested":"opus","effort":"high","isolation":"none","model_source":"override"}');
+  emit(dir, "task.completed", "--task", "PLAN-1.1", "--data", '{"outcome":"pass","final_tier":"T2","eval_rounds":0,"escalations":0}');
+
+  const events = lines(dir, "events");
+  events.forEach(assertValid);
+  const [record] = lines(dir, "routing-log");
+  assertValid(record);
+  assert.equal(record.rubric.policy_fit, "recommended");
+  assert.deepEqual(record.rubric.recommendation, recommendation);
+  assert.equal(record.rubric.model_source, "override", "model_source comes from the latest task.dispatched");
+});
+
+test("PLAN-1.3/AC-4 a task that fits carries policy_fit fits and no recommendation", () => {
+  const dir = makeRepo();
+  emit(dir, "task.scored", "--task", "PLAN-1.1", "--data", '{"scores":{"ambiguity":0,"blast":0,"coupling":0,"novelty":0,"reversibility":0,"verification":0},"total":0,"score_band":"T1","overrides":[],"tier_planned":"T1","policy_fit":"fits"}');
+  emit(dir, "task.dispatched", "--task", "PLAN-1.1", "--data", '{"tier":"T1","agent_type":"harness:impl-t1","model_requested":"sonnet","isolation":"none","model_source":"policy"}');
+  emit(dir, "task.completed", "--task", "PLAN-1.1", "--data", '{"outcome":"pass","final_tier":"T1","eval_rounds":0,"escalations":0}');
+
+  const [record] = lines(dir, "routing-log");
+  assertValid(record);
+  assert.equal(record.rubric.policy_fit, "fits");
+  assert.equal("recommendation" in record.rubric, false);
+  assert.equal(record.rubric.model_source, "policy");
+});
+
+test("PLAN-1.3/AC-4 a task whose events lack the fields gets a record without those keys", () => {
+  const dir = makeRepo();
+  emit(dir, "task.scored", "--task", "PLAN-1.1", "--data", '{"scores":{"ambiguity":0,"blast":0,"coupling":0,"novelty":0,"reversibility":0,"verification":0},"total":0,"score_band":"T1","overrides":[],"tier_planned":"T1"}');
+  emit(dir, "task.dispatched", "--task", "PLAN-1.1", "--data", '{"tier":"T1","agent_type":"harness:impl-t1","model_requested":"inherit","isolation":"none"}');
+  emit(dir, "task.completed", "--task", "PLAN-1.1", "--data", '{"outcome":"pass","final_tier":"T1","eval_rounds":0,"escalations":0}');
+
+  const [record] = lines(dir, "routing-log");
+  assertValid(record);
+  for (const key of ["policy_fit", "recommendation", "model_source"]) {
+    assert.equal(key in record.rubric, false, `rubric.${key} should be omitted`);
+    assert.equal(key in record, false, `${key} should be omitted`);
+  }
+});

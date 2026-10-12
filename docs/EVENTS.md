@@ -47,8 +47,8 @@ Every event has the same envelope; type-specific fields live under `data`.
 |---|---|---|---|
 | `plan.intake` | orchestrator | One round of the intake gate (H4) | `round`, `ambiguity` (0-2), `max_ambiguity`, `questions`, `settled`, `review?` (only when the person overruled the gate: `verdict` `overruled`, `by` `human`, `reason`) |
 | `plan.created` | orchestrator | A plan is written or rewritten | `task_count`, `revision`, `groups[{group, task_ids}]` |
-| `task.scored` | orchestrator | A task gets rubric scores | `scores{ambiguity, blast, coupling, novelty, reversibility, verification}`, `total`, `score_band`, `overrides[]`, `tier_planned`, `review?` (H4: `agreed`, or `overruled` with `reason` and the orchestrator's `original` scores; absent when not reviewed) |
-| `task.dispatched` | orchestrator | A task is handed to an implementer | `tier`, `agent_type`, `model_requested`, `effort?`, `group?`, `isolation` |
+| `task.scored` | orchestrator | A task gets rubric scores | `scores{ambiguity, blast, coupling, novelty, reversibility, verification}`, `total`, `score_band`, `overrides[]`, `tier_planned`, `review?` (H4: `agreed`, or `overruled` with `reason` and the orchestrator's `original` scores; absent when not reviewed), `policy_fit?` (`fits`, `recommended`), `recommendation?` (`{model, effort, reason}`; required when `policy_fit` is `recommended`, forbidden when it is `fits`) |
+| `task.dispatched` | orchestrator | A task is handed to an implementer | `tier`, `agent_type`, `model_requested`, `effort?`, `group?`, `isolation`, `model_source?` (`policy`, `override`) |
 | `task.redispatched` | orchestrator | A task is rerun | `reason` (`merge_conflict`, `replan`, `eval_fail`), `tier` |
 | `subagent.started` | SubagentStart hook | Any Harness subagent starts | `model_requested?` |
 | `subagent.stopped` | SubagentStop hook | Any Harness subagent stops | `report` (`DONE`, `ESCALATE`, `PASS`, `FAIL`, `PLAN`, `none`), `duration_ms`, `partial` (true when there was no usable report), `task_ids[]` parsed from the report header, plus `model` and `effort` from the agent's transcript and `model_requested` from its `meta.json` (C13) |
@@ -144,6 +144,64 @@ The record for the example above:
   "outcome": "pass",
   "final_tier": "T2",
   "wall_clock_s": 1160,
+  "complete": true
+}
+```
+
+### Example: the run's fit check
+
+A model choice is made in three places: the policy (on the hub), `routing.yaml` (rendered from the policy on each machine) and the run. The run's choice is made at the score review, which is one question for the whole plan: the orchestrator checks each task against the policy's model and effort for its tier and says whether it fits. `task.scored` records the verdict as `policy_fit`: `fits`, or `recommended` with the `recommendation` itself (an alias, `haiku`, `sonnet` or `opus`, an effort and a reason). The person agrees or adjusts, and adjusting can change the model as well as the tier. `task.dispatched` records where the model it asks for came from as `model_source`: `policy`, or `override` when the person took a different model. A run's override is evidence, not policy: it never writes to the hub, and it is the data that tells the policy where it's wrong. In observe mode an overridden task passes its alias and is left out of the baseline count. Events written before the fit check existed carry none of these fields, and remain valid.
+
+Here PLAN-9's policy for T2 is sonnet, medium. PLAN-9.1 is scored T2, but the orchestrator recommends opus, high, and the person takes it. PLAN-9.2 fits and runs on the policy.
+
+```jsonl
+{"schema":"harness.events/v1","event_id":"01M5A2Q0000V8T7S6R5Q4P3N2M","ts":"2026-10-14T08:00:00Z","type":"task.scored","producer":{"name":"harness","version":"0.8.2"},"repo":{"name":"previouslyupcoming","remote_sha256":"8870c7e3b16d6d10f365ee183b8906cfe8c76d6a9fd8229e1990e0247877a6e3"},"mode":"route","session_id":"3f6a9c2e-7d41-4b8e-a5c0-1e2d3f4a5b6c","config_sha256":"9f811fd217cfa016d705daa56a07b63e731424ff9223514e5091e4d7802bdff5","plan_id":"PLAN-9","task_id":"PLAN-9.1","data":{"scores":{"ambiguity":0,"blast":1,"coupling":1,"novelty":0,"reversibility":0,"verification":1},"total":3,"score_band":"T2","overrides":[],"tier_planned":"T2","policy_fit":"recommended","recommendation":{"model":"opus","effort":"high","reason":"Touches the payment flow"}}}
+{"schema":"harness.events/v1","event_id":"01M5A2Q0010V8T7S6R5Q4P3N2M","ts":"2026-10-14T08:00:01Z","type":"task.scored","producer":{"name":"harness","version":"0.8.2"},"repo":{"name":"previouslyupcoming","remote_sha256":"8870c7e3b16d6d10f365ee183b8906cfe8c76d6a9fd8229e1990e0247877a6e3"},"mode":"route","session_id":"3f6a9c2e-7d41-4b8e-a5c0-1e2d3f4a5b6c","config_sha256":"9f811fd217cfa016d705daa56a07b63e731424ff9223514e5091e4d7802bdff5","plan_id":"PLAN-9","task_id":"PLAN-9.2","data":{"scores":{"ambiguity":1,"blast":1,"coupling":1,"novelty":1,"reversibility":0,"verification":1},"total":5,"score_band":"T2","overrides":[],"tier_planned":"T2","policy_fit":"fits"}}
+{"schema":"harness.events/v1","event_id":"01M5A2T0000V8T7S6R5Q4P3N2M","ts":"2026-10-14T08:02:00Z","type":"task.dispatched","producer":{"name":"harness","version":"0.8.2"},"repo":{"name":"previouslyupcoming","remote_sha256":"8870c7e3b16d6d10f365ee183b8906cfe8c76d6a9fd8229e1990e0247877a6e3"},"mode":"route","session_id":"3f6a9c2e-7d41-4b8e-a5c0-1e2d3f4a5b6c","config_sha256":"9f811fd217cfa016d705daa56a07b63e731424ff9223514e5091e4d7802bdff5","plan_id":"PLAN-9","task_id":"PLAN-9.1","data":{"tier":"T2","agent_type":"harness:impl-t2","model_requested":"opus","effort":"high","isolation":"none","model_source":"override"}}
+{"schema":"harness.events/v1","event_id":"01M5A3Z0000V8T7S6R5Q4P3N2M","ts":"2026-10-14T08:21:00Z","type":"task.dispatched","producer":{"name":"harness","version":"0.8.2"},"repo":{"name":"previouslyupcoming","remote_sha256":"8870c7e3b16d6d10f365ee183b8906cfe8c76d6a9fd8229e1990e0247877a6e3"},"mode":"route","session_id":"3f6a9c2e-7d41-4b8e-a5c0-1e2d3f4a5b6c","config_sha256":"9f811fd217cfa016d705daa56a07b63e731424ff9223514e5091e4d7802bdff5","plan_id":"PLAN-9","task_id":"PLAN-9.2","data":{"tier":"T2","agent_type":"harness:impl-t2","model_requested":"sonnet","effort":"medium","isolation":"none","model_source":"policy"}}
+```
+
+The routing-log record copies `policy_fit` and `recommendation` from the task's `task.scored`, and `model_source` from its latest `task.dispatched`, into `rubric`, beside `review`. Each is omitted when its event had none. PLAN-9.1's record:
+
+```json
+{
+  "schema": "harness.routing-log/v1",
+  "task_id": "PLAN-9.1",
+  "revision": 1,
+  "plan_id": "PLAN-9",
+  "repo": { "name": "previouslyupcoming", "remote_sha256": "8870c7e3b16d6d10f365ee183b8906cfe8c76d6a9fd8229e1990e0247877a6e3" },
+  "producer": { "name": "harness", "version": "0.8.2" },
+  "config_sha256": "9f811fd217cfa016d705daa56a07b63e731424ff9223514e5091e4d7802bdff5",
+  "mode": "route",
+  "session_id": "3f6a9c2e-7d41-4b8e-a5c0-1e2d3f4a5b6c",
+  "timestamps": { "scored": "2026-10-14T08:00:00Z", "first_dispatch": "2026-10-14T08:02:00Z", "completed": "2026-10-14T08:20:00Z" },
+  "rubric": {
+    "scores": { "ambiguity": 0, "blast": 1, "coupling": 1, "novelty": 0, "reversibility": 0, "verification": 1 },
+    "total": 3,
+    "score_band": "T2",
+    "overrides": [],
+    "tier_planned": "T2",
+    "policy_fit": "recommended",
+    "recommendation": { "model": "opus", "effort": "high", "reason": "Touches the payment flow" },
+    "model_source": "override"
+  },
+  "scope": { "declared_files": 3, "isolation": "none", "depends_on": [] },
+  "acceptance": { "criteria": 2 },
+  "runs": [
+    { "agent_type": "harness:impl-t2", "agent_id": "a3d7e1f90b2c4d586", "model_requested": "opus", "model": "claude-opus-5-5", "effort": "high", "started": "2026-10-14T08:02:01Z", "ended": "2026-10-14T08:14:00Z", "report": "DONE", "partial": false },
+    { "agent_type": "harness:evaluator", "agent_id": "a8b2c6d04e1f3a597", "model_requested": "opus", "model": "claude-opus-5-5", "effort": "medium", "started": "2026-10-14T08:15:00Z", "ended": "2026-10-14T08:18:00Z", "report": "PASS" }
+  ],
+  "eval_rounds": [
+    { "round": 1, "result": "pass", "failed_acs": [], "stages": [{ "name": "build", "status": "pass", "duration_ms": 8010 }, { "name": "unit", "status": "pass", "duration_ms": 14120 }] }
+  ],
+  "escalations": [],
+  "redispatches": [],
+  "gate": { "denials": 0, "denial_reasons": [], "allowed": 1 },
+  "commit": { "sha": "4b7e9a1", "files_changed": 3, "lines_added": 52, "lines_removed": 17 },
+  "human_interventions": 0,
+  "outcome": "pass_first_try",
+  "final_tier": "T2",
+  "wall_clock_s": 1080,
   "complete": true
 }
 ```
