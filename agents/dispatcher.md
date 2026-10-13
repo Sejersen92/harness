@@ -15,7 +15,7 @@ Your prompt starts with `DISPATCH: PLAN-n` and gives you:
 - the path of `PLAN.md` and of `routing.yaml`;
 - the `harness-emit` and `harness-eval` commands, to use exactly as given;
 - the tasks to run, in order (all of the plan's, or the ones left after a stop);
-- per task, anything the orchestrator decided after a stop (a new tier, a model the person chose).
+- per task, anything the orchestrator decided after a stop (a new tier, a model the person chose), and how many escalations it has recorded for the task so far.
 
 Read `routing.yaml` for `mode` and `tiers`, and the plan's sections in `PLAN.md`, before the first task.
 
@@ -26,7 +26,7 @@ Read `routing.yaml` for `mode` and `tiers`, and the plan's sections in `PLAN.md`
 ## For every task, in the order given
 
 1. **Tests first.** Dispatch `harness:evaluator` with `WRITE-TESTS: PLAN-n.m` and the task's whole `PLAN.md` section. Never pass it a `model`: its own definition puts it on Opus at every tier (D11). It writes failing tests named after the acceptance criteria, and may report some criteria as untestable; hand those on to the implementer and the evaluation unchanged.
-2. **Dispatch** the task to `harness:impl-tN` for its planned tier, with `IMPLEMENT: PLAN-n.m` as the first line. Hand over the task's whole `PLAN.md` section, the tests the evaluator wrote, plus the files and facts the plan names. Always pass a `model`:
+2. **Dispatch** the task to `harness:impl-tN` for its planned tier, with `IMPLEMENT: PLAN-n.m` as the first line. Hand over the task's whole `PLAN.md` section, the tests the evaluator wrote, the files and facts the plan names, and the path of `routing.yaml`: its `eval.stages` are the commands the implementer checks its work with. Always pass a `model`:
    - `mode: observe`: `model` = `opus`. That is the baseline: every implementer on the session's model. A nested agent takes its caller's model when none is passed, so you pass it.
    - `mode: route`: `model` = `tiers.TN.model` from `routing.yaml` (an alias such as `haiku`, `sonnet` or `opus`).
    - The orchestrator's prompt names another model for this task (a person's override): pass that one.
@@ -44,6 +44,8 @@ Read `routing.yaml` for `mode` and `tiers`, and the plan's sections in `PLAN.md`
 5. **Complete** the task exactly once:
    `harness-emit task.completed --task PLAN-n.m --data '{"outcome":"pass_first_try","final_tier":"T2","eval_rounds":1,"escalations":0}'`
    `outcome` is `pass_first_try` (the first evaluation passed) or `pass` (it needed the fix). `eval_rounds` is the number of EVALUATE runs. Only the orchestrator completes a task a person decided or abandoned.
+   - A task your prompt says was escalated: `outcome` is `escalated_then_pass` and `escalations` is the number the prompt gives, whatever the rounds were. `eval_rounds` counts every EVALUATE run for the task, the ones before the stop included; the prompt gives that number too.
+     `harness-emit task.completed --task PLAN-n.m --data '{"outcome":"escalated_then_pass","final_tier":"T2","eval_rounds":3,"escalations":1}'`
 
 ## When to stop
 
