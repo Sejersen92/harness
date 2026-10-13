@@ -47,6 +47,21 @@ function emitExamples(): Example[] {
   return found;
 }
 
+/** The agent types a definition's `tools: Agent(...)` line allows. */
+const agentsAllowed = (source: string): string[] => {
+  const tools = readFileSync(join(root, source), "utf8").match(/^tools:.*$/m)?.[0] ?? "";
+  return (tools.match(/Agent\(([^)]*)\)/)?.[1] ?? "").split(",").map((a) => a.trim()).filter(Boolean);
+};
+
+test("the orchestrator's Agent list allows the dispatcher and everything the dispatcher starts", () => {
+  // The main thread's list is the whole session's: a nested agent can start nothing it leaves out.
+  const session = agentsAllowed("agents/orchestrator.md");
+  const workers = agentsAllowed("agents/dispatcher.md");
+  assert.ok(session.includes("harness:dispatcher"), "the orchestrator can't start the dispatcher");
+  assert.ok(workers.length >= 5, `the dispatcher's Agent list has only ${workers.length} agents`);
+  for (const worker of workers) assert.ok(session.includes(worker), `${worker} is in the dispatcher's list but not the orchestrator's, so the dispatcher can't start it`);
+});
+
 const examples = emitExamples();
 const ofType = (type: string): Line[] => examples.filter((e) => e.event.type === type).map((e) => e.event.data as Line);
 
