@@ -6,7 +6,7 @@
 // orchestrator can't lower its own bar. The score itself is still the orchestrator's judgment: the gate
 // guarantees the intake happened and came in under the bar, and the brief it leaves in PLAN.md, with the
 // questions the person answered, is what keeps the score honest.
-import { taskIdsIn } from "./ids.ts";
+import { planIdsIn } from "./ids.ts";
 import type { HarnessEvent } from "./types.ts";
 
 interface IntakeData {
@@ -42,12 +42,13 @@ export function intakeVerdict(planId: string, maxAmbiguity: number, events: read
 
 /**
  * The plans an agent call is for, from its header: the prompt's first non-empty line, as in
- * "WRITE-TESTS: PLAN-7.2". Only that line counts. The rest of a prompt names other ids freely (an older
+ * "WRITE-TESTS: PLAN-7.2", or "DISPATCH: PLAN-7" for the dispatcher, which is started for a whole
+ * plan. Only that line counts. The rest of a prompt names other ids freely (an older
  * plan's tests, a dependency, a criterion), and reading those made the gate refuse PLAN-9.1 over PLAN-6's
  * test names in the first run with the gate (2026-10-08). A call whose header names no task is refused
  * rather than guessed.
  */
 export const plansIn = (prompt: unknown): string[] => {
   const header = String(prompt ?? "").split(/\r?\n/).find((line) => line.trim()) ?? "";
-  return [...new Set(taskIdsIn(header).map(planOf))];
+  return planIdsIn(header);
 };

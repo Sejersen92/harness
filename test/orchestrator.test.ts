@@ -7,8 +7,9 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, root, validators, type Line } from "./validators.ts";
 
-const file = "agents/orchestrator.md";
-const text = readFileSync(join(root, file), "utf8").replace(/\r\n/g, "\n");
+// The orchestrator records the plan, the scores and a person's decisions; the dispatcher records the dispatches.
+const files = ["agents/orchestrator.md", "agents/dispatcher.md"];
+const file = files.join(" and ");
 
 type Example = { where: string; event: Line };
 
@@ -18,6 +19,8 @@ const placeholders = (s: string): string => s.replace(/PLAN-n\.m\b/g, "PLAN-7.1"
 /** Every `harness-emit` command in the file whose --data parses, wrapped as a full v1 event of its type. */
 function emitExamples(): Example[] {
   const found: Example[] = [];
+  for (const source of files) {
+  const text = readFileSync(join(root, source), "utf8").replace(/\r\n/g, "\n");
   for (const m of text.matchAll(/harness-emit ([a-z]+(?:\.[a-z_]+)+) --(task|plan) (\S+) --data '([^']*)'/g)) {
     const [, type, flag, id, json = ""] = m;
     let data: unknown;
@@ -38,7 +41,8 @@ function emitExamples(): Example[] {
     const real = placeholders(id ?? "");
     if (flag === "task") { event.task_id = real; event.plan_id = real.replace(/\..*$/, ""); }
     else event.plan_id = real;
-    found.push({ where: `${file}:${line} (${type})`, event });
+    found.push({ where: `${source}:${line} (${type})`, event });
+  }
   }
   return found;
 }

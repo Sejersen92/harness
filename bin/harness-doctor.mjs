@@ -7774,6 +7774,7 @@ function homeDeny(home) {
 }
 var ALIAS_MODELS = { haiku: "claude-haiku-5-5", sonnet: "claude-sonnet-5-5", opus: "claude-opus-5-5" };
 var aliasEnv = () => Object.fromEntries(Object.entries(ALIAS_MODELS).map(([alias, model]) => [`ANTHROPIC_DEFAULT_${alias.toUpperCase()}_MODEL`, model]));
+var FOREGROUND_ENV = { CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1" };
 function ownHooksDir(dir2, previous) {
   if (!previous) {
     const common = git2(dir2, "rev-parse", "--git-common-dir") ?? ".git";
@@ -7925,6 +7926,12 @@ function homeChecks(dir2, home, add) {
     "alias-models",
     unpinned.length ? "warn" : "pass",
     unpinned.length ? `${unpinned.join(", ")} not pinned in ${join4(home, "settings.json")}, so a tier's model is whatever this Claude Code version makes of the alias (/harness:init writes them)` : `haiku, sonnet and opus are pinned to ${Object.values(aliasEnv()).join(", ")}`
+  );
+  const background = Object.entries(FOREGROUND_ENV).filter(([name, value]) => settings.env?.[name] !== value).map(([name]) => name);
+  add(
+    "foreground",
+    background.length ? "warn" : "pass",
+    background.length ? `${background.join(", ")} is not set in ${join4(home, "settings.json")}, so subagents run in the background and the dispatcher can return before its workers finish (/harness:init writes it)` : "subagents run in the foreground, one at a time"
   );
   add(
     "worktree-base",

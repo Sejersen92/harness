@@ -7563,7 +7563,7 @@ if (config.mode !== "off") {
     // The orchestrator reads both and writes the plan. In a home they are outside the repository, so
     // nothing else could tell it where they are.
     `This repository's plan is ${slashed(config.layout.planPath)} and its routing config is ${slashed(config.layout.routingYaml)}.`,
-    "Only the harness:orchestrator agent records plan and task events."
+    "Only the harness:orchestrator and harness:dispatcher agents record plan and task events."
   ].join("\n");
   process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: context } }));
 }

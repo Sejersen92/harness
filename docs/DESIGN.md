@@ -14,15 +14,20 @@ This document records the design as it stands after the review fixes (C1–C16 i
 ## The flow
 
 ```text
-request ─▶ orchestrator (main thread, Opus)
-             1. writes PLAN.md: tasks, acceptance criteria (AC-n), dependencies, file scope
+request ─▶ orchestrator (main thread, Opus): interprets
+             1. settles the brief with the person, writes PLAN.md: tasks, acceptance criteria (AC-n), dependencies, file scope
              2. scores each task on the rubric ─▶ score_band ─▶ overrides ─▶ tier_planned
-             3. evaluator (Opus) writes failing tests, one or more per AC
-             4. dispatches the task to harness:impl-tN
-             5. evaluator runs harness-eval on the result ─▶ PASS / FAIL
-             6. on repeated failure or ESCALATE: architect (Opus) re-plans, back to 2
+             3. hands the plan to the dispatcher, once
+           ─▶ dispatcher (one subagent per plan, Sonnet, an empty context): runs each task by fixed rules
+             4. evaluator (Opus) writes failing tests, one or more per AC
+             5. dispatches the task to harness:impl-tN
+             6. evaluator runs harness-eval on the result ─▶ PASS / FAIL; a first FAIL goes back to the implementer with the findings
              7. commit, allowed only if the staged diff matches a fresh eval pass
+             8. returns DONE, or ESCALATE at the first thing that needs a judgment
+           ─▶ orchestrator: reports, or judges the stop (fixes the plan, asks the person) and hands the rest over again
 ```
+
+From 0.10.0 the loop is the dispatcher's, not the orchestrator's (PreviouslyUpcoming's RUN-ROLES.md has the reasons and the figures): the orchestrator's context was re-read on every step of the loop, which was about 60% of its cost. The rule that makes the split safe: **everything the dispatcher needs is in `PLAN.md`, never only in the conversation.**
 
 The orchestrator never writes production code. Hooks and permission rules enforce the rules that matter, not prose instructions. **The LLM decides; scripts record** (D2): every byte of metadata comes from hooks and scripts, at zero token cost.
 
@@ -56,7 +61,8 @@ The rubric is canonical and unchanged from the Harness document (pages 3–5): s
 
 | Agent | Model | Role | Writes |
 |---|---|---|---|
-| `orchestrator` | Opus 5.5, high | Plans, scores, dispatches, decides escalations; runs as the main thread (`claude --agent harness:orchestrator`) | `PLAN.md` only |
+| `orchestrator` | Opus 5.5, high | Interprets: settles the brief, plans, scores, hands the plan to the dispatcher, judges every stop; runs as the main thread (`claude --agent harness:orchestrator`) | `PLAN.md` only |
+| `dispatcher` | Sonnet 5.5, medium | Runs one plan's tasks by fixed rules, records the dispatches, returns `DONE:` or `ESCALATE:` naming the plan; started by the orchestrator, and starts the agents below | nothing |
 | `impl-t1` … `impl-t4` | per tier | Implements exactly the task given; ends with `DONE:` or `ESCALATE:` | code, never tests |
 | `evaluator` | **Opus 5.5 at every tier** (C4, D11) | WRITE-TESTS: failing tests from the ACs. EVALUATE: runs `harness-eval`, returns `PASS:`/`FAIL:` with evidence | tests only |
 | `architect` | Opus 5.5, high | Re-plans from an escalation brief alone | `PLAN.md` only |
@@ -89,7 +95,9 @@ Plugin subagents ignore `hooks`, `mcpServers` and `permissionMode` in their fron
 - Scripts are single-file Node ESM (K2), registered in exec form (`"command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/bin/<script>.mjs"]`), with no shell and no `.cmd` shim on Windows (S8).
 - **A policy hook blocks with a JSON `permissionDecision: "deny"` or exit 2, never exit 1.** Exit 1 is a non-blocking error and the action proceeds (S8).
 - **A subagent's report may arrive as a `SubagentHandback` tool call, not as its last message** (found in the first full run, 2026-10-07, Claude Code 2.1.285). `require-report` reads the last handback in the agent's transcript when the message has no header. Before this fix, every subagent was blocked once with a correct report in hand, and none of their stops was recorded.
-- **`harness:orchestrator` is the main thread, not a subagent.** Claude Code labels the main thread's own contexts with its `--agent` type, so the subagent hooks skip it. The orchestrator passes `run_in_background: false` on every Agent call.
+- **`harness:orchestrator` is the main thread, not a subagent.** Claude Code labels the main thread's own contexts with its `--agent` type, so the subagent hooks skip it. Every subagent runs in the foreground because the home's `settings.json` sets `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`: an interactive session otherwise runs each one in the background whatever the call asks for, and a dispatcher whose worker is in the background returns before the worker has finished (S12).
+- **A nested agent set to `model: inherit` takes its caller's model, not the session's** (found 2026-10-13). So the dispatcher always passes a `model` to an implementer: the tier's in route mode, `opus` in observe mode, which keeps the baseline's meaning. The evaluator's own `model: opus` holds without one.
+- **The dispatcher's stop is recorded with no task ids**, whatever its header says: its run belongs to the plan, and a task's runs stay its tests, its code and its evaluation.
 
 ## Eval and the commit gate
 
@@ -165,6 +173,7 @@ A repository still set up the old way (`routing.yaml`, `.githooks/` and `.claude
 | `git-hooks` | `core.hooksPath` isn't the home's `githooks/` (something such as husky's install moved it), or a wrapper is missing, so commits outside Claude Code aren't gated (fail) |
 | `permissions` | a deny rule is missing from the home's `settings.json` (warn) |
 | `alias-models` | the home's settings don't pin `haiku`, `sonnet` and `opus` to their 5.5 models (warn: without the pin, Claude Code 2.1.286 runs `haiku` as Haiku 4.5) |
+| `foreground` | the home's settings don't set `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, so subagents run in the background and the dispatcher can return early (warn) |
 | `worktree-base` | `worktree.baseRef` isn't `head` (warn: needed only for parallel groups, M6) |
 | `gitignore`, `attribution-off` | the old layout only: as before (warn) |
 | `path-casing` | the working directory's letters differ in case from the disk's (warn, S6) |

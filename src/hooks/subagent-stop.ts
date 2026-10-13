@@ -49,12 +49,16 @@ function findReport(): { report: string; task_ids: string[] } {
   return fromMessage;
 }
 
-const { report, task_ids } = findReport();
+const found = findReport();
+const report = found.report;
+// The dispatcher runs a whole plan. Its header names the plan only, and even if it named a task, its
+// run must not be counted as one of that task's: a task's runs are its tests, its code and its evaluation.
+const task_ids = input.agent_type === "harness:dispatcher" ? [] : found.task_ids;
 
 if (report === "none" && !input.stop_hook_active) {
   process.stdout.write(JSON.stringify({
     decision: "block",
-    reason: "Every Harness agent ends with a report header on its first line, naming the task ids it worked on, e.g. \"DONE: PLAN-7.2\" or \"ESCALATE: PLAN-7.2 — reason\". Write your final report again starting with that header.",
+    reason: "Every Harness agent ends with a report header on its first line, naming the task ids it worked on, e.g. \"DONE: PLAN-7.2\" or \"ESCALATE: PLAN-7.2 — reason\" (the dispatcher names its plan: \"DONE: PLAN-7\"). Write your final report again starting with that header.",
   }));
   process.exit(0);
 }

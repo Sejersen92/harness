@@ -6,7 +6,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSyn
 import { join, resolve } from "node:path";
 import { CI_CONFIG, CI_WORKFLOW, readCiStages, stageDrift } from "./ci.ts";
 import { loadConfig, NOT_ENROLLED } from "./config.ts";
-import { aliasEnv, GIT_DENY, githooksDir, HARNESS_HOOKS, harnessBranches, homeDeny, hooksState, orphans, ownHooks } from "./home.ts";
+import { aliasEnv, FOREGROUND_ENV, GIT_DENY, githooksDir, HARNESS_HOOKS, harnessBranches, homeDeny, hooksState, orphans, ownHooks } from "./home.ts";
 import { pluginRecordPath } from "./spool.ts";
 import { messageOf } from "./types.ts";
 
@@ -176,6 +176,9 @@ function homeChecks(dir: string, home: string, add: Add): void {
   const unpinned = Object.entries(aliasEnv()).filter(([name, model]) => settings.env?.[name] !== model).map(([name]) => name);
   add("alias-models", unpinned.length ? "warn" : "pass",
     unpinned.length ? `${unpinned.join(", ")} not pinned in ${join(home, "settings.json")}, so a tier's model is whatever this Claude Code version makes of the alias (/harness:init writes them)` : `haiku, sonnet and opus are pinned to ${Object.values(aliasEnv()).join(", ")}`);
+  const background = Object.entries(FOREGROUND_ENV).filter(([name, value]) => settings.env?.[name] !== value).map(([name]) => name);
+  add("foreground", background.length ? "warn" : "pass",
+    background.length ? `${background.join(", ")} is not set in ${join(home, "settings.json")}, so subagents run in the background and the dispatcher can return before its workers finish (/harness:init writes it)` : "subagents run in the foreground, one at a time");
   add("worktree-base", settings.worktree?.baseRef === "head" ? "pass" : "warn",
     settings.worktree?.baseRef === "head" ? "worktrees start from HEAD" : "worktree.baseRef is not \"head\" in the home's settings (needed only for parallel groups, M6)");
 }

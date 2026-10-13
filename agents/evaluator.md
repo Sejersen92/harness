@@ -1,6 +1,6 @@
 ---
 name: evaluator
-description: Harness evaluator, independent of the implementer and on Opus at every tier (D11). Dispatched by harness:orchestrator in one of two modes - WRITE-TESTS (failing tests from a task's acceptance criteria, before it is implemented) or EVALUATE (run harness-eval on the result and judge every criterion).
+description: Harness evaluator, independent of the implementer and on Opus at every tier (D11). Dispatched by harness:dispatcher in one of two modes - WRITE-TESTS (failing tests from a task's acceptance criteria, before it is implemented) or EVALUATE (run harness-eval on the result and judge every criterion).
 model: opus
 effort: medium
 maxTurns: 60
@@ -25,13 +25,13 @@ Report `DONE: PLAN-n.m`, then per criterion the test name, its file and how it f
 
 1. Run `git status`. The working tree should hold the task's scope and its tests, nothing else. If anything else has changed, report FAIL and name the files. Don't stage, revert or delete them.
 2. Stage everything: `git add -A`.
-3. Run `harness-eval` exactly as the session context names it, with `--task PLAN-n.m`. It runs every stage in `routing.yaml` and, on a pass, writes the marker a commit needs. Don't run the stages yourself instead: only its pass counts.
+3. Run `harness-eval` exactly as your prompt or the session context names it, with `--task PLAN-n.m`. It runs every stage in `routing.yaml` and, on a pass, writes the marker a commit needs. Don't run the stages yourself instead: only its pass counts.
 4. Read the staged diff (`git diff --cached`) against every criterion. Passing stages are not the same as met criteria. Check that each criterion is actually met, and that no test was weakened (an assertion removed, a test skipped or deleted).
 5. Report:
    - `PASS: PLAN-n.m`, then per criterion the evidence (the passing test, or what in the diff meets it), and harness-eval's last line.
    - `FAIL: PLAN-n.m`, then the unmet criteria as `PLAN-n.m/AC-k`, the failing stage and the lines of its output that show why, and what has to change. State facts; don't write the fix.
 
-   If harness-eval passed but a criterion is not met, the verdict is FAIL. The orchestrator commits only on PASS.
+   If harness-eval passed but a criterion is not met, the verdict is FAIL. The dispatcher commits only on PASS.
 
 ## Every report
 

@@ -259,6 +259,39 @@ test("the orchestrator's own contexts are not subagent runs", () => {
   assert.equal(lines(dir, "events").length, 0);
 });
 
+test("the dispatcher's run is recorded, and belongs to no task", () => {
+  const dir = makeRepo();
+  const agent = { session_id: SESSION, agent_id: "ad15pa7c4e5", agent_type: "harness:dispatcher" };
+  assert.equal(hook(dir, "subagent-start", agent).status, 0);
+
+  // No header: sent back once, like any Harness agent.
+  const blocked = hook(dir, "subagent-stop", { ...agent, last_assistant_message: "All six tasks are committed.", stop_hook_active: false });
+  assert.equal(JSON.parse(blocked.stdout).decision, "block");
+
+  // A header naming a task, against its instructions: the run still isn't one of that task's.
+  hook(dir, "subagent-stop", { ...agent, last_assistant_message: "ESCALATE: PLAN-2 — stopped by rule S1 at PLAN-2.4\n...", stop_hook_active: true });
+  const events = lines(dir, "events");
+  assert.deepEqual(events.map((e) => e.type), ["subagent.started", "subagent.stopped"]);
+  events.forEach(assertValid);
+  assert.equal(events[1].data.report, "ESCALATE");
+  assert.deepEqual(events[1].data.task_ids, []);
+});
+
+test("the intake gate reads the dispatcher's plan from DISPATCH: PLAN-n", () => {
+  const dir = makeRepo();
+  const call = (prompt: string) =>
+    hook(dir, "pre-tool-use", { session_id: SESSION, tool_name: "Agent", tool_input: { subagent_type: "harness:dispatcher", prompt } });
+
+  const refused = JSON.parse(call("DISPATCH: PLAN-3\nPLAN.md is at ...").stdout);
+  assert.equal(refused.hookSpecificOutput.permissionDecision, "deny");
+  assert.match(refused.hookSpecificOutput.permissionDecisionReason, /intake gate: PLAN-3 has had no intake/);
+
+  assert.match(JSON.parse(call("Run the plan").stdout).hookSpecificOutput.permissionDecisionReason, /DISPATCH: PLAN-n/);
+
+  assert.equal(emit(dir, "plan.intake", "--plan", "PLAN-3", "--data", '{"round":1,"ambiguity":0,"max_ambiguity":0,"questions":0,"settled":true}').status, 0);
+  assert.equal(call("DISPATCH: PLAN-3\nPLAN.md is at ...").stdout, "", "a settled intake lets the dispatcher start");
+});
+
 test("SessionStart hands the session the path to harness-emit", () => {
   const dir = makeRepo();
   const out = JSON.parse(hook(dir, "session-start", { session_id: SESSION, source: "startup" }).stdout);

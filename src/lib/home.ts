@@ -151,10 +151,17 @@ export const ALIAS_MODELS = { haiku: "claude-haiku-5-5", sonnet: "claude-sonnet-
 export const aliasEnv = (): Record<string, string> =>
   Object.fromEntries(Object.entries(ALIAS_MODELS).map(([alias, model]) => [`ANTHROPIC_DEFAULT_${alias.toUpperCase()}_MODEL`, model]));
 
+/**
+ * Every subagent in the foreground. An interactive session otherwise runs each one in the background,
+ * whatever the call asks for, and a dispatcher whose worker is in the background returns before the
+ * worker has finished (spike S12, 2026-10-13).
+ */
+export const FOREGROUND_ENV = { CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1" } as const;
+
 /** <home>/settings.json as it should be. */
 export const homeSettings = (home: string): { permissions: { deny: string[] }; env: Record<string, string>; worktree: { baseRef: string } } => ({
   permissions: { deny: homeDeny(home) },
-  env: aliasEnv(),
+  env: { ...aliasEnv(), ...FOREGROUND_ENV },
   // Worktree subagents start from the current branch, not the default one (S6).
   worktree: { baseRef: "head" },
 });
@@ -275,7 +282,7 @@ export function enrolPlan(
 
   const settings = JSON.stringify(homeSettings(home), null, 2) + "\n";
   if (readSafely(join(home, "settings.json")) !== settings) {
-    steps.push({ what: `write ${join(home, "settings.json")} (${homeDeny(home).length} deny rules for Harness sessions, haiku/sonnet/opus pinned to 5.5, worktrees from HEAD)`, apply: () => writeHome(home, "settings.json", settings) });
+    steps.push({ what: `write ${join(home, "settings.json")} (${homeDeny(home).length} deny rules for Harness sessions, haiku/sonnet/opus pinned to 5.5, subagents in the foreground, worktrees from HEAD)`, apply: () => writeHome(home, "settings.json", settings) });
   }
 
   const hooks = hooksState(dir, home);
