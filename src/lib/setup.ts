@@ -6,7 +6,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSyn
 import { join, resolve } from "node:path";
 import { CI_CONFIG, CI_WORKFLOW, readCiStages, stageDrift } from "./ci.ts";
 import { loadConfig, NOT_ENROLLED } from "./config.ts";
-import { GIT_DENY, githooksDir, HARNESS_HOOKS, harnessBranches, homeDeny, hooksState, orphans, ownHooks } from "./home.ts";
+import { aliasEnv, GIT_DENY, githooksDir, HARNESS_HOOKS, harnessBranches, homeDeny, hooksState, orphans, ownHooks } from "./home.ts";
 import { pluginRecordPath } from "./spool.ts";
 import { messageOf } from "./types.ts";
 
@@ -20,6 +20,7 @@ export interface CheckResult {
 /** The parts of a Claude Code settings file the doctor reads. */
 export interface Settings {
   permissions?: { deny?: string[]; [key: string]: unknown };
+  env?: Record<string, string>;
   attribution?: { commit?: string; [key: string]: unknown };
   worktree?: { baseRef?: string; [key: string]: unknown };
   [key: string]: unknown;
@@ -172,6 +173,9 @@ function homeChecks(dir: string, home: string, add: Add): void {
   const missingDeny = homeDeny(home).filter((rule) => !denied.has(rule));
   add("permissions", missingDeny.length ? "warn" : "pass",
     missingDeny.length ? `${missingDeny.length} deny rule(s) missing from ${join(home, "settings.json")} (/harness:init writes them)` : `${denied.size} deny rules for Harness sessions, in ${join(home, "settings.json")}`);
+  const unpinned = Object.entries(aliasEnv()).filter(([name, model]) => settings.env?.[name] !== model).map(([name]) => name);
+  add("alias-models", unpinned.length ? "warn" : "pass",
+    unpinned.length ? `${unpinned.join(", ")} not pinned in ${join(home, "settings.json")}, so a tier's model is whatever this Claude Code version makes of the alias (/harness:init writes them)` : `haiku, sonnet and opus are pinned to ${Object.values(aliasEnv()).join(", ")}`);
   add("worktree-base", settings.worktree?.baseRef === "head" ? "pass" : "warn",
     settings.worktree?.baseRef === "head" ? "worktrees start from HEAD" : "worktree.baseRef is not \"head\" in the home's settings (needed only for parallel groups, M6)");
 }

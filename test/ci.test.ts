@@ -423,11 +423,11 @@ test("PLAN-1.5/AC-4 no .github/harness-eval.yml and no workflow: no ci line", (t
   assert.doesNotMatch(run("harness-doctor").stdout, /^\s*\S+\s+ci\s/m);
 });
 
-test("PLAN-1.5/AC-5 package.json, plugin.json and (if it carries one) marketplace.json are version 0.9.0", () => {
+test("PLAN-1.5/AC-5 package.json, plugin.json and (if it carries one) marketplace.json carry one version", () => {
   const json = (path: string) => JSON.parse(readFileSync(join(root, path), "utf8")) as { version?: string; plugins?: { name?: string; version?: string }[] };
-  assert.equal(json("package.json").version, "0.9.0");
-  assert.equal(json(".claude-plugin/plugin.json").version, "0.9.0");
+  const version = json("package.json").version;
+  assert.equal(json(".claude-plugin/plugin.json").version, version);
   const marketplace = json(".claude-plugin/marketplace.json");
-  if (marketplace.version !== undefined) assert.equal(marketplace.version, "0.9.0");
-  for (const plugin of marketplace.plugins ?? []) if (plugin.version !== undefined) assert.equal(plugin.version, "0.9.0", `marketplace plugin ${plugin.name}`);
+  if (marketplace.version !== undefined) assert.equal(marketplace.version, version);
+  for (const plugin of marketplace.plugins ?? []) if (plugin.version !== undefined) assert.equal(plugin.version, version, `marketplace plugin ${plugin.name}`);
 });

@@ -7772,6 +7772,8 @@ function homeDeny(home) {
     ...GIT_DENY
   ];
 }
+var ALIAS_MODELS = { haiku: "claude-haiku-5-5", sonnet: "claude-sonnet-5-5", opus: "claude-opus-5-5" };
+var aliasEnv = () => Object.fromEntries(Object.entries(ALIAS_MODELS).map(([alias, model]) => [`ANTHROPIC_DEFAULT_${alias.toUpperCase()}_MODEL`, model]));
 function ownHooksDir(dir2, previous) {
   if (!previous) {
     const common = git2(dir2, "rev-parse", "--git-common-dir") ?? ".git";
@@ -7917,6 +7919,12 @@ function homeChecks(dir2, home, add) {
     "permissions",
     missingDeny.length ? "warn" : "pass",
     missingDeny.length ? `${missingDeny.length} deny rule(s) missing from ${join4(home, "settings.json")} (/harness:init writes them)` : `${denied.size} deny rules for Harness sessions, in ${join4(home, "settings.json")}`
+  );
+  const unpinned = Object.entries(aliasEnv()).filter(([name, model]) => settings.env?.[name] !== model).map(([name]) => name);
+  add(
+    "alias-models",
+    unpinned.length ? "warn" : "pass",
+    unpinned.length ? `${unpinned.join(", ")} not pinned in ${join4(home, "settings.json")}, so a tier's model is whatever this Claude Code version makes of the alias (/harness:init writes them)` : `haiku, sonnet and opus are pinned to ${Object.values(aliasEnv()).join(", ")}`
   );
   add(
     "worktree-base",
