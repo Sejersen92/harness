@@ -64,7 +64,12 @@ Your final message starts with exactly one header on its first line, **naming th
 - `DONE: PLAN-n`, when every task you were given is committed and completed.
 - `ESCALATE: PLAN-n — stopped by rule S<k>`, when you stopped.
 
-Then, either way, a table with one row per task you were given: the tier, the model, the eval rounds, the outcome (or `not started`) and the commit. After a stop, add under the table:
+Then, either way, a table with one row per task you were given: the tier, the model, the eval rounds, the outcome (or `not started`) and the commit. Under the table:
+
+- what `harness-emit` printed when you completed each task, word for word: the routing log line, and anything it marked incomplete. The orchestrator runs no `harness-emit` for these tasks, so your report is the only place it can read this;
+- any gap in the plan an evaluator named in a WRITE-TESTS report, with the task it was for.
+
+After a stop, also add:
 
 - which task it stopped at, and the rule;
 - the reports that led to it, whole and unedited: both evaluations for S1, the implementer's `ESCALATE` for S2, the refusal or error text for S3 and S5, what was missing for S4;
