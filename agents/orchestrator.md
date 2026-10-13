@@ -53,16 +53,28 @@ The dispatcher runs the plan by fixed rules, on a cheaper model, and starts with
 
    Nothing else. If you find yourself explaining a task in the prompt, that explanation belongs in the task's section of `PLAN.md`: put it there first.
 4. **When the dispatcher returns `DONE: PLAN-n`**, go to step 6.
-5. **When it returns `ESCALATE: PLAN-n`**, it stopped at a task by one of its rules and its report holds the evidence. You decide, because you know why the task exists. Read the reports and the working tree, then choose one:
-   - **The plan was wrong** (a missing decision, a scope too narrow, an assumption that doesn't hold, a criterion that can't be met as written): fix the task's section in `PLAN.md`, and ask the person first when the fix is a decision of theirs. Record the plan again with the next revision:
-     `harness-emit plan.created --plan PLAN-n --data '{"task_count":2,"revision":2,"groups":[{"group":"G1","task_ids":["PLAN-n.1"]},{"group":"G2","task_ids":["PLAN-n.2"]}]}'`
-   - **Two evaluations failed on the same criterion** (the dispatcher's rule S1): this goes to the person. Record `harness-emit escalation.triggered --task PLAN-n.m --data '{"trigger":"eval_rounds","count":2,"threshold":2}'`, ask the person with both reports, and record `human.intervention` with a short reason. Then act on the answer.
-   - **The implementer escalated** (rule S2) and the plan is not at fault: also ask the person, and record `human.intervention`.
-   - **The gate or a tool refused** (rules S3 and S5): say what it reported. Don't work around it.
+5. **When it returns `ESCALATE: PLAN-n`**, it stopped at a task by one of its rules and its report holds the evidence. You decide, because you know why the task exists.
 
-   Then dispatch the dispatcher again, with the same kind of prompt, for the stopped task and the tasks not started. When the person decides a task is finished as it is, or drops it, complete it yourself and leave it out of the next dispatch:
+   **First, record the stop, always.** A stop that leaves no event can't be seen afterwards, and the stops are what the plan and the tiers are tuned from:
+   - Rule S1, two failed evaluations: `harness-emit escalation.triggered --task PLAN-n.m --data '{"trigger":"eval_rounds","count":2,"threshold":2}'`
+   - Any other rule: `harness-emit escalation.triggered --task PLAN-n.m --data '{"trigger":"self_report","count":1,"threshold":1}'`
+
+   **Then read the reports and the working tree, and choose one:**
+   - **A fact about the repository or its tools was missing or wrong**: a command, a path, an environment variable, a file that lives under another name. This is yours to fix alone. Put the fact in the task's section of `PLAN.md`, and in the brief when later tasks need it too.
+   - **What is to be built has to change**: a criterion added, dropped or reworded, a scope widened, a behaviour chosen between two readings, a tier raised. This is the person's to decide, however small it looks. Ask with the dispatcher's evidence, record `harness-emit human.intervention --task PLAN-n.m --data '{"reason":"<their words, short>"}'`, then put the answer in `PLAN.md`. A gap in a criterion that you could settle yourself is still theirs once a run has stopped on it.
+   - **Two evaluations failed on the same criterion** (rule S1): always the person's, with both reports. Record `human.intervention` the same way.
+   - **The gate or a tool refused** (rules S3 and S5) and nothing in the plan is at fault: say what it reported. Don't work around it.
+
+   When `PLAN.md` changed, record the plan again with the next revision, and that the stop is settled:
+   `harness-emit plan.created --plan PLAN-n --data '{"task_count":2,"revision":2,"groups":[{"group":"G1","task_ids":["PLAN-n.1"]},{"group":"G2","task_ids":["PLAN-n.2"]}]}'`
+   `harness-emit escalation.resolved --task PLAN-n.m --data '{"new_task_ids":["PLAN-n.m"],"new_tiers":["T2"]}'`
+   (`new_task_ids` are the tasks that carry the work on: the same task, or the ones it was split into. `new_tiers` are their tiers, in the same order.)
+
+   Then dispatch the dispatcher again, with the same kind of prompt, for the stopped task and the tasks not started. For the stopped task, say that it was escalated, how many `escalation.triggered` you have recorded for it, and how many EVALUATE runs it has had so far: the dispatcher needs all three to complete it truthfully. When the person decides a task is finished as it is, or drops it, complete it yourself and leave it out of the next dispatch:
    `harness-emit task.completed --task PLAN-n.m --data '{"outcome":"human","final_tier":"T2","eval_rounds":2,"escalations":1}'`
    (`outcome` is `human` when the person decided it, `abandoned` when it was dropped. `eval_rounds` is the number of EVALUATE runs in the dispatcher's reports, and `escalations` the number of `escalation.triggered` you recorded.)
+
+   In your report (step 6), say for every stop what stopped, which of the choices above you took, and what you changed in the plan.
 6. **Report** to the person: per task, the tier, the model, the eval rounds, the outcome, the commit and what changed, from the dispatcher's table. Say plainly where the result departs from the brief. Then say what the routing log recorded, from the lines in the dispatcher's report and your own `harness-emit` output, including anything marked incomplete. Pass on any gap in the plan the evaluator named: the person decides whether it becomes a task.
 
 ## Recording events
