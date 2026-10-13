@@ -7788,8 +7788,11 @@ function homeDeny(home2) {
     ...GIT_DENY
   ];
 }
+var ALIAS_MODELS = { haiku: "claude-haiku-5-5", sonnet: "claude-sonnet-5-5", opus: "claude-opus-5-5" };
+var aliasEnv = () => Object.fromEntries(Object.entries(ALIAS_MODELS).map(([alias, model]) => [`ANTHROPIC_DEFAULT_${alias.toUpperCase()}_MODEL`, model]));
 var homeSettings = (home2) => ({
   permissions: { deny: homeDeny(home2) },
+  env: aliasEnv(),
   // Worktree subagents start from the current branch, not the default one (S6).
   worktree: { baseRef: "head" }
 });
@@ -7867,7 +7870,7 @@ function enrolPlan(dir2, pluginRoot2, { branch: branch2, now = /* @__PURE__ */ n
   }
   const settings = JSON.stringify(homeSettings(home2), null, 2) + "\n";
   if (readSafely(join5(home2, "settings.json")) !== settings) {
-    steps2.push({ what: `write ${join5(home2, "settings.json")} (${homeDeny(home2).length} deny rules for Harness sessions, worktrees from HEAD)`, apply: () => writeHome(home2, "settings.json", settings) });
+    steps2.push({ what: `write ${join5(home2, "settings.json")} (${homeDeny(home2).length} deny rules for Harness sessions, haiku/sonnet/opus pinned to 5.5, worktrees from HEAD)`, apply: () => writeHome(home2, "settings.json", settings) });
   }
   const hooks = hooksState(dir2, home2);
   const own = ownHooks(dir2, hooks.previous);
@@ -8039,6 +8042,12 @@ function homeChecks(dir2, home2, add) {
     "permissions",
     missingDeny.length ? "warn" : "pass",
     missingDeny.length ? `${missingDeny.length} deny rule(s) missing from ${join6(home2, "settings.json")} (/harness:init writes them)` : `${denied.size} deny rules for Harness sessions, in ${join6(home2, "settings.json")}`
+  );
+  const unpinned = Object.entries(aliasEnv()).filter(([name, model]) => settings.env?.[name] !== model).map(([name]) => name);
+  add(
+    "alias-models",
+    unpinned.length ? "warn" : "pass",
+    unpinned.length ? `${unpinned.join(", ")} not pinned in ${join6(home2, "settings.json")}, so a tier's model is whatever this Claude Code version makes of the alias (/harness:init writes them)` : `haiku, sonnet and opus are pinned to ${Object.values(aliasEnv()).join(", ")}`
   );
   add(
     "worktree-base",

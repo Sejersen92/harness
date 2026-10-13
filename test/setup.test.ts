@@ -104,6 +104,11 @@ test("init --apply enrols with nothing in the repository, doctor passes, and aga
   assert.deepEqual(settings.permissions.deny, homeDeny(home));
   assert.ok(settings.permissions.deny.every((rule: string) => !rule.startsWith("Write(")), "Edit rules only (S9)");
   assert.equal(settings.worktree.baseRef, "head");
+  assert.deepEqual(settings.env, {
+    ANTHROPIC_DEFAULT_HAIKU_MODEL: "claude-haiku-5-5",
+    ANTHROPIC_DEFAULT_SONNET_MODEL: "claude-sonnet-5-5",
+    ANTHROPIC_DEFAULT_OPUS_MODEL: "claude-opus-5-5",
+  }, "each policy alias is pinned to its 5.5 model");
 
   assert.deepEqual(readdirSync(join(home, "githooks")).sort(), ["commit-msg", "harness", "post-commit", "pre-commit"]);
   assert.equal(setting("core.hooksPath"), join(home, "githooks").replace(/\\/g, "/"));

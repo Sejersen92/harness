@@ -164,6 +164,7 @@ A repository still set up the old way (`routing.yaml`, `.githooks/` and `.claude
 | `spool-writable` | the metadata folder can't be written (fail); not enrolled, so there is none (warn) |
 | `git-hooks` | `core.hooksPath` isn't the home's `githooks/` (something such as husky's install moved it), or a wrapper is missing, so commits outside Claude Code aren't gated (fail) |
 | `permissions` | a deny rule is missing from the home's `settings.json` (warn) |
+| `alias-models` | the home's settings don't pin `haiku`, `sonnet` and `opus` to their 5.5 models (warn: without the pin, Claude Code 2.1.286 runs `haiku` as Haiku 4.5) |
 | `worktree-base` | `worktree.baseRef` isn't `head` (warn: needed only for parallel groups, M6) |
 | `gitignore`, `attribution-off` | the old layout only: as before (warn) |
 | `path-casing` | the working directory's letters differ in case from the disk's (warn, S6) |

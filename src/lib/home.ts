@@ -140,9 +140,21 @@ export function homeDeny(home: string): string[] {
   ];
 }
 
+/**
+ * The model each policy alias means in a Harness session. Claude Code resolves an alias itself, and
+ * the answer depends on its version: 2.1.286 ran `haiku` as claude-haiku-4-5 (2026-10-13, the first
+ * route run). A tier's model has to mean the same thing on every machine, so each alias is pinned.
+ */
+export const ALIAS_MODELS = { haiku: "claude-haiku-5-5", sonnet: "claude-sonnet-5-5", opus: "claude-opus-5-5" } as const;
+
+/** The environment that pins them: Claude Code reads ANTHROPIC_DEFAULT_<ALIAS>_MODEL for each alias. */
+export const aliasEnv = (): Record<string, string> =>
+  Object.fromEntries(Object.entries(ALIAS_MODELS).map(([alias, model]) => [`ANTHROPIC_DEFAULT_${alias.toUpperCase()}_MODEL`, model]));
+
 /** <home>/settings.json as it should be. */
-export const homeSettings = (home: string): { permissions: { deny: string[] }; worktree: { baseRef: string } } => ({
+export const homeSettings = (home: string): { permissions: { deny: string[] }; env: Record<string, string>; worktree: { baseRef: string } } => ({
   permissions: { deny: homeDeny(home) },
+  env: aliasEnv(),
   // Worktree subagents start from the current branch, not the default one (S6).
   worktree: { baseRef: "head" },
 });
@@ -263,7 +275,7 @@ export function enrolPlan(
 
   const settings = JSON.stringify(homeSettings(home), null, 2) + "\n";
   if (readSafely(join(home, "settings.json")) !== settings) {
-    steps.push({ what: `write ${join(home, "settings.json")} (${homeDeny(home).length} deny rules for Harness sessions, worktrees from HEAD)`, apply: () => writeHome(home, "settings.json", settings) });
+    steps.push({ what: `write ${join(home, "settings.json")} (${homeDeny(home).length} deny rules for Harness sessions, haiku/sonnet/opus pinned to 5.5, worktrees from HEAD)`, apply: () => writeHome(home, "settings.json", settings) });
   }
 
   const hooks = hooksState(dir, home);
