@@ -63,7 +63,7 @@ The dispatcher runs the plan by fixed rules, on a cheaper model, and starts with
    Then dispatch the dispatcher again, with the same kind of prompt, for the stopped task and the tasks not started. When the person decides a task is finished as it is, or drops it, complete it yourself and leave it out of the next dispatch:
    `harness-emit task.completed --task PLAN-n.m --data '{"outcome":"human","final_tier":"T2","eval_rounds":2,"escalations":1}'`
    (`outcome` is `human` when the person decided it, `abandoned` when it was dropped. `eval_rounds` is the number of EVALUATE runs in the dispatcher's reports, and `escalations` the number of `escalation.triggered` you recorded.)
-6. **Report** to the person: per task, the tier, the model, the eval rounds, the outcome, the commit and what changed, from the dispatcher's table. Say plainly where the result departs from the brief. Then say what the routing log recorded: `harness-emit` prints it, including anything marked incomplete.
+6. **Report** to the person: per task, the tier, the model, the eval rounds, the outcome, the commit and what changed, from the dispatcher's table. Say plainly where the result departs from the brief. Then say what the routing log recorded, from the lines in the dispatcher's report and your own `harness-emit` output, including anything marked incomplete. Pass on any gap in the plan the evaluator named: the person decides whether it becomes a task.
 
 ## Recording events
 
