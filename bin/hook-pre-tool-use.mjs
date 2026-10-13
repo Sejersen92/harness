@@ -7398,8 +7398,8 @@ function ulid(ms = Date.now()) {
 }
 var sha256 = (data) => createHash("sha256").update(data).digest("hex");
 var utcNow = (date = /* @__PURE__ */ new Date()) => date.toISOString().replace(/\.\d{3}Z$/, "Z");
-var TASK_ID = /PLAN-\d+(?:\.\d+)+/g;
-var taskIdsIn = (text) => [...new Set(String(text ?? "").match(TASK_ID) ?? [])];
+var PLAN_OR_TASK_ID = /PLAN-\d+(?:\.\d+)*/g;
+var planIdsIn = (text) => [...new Set((String(text ?? "").match(PLAN_OR_TASK_ID) ?? []).map((id) => id.replace(/\..*$/, "")))];
 
 // src/lib/config.ts
 var MODES = ["off", "observe", "route"];
@@ -7576,7 +7576,6 @@ function checkMarker(dir, markerPath, ttlMinutes, now = /* @__PURE__ */ new Date
 }
 
 // src/lib/intake.ts
-var planOf = (taskId) => taskId.replace(/\..*$/, "");
 function intakeVerdict(planId, maxAmbiguity, events) {
   const rounds = events.filter((e) => e.type === "plan.intake" && e.plan_id === planId);
   const latest = rounds.at(-1);
@@ -7597,7 +7596,7 @@ function intakeVerdict(planId, maxAmbiguity, events) {
 }
 var plansIn = (prompt) => {
   const header = String(prompt ?? "").split(/\r?\n/).find((line) => line.trim()) ?? "";
-  return [...new Set(taskIdsIn(header).map(planOf))];
+  return planIdsIn(header);
 };
 
 // src/lib/spool.ts
@@ -7794,7 +7793,7 @@ if (touchesMarker) {
 }
 if (harnessDispatch) {
   const plans = plansIn(args.prompt);
-  if (!plans.length) deny(`harness: a ${dispatched} dispatch must start with its header line naming the task (WRITE-TESTS:, IMPLEMENT: or EVALUATE: PLAN-n.m), so the intake gate can tell which plan it is for.`);
+  if (!plans.length) deny(`harness: a ${dispatched} dispatch must start with its header line naming the task or the plan (WRITE-TESTS:, IMPLEMENT: or EVALUATE: PLAN-n.m, or DISPATCH: PLAN-n), so the intake gate can tell which plan it is for.`);
   const events = readEvents(config);
   for (const plan of plans) {
     const verdict2 = intakeVerdict(plan, config.intakeMaxAmbiguity, events);

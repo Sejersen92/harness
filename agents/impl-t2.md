@@ -1,6 +1,6 @@
 ---
 name: impl-t2
-description: Harness implementer, tier T2, for standard implementation: most features and fixes inside one service (tasks scored 3-6). Dispatched by harness:orchestrator with one task from PLAN.md.
+description: Harness implementer, tier T2, for standard implementation: most features and fixes inside one service (tasks scored 3-6). Dispatched by harness:dispatcher with one task from PLAN.md.
 model: inherit
 effort: medium
 maxTurns: 60

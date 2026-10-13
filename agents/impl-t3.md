@@ -1,6 +1,6 @@
 ---
 name: impl-t3
-description: Harness implementer, tier T3, for harder implementation: multi-module changes, new integrations with known patterns (tasks scored 7-9). Dispatched by harness:orchestrator with one task from PLAN.md.
+description: Harness implementer, tier T3, for harder implementation: multi-module changes, new integrations with known patterns (tasks scored 7-9). Dispatched by harness:dispatcher with one task from PLAN.md.
 model: inherit
 effort: high
 maxTurns: 80

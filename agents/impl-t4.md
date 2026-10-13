@@ -1,6 +1,6 @@
 ---
 name: impl-t4
-description: Harness implementer, tier T4, for the hardest implementation: cross-service work, novel design under uncertainty (tasks scored 10-12). Dispatched by harness:orchestrator with one task from PLAN.md.
+description: Harness implementer, tier T4, for the hardest implementation: cross-service work, novel design under uncertainty (tasks scored 10-12). Dispatched by harness:dispatcher with one task from PLAN.md.
 model: inherit
 effort: medium
 maxTurns: 80

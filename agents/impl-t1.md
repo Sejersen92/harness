@@ -1,6 +1,6 @@
 ---
 name: impl-t1
-description: Harness implementer, tier T1, for mechanical changes: renames, boilerplate, docs, config edits, test fixtures (tasks scored 0-2). Dispatched by harness:orchestrator with one task from PLAN.md.
+description: Harness implementer, tier T1, for mechanical changes: renames, boilerplate, docs, config edits, test fixtures (tasks scored 0-2). Dispatched by harness:dispatcher with one task from PLAN.md.
 model: inherit
 effort: low
 maxTurns: 30

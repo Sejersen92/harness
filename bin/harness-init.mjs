@@ -7790,9 +7790,10 @@ function homeDeny(home2) {
 }
 var ALIAS_MODELS = { haiku: "claude-haiku-5-5", sonnet: "claude-sonnet-5-5", opus: "claude-opus-5-5" };
 var aliasEnv = () => Object.fromEntries(Object.entries(ALIAS_MODELS).map(([alias, model]) => [`ANTHROPIC_DEFAULT_${alias.toUpperCase()}_MODEL`, model]));
+var FOREGROUND_ENV = { CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1" };
 var homeSettings = (home2) => ({
   permissions: { deny: homeDeny(home2) },
-  env: aliasEnv(),
+  env: { ...aliasEnv(), ...FOREGROUND_ENV },
   // Worktree subagents start from the current branch, not the default one (S6).
   worktree: { baseRef: "head" }
 });
@@ -7870,7 +7871,7 @@ function enrolPlan(dir2, pluginRoot2, { branch: branch2, now = /* @__PURE__ */ n
   }
   const settings = JSON.stringify(homeSettings(home2), null, 2) + "\n";
   if (readSafely(join5(home2, "settings.json")) !== settings) {
-    steps2.push({ what: `write ${join5(home2, "settings.json")} (${homeDeny(home2).length} deny rules for Harness sessions, haiku/sonnet/opus pinned to 5.5, worktrees from HEAD)`, apply: () => writeHome(home2, "settings.json", settings) });
+    steps2.push({ what: `write ${join5(home2, "settings.json")} (${homeDeny(home2).length} deny rules for Harness sessions, haiku/sonnet/opus pinned to 5.5, subagents in the foreground, worktrees from HEAD)`, apply: () => writeHome(home2, "settings.json", settings) });
   }
   const hooks = hooksState(dir2, home2);
   const own = ownHooks(dir2, hooks.previous);
@@ -8048,6 +8049,12 @@ function homeChecks(dir2, home2, add) {
     "alias-models",
     unpinned.length ? "warn" : "pass",
     unpinned.length ? `${unpinned.join(", ")} not pinned in ${join6(home2, "settings.json")}, so a tier's model is whatever this Claude Code version makes of the alias (/harness:init writes them)` : `haiku, sonnet and opus are pinned to ${Object.values(aliasEnv()).join(", ")}`
+  );
+  const background = Object.entries(FOREGROUND_ENV).filter(([name, value]) => settings.env?.[name] !== value).map(([name]) => name);
+  add(
+    "foreground",
+    background.length ? "warn" : "pass",
+    background.length ? `${background.join(", ")} is not set in ${join6(home2, "settings.json")}, so subagents run in the background and the dispatcher can return before its workers finish (/harness:init writes it)` : "subagents run in the foreground, one at a time"
   );
   add(
     "worktree-base",

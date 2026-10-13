@@ -49,6 +49,8 @@ test("a dispatch's plans come from its header line only", () => {
   assert.deepEqual(plansIn("WRITE-TESTS: PLAN-7.2\n\n### PLAN-7.2 — x\n- Depends on: PLAN-7.1"), ["PLAN-7"]);
   assert.deepEqual(plansIn("EVALUATE: PLAN-3.1, PLAN-4.2"), ["PLAN-3", "PLAN-4"]);
   assert.deepEqual(plansIn("do the thing"), []);
+  assert.deepEqual(plansIn("DISPATCH: PLAN-7\n\nPLAN.md is at ...\nTasks: PLAN-7.1, PLAN-8.2"), ["PLAN-7"], "the dispatcher is started for a plan");
+  assert.deepEqual(plansIn("DISPATCH: PLAN-12, PLAN-12.3"), ["PLAN-12"]);
   // The first gated run (2026-10-08): PLAN-9.1's dispatch named PLAN-6's and PLAN-8's tests further down.
   assert.deepEqual(plansIn("\n  IMPLEMENT: PLAN-9.1\nThe existing tests PLAN-6.1/AC-2 and PLAN-8.2/AC-1 must keep passing."), ["PLAN-9"]);
   assert.deepEqual(plansIn("do the thing\nfor PLAN-9.1"), [], "a task named only below the first line is no header");

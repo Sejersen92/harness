@@ -654,19 +654,19 @@ var require_Alias = __commonJS({
           if (ctx)
             ctx.aliasResolveCache = nodes;
         }
-        let found = void 0;
+        let found2 = void 0;
         for (const node of nodes) {
           if (node === this)
             break;
           if (node.anchor === this.source)
-            found = node;
+            found2 = node;
         }
-        if (found && ctx) {
+        if (found2 && ctx) {
           const { anchors: anchors2, doc: doc2, maxAliasCount } = ctx;
-          let data2 = anchors2.get(found);
+          let data2 = anchors2.get(found2);
           if (!data2) {
-            toJS.toJS(found, null, ctx);
-            data2 = anchors2.get(found);
+            toJS.toJS(found2, null, ctx);
+            data2 = anchors2.get(found2);
           }
           if (data2?.res === void 0) {
             const msg = "This should not happen: Alias anchor was not resolved?";
@@ -675,14 +675,14 @@ var require_Alias = __commonJS({
           if (maxAliasCount >= 0) {
             data2.count += 1;
             if (data2.aliasCount === 0)
-              data2.aliasCount = getAliasCount(doc2, found, anchors2);
+              data2.aliasCount = getAliasCount(doc2, found2, anchors2);
             if (data2.count * data2.aliasCount > maxAliasCount) {
               const msg = "Excessive alias count indicates a resource exhaustion attack";
               throw new ReferenceError(msg);
             }
           }
         }
-        return found;
+        return found2;
       }
       toJSON(_arg, ctx) {
         if (!ctx)
@@ -3788,7 +3788,7 @@ var require_resolve_props = __commonJS({
       let tag = null;
       let newlineAfterProp = null;
       let comma = null;
-      let found = null;
+      let found2 = null;
       let start = null;
       for (const token of tokens) {
         if (reqSpace) {
@@ -3825,7 +3825,7 @@ var require_resolve_props = __commonJS({
             if (atNewline) {
               if (comment)
                 comment += token.source;
-              else if (!found || indicator !== "seq-item-ind")
+              else if (!found2 || indicator !== "seq-item-ind")
                 spaceBefore = true;
             } else
               commentSep += token.source;
@@ -3859,9 +3859,9 @@ var require_resolve_props = __commonJS({
           case indicator:
             if (anchor || tag)
               onError(token, "BAD_PROP_ORDER", `Anchors and tags must be after the ${token.source} indicator`);
-            if (found)
+            if (found2)
               onError(token, "UNEXPECTED_TOKEN", `Unexpected ${token.source} in ${flow ?? "collection"}`);
-            found = token;
+            found2 = token;
             atNewline = indicator === "seq-item-ind" || indicator === "explicit-key-ind";
             hasSpace = false;
             break;
@@ -3890,7 +3890,7 @@ var require_resolve_props = __commonJS({
         onError(tab, "TAB_AS_INDENT", "Tabs are not allowed as indentation");
       return {
         comma,
-        found,
+        found: found2,
         spaceBefore,
         comment,
         hasNewline,
@@ -7700,23 +7700,25 @@ function findReport() {
   }
   return fromMessage;
 }
-var { report, task_ids } = findReport();
+var found = findReport();
+var report = found.report;
+var task_ids = input.agent_type === "harness:dispatcher" ? [] : found.task_ids;
 if (report === "none" && !input.stop_hook_active) {
   process.stdout.write(JSON.stringify({
     decision: "block",
-    reason: 'Every Harness agent ends with a report header on its first line, naming the task ids it worked on, e.g. "DONE: PLAN-7.2" or "ESCALATE: PLAN-7.2 \u2014 reason". Write your final report again starting with that header.'
+    reason: 'Every Harness agent ends with a report header on its first line, naming the task ids it worked on, e.g. "DONE: PLAN-7.2" or "ESCALATE: PLAN-7.2 \u2014 reason" (the dispatcher names its plan: "DONE: PLAN-7"). Write your final report again starting with that header.'
   }));
   process.exit(0);
 }
 function observed(transcriptPath) {
-  const found = {};
+  const found2 = {};
   try {
     const lines = readFileSync4(transcriptPath ?? "", "utf8").trim().split("\n");
-    for (let i = lines.length - 1; i >= 0 && !found.model; i--) {
+    for (let i = lines.length - 1; i >= 0 && !found2.model; i--) {
       const line = JSON.parse(lines[i] ?? "");
       if (line.message?.model) {
-        found.model = line.message.model;
-        if (line.effort) found.effort = line.effort;
+        found2.model = line.message.model;
+        if (line.effort) found2.effort = line.effort;
       }
     }
   } catch {
@@ -7725,11 +7727,11 @@ function observed(transcriptPath) {
   if (meta && existsSync4(meta)) {
     try {
       const { model } = JSON.parse(readFileSync4(meta, "utf8"));
-      found.model_requested = model || "inherit";
+      found2.model_requested = model || "inherit";
     } catch {
     }
   }
-  return found;
+  return found2;
 }
 var started = agentState(config, agentId).take();
 var data = {

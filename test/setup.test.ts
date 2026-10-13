@@ -108,7 +108,8 @@ test("init --apply enrols with nothing in the repository, doctor passes, and aga
     ANTHROPIC_DEFAULT_HAIKU_MODEL: "claude-haiku-5-5",
     ANTHROPIC_DEFAULT_SONNET_MODEL: "claude-sonnet-5-5",
     ANTHROPIC_DEFAULT_OPUS_MODEL: "claude-opus-5-5",
-  }, "each policy alias is pinned to its 5.5 model");
+    CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1",
+  }, "each policy alias is pinned to its 5.5 model, and subagents run in the foreground");
 
   assert.deepEqual(readdirSync(join(home, "githooks")).sort(), ["commit-msg", "harness", "post-commit", "pre-commit"]);
   assert.equal(setting("core.hooksPath"), join(home, "githooks").replace(/\\/g, "/"));

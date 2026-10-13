@@ -26,6 +26,12 @@ export const utcNow = (date: Date = new Date()): string => date.toISOString().re
 
 const TASK_ID = /PLAN-\d+(?:\.\d+)+/g;
 
+const PLAN_OR_TASK_ID = /PLAN-\d+(?:\.\d+)*/g;
+
+/** Every plan a piece of text names, by a plan id (PLAN-7) or a task id (PLAN-7.2), in order, without duplicates. */
+export const planIdsIn = (text: unknown): string[] =>
+  [...new Set((String(text ?? "").match(PLAN_OR_TASK_ID) ?? []).map((id) => id.replace(/\..*$/, "")))];
+
 /** Every task id in a piece of text, in order, without duplicates. */
 export const taskIdsIn = (text: unknown): string[] => [...new Set(String(text ?? "").match(TASK_ID) ?? [])];
 
