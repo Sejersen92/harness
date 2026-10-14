@@ -104,6 +104,22 @@ The core idea working end to end: one real task is scored, dispatched and shown 
 - **Harness:** `mode: route`. Tier models come from `routing.yaml` (aliases `sonnet` and `opus`), applied the way S2 decided.
 - **PU:** the baseline report. Stratified by `score_band`, medians, a warning for any band with fewer than 8 tasks, orchestration overhead shown above the table.
 - **Done when:** the Routing page shows observe versus route per band, with cost, on real tasks.
+- **Shipped 2026-10-14.** The deployed `/routing` page, last 7 days, all versions, shows route beside the observe baseline per band, with cost. The real tasks came from two new repositories, IntakeService (A1) and intake-webapp (W1), which put 13 routed tasks on that day's page.
+
+  | Band | Observe, the baseline | Route |
+  |---|---|---|
+  | T1 | 34 tasks · 82% first pass · median $0.64 · 5m 26s | haiku 5.5: 17 tasks · 88% · ≥ $0.24 · 3m 28s |
+  | T2 | 27 tasks · 81% · $1.37 · 10m 23s | sonnet 5.5: 13 tasks · 100% · $0.75 · 4m 36s |
+  | T3 | none | sonnet 5.5: 1 task · 100% · $1.02 |
+  | T4 | none | none |
+
+  - **Orchestration overhead:** 48% of session cost in observe ($60.41 over 14 sessions), and ≥ 42% routed (≥ $14.83 over 7 sessions: orchestrator $11.52, dispatcher $3.32).
+  - **Routing is cheaper and no worse.** T1 and T2 both cost less and pass first time at least as often, so they are inside ROUTING-POLICY.md's 5-point margin.
+  - **What this doesn't prove:**
+    - **T3 and T4 have no comparison.** The observe baseline has no task in either band, and route has one T3. That waits for M7's calibration, not for this milestone.
+    - **T1's routed cost is a lower bound** (≥). Some of it went unattributed.
+    - **Overrides are left out of the T1 haiku figure.** Two T1 tasks ran on sonnet by the owner's choice (1 of 2 first pass), and three on the old unpinned alias haiku 4.5.
+    - **Each first task is missing from the routing log.** PLAN-1.1 of both runs has no routing-log line, because the orchestrators recorded into a stray `<home>/.harness/`. That bug is fixed in 0.10.4.
 
 ### M5 — Escalation (2 days)
 
