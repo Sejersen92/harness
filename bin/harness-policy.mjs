@@ -7368,11 +7368,12 @@ var require_dist = __commonJS({
 });
 
 // src/cli/policy.ts
-import { existsSync as existsSync2 } from "node:fs";
+import { existsSync as existsSync3 } from "node:fs";
 import { join as join3 } from "node:path";
 
 // src/lib/config.ts
 import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 var import_yaml = __toESM(require_dist(), 1);
@@ -7397,13 +7398,30 @@ function repoHome(dir) {
   const name = basename(key).replace(/[^a-z0-9._-]+/g, "-") || "repo";
   return join(harnessHome(), "repos", `${name}-${sha256(key).slice(0, 8)}`);
 }
+function homeContaining(dir) {
+  const repos = normalisedPath(join(harnessHome(), "repos"));
+  const here = resolve(dir).replace(/\\/g, "/").replace(/\/+$/, "");
+  if (!here.toLowerCase().startsWith(`${repos}/`)) return null;
+  const name = here.slice(repos.length + 1).split("/")[0];
+  return name ? join(harnessHome(), "repos", name) : null;
+}
+function repoDirOf(home) {
+  try {
+    const record = JSON.parse(readFileSync(join(home, "repo.json"), "utf8"));
+    return typeof record.repo_dir === "string" && record.repo_dir.length > 0 ? record.repo_dir : null;
+  } catch {
+    return null;
+  }
+}
 function projectDir(cwd = process.cwd()) {
-  return process.env.CLAUDE_PROJECT_DIR || git(cwd, "rev-parse", "--show-toplevel") || cwd;
+  const dir = process.env.CLAUDE_PROJECT_DIR || git(cwd, "rev-parse", "--show-toplevel") || cwd;
+  const home = homeContaining(dir);
+  return home && repoDirOf(home) || dir;
 }
 
 // src/lib/policy.ts
 var import_yaml2 = __toESM(require_dist(), 1);
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync as existsSync2, mkdirSync, readFileSync as readFileSync2, renameSync, writeFileSync } from "node:fs";
 import { join as join2 } from "node:path";
 var POLICY_MODES = ["observe", "route"];
 var MODELS = ["haiku", "sonnet", "opus"];
@@ -7500,9 +7518,9 @@ function renderRouting(text, policy) {
 var statePath = (home) => join2(home, "state", "policy.json");
 function readState(home) {
   const path = statePath(home);
-  if (!existsSync(path)) return null;
+  if (!existsSync2(path)) return null;
   try {
-    const raw = JSON.parse(readFileSync(path, "utf8"));
+    const raw = JSON.parse(readFileSync2(path, "utf8"));
     if (!isObject(raw) || typeof raw.appliedAt !== "string") return null;
     const { appliedAt, ...rest } = raw;
     const checked = validateShape(rest);
@@ -7523,7 +7541,7 @@ var showLine = (state) => oneLineText(state ? `rev ${state.revision} \xB7 ${summ
 var errorCode = (error) => error?.code ?? (error instanceof Error ? error.message : String(error));
 function applyPolicy(home, policy, now = /* @__PURE__ */ new Date()) {
   const routingPath = join2(home, "routing.yaml");
-  const text = readFileSync(routingPath, "utf8");
+  const text = readFileSync2(routingPath, "utf8");
   const rendered = renderRouting(text, policy);
   if (!rendered.ok) return { line: `refused: ${rendered.why}`, code: 1 };
   const state = readState(home);
@@ -7571,7 +7589,7 @@ function apply(home, args) {
 function main() {
   const [command, ...args] = process.argv.slice(2);
   const home = repoHome(projectDir());
-  const enrolled = existsSync2(join3(home, "routing.yaml"));
+  const enrolled = existsSync3(join3(home, "routing.yaml"));
   if (command === "show") return { line: enrolled ? showLine(readState(home)) : "none \xB7 not enrolled", code: 0 };
   if (command === "apply") {
     if (!enrolled) return { line: "refused: not enrolled (this repository has no Harness home; run /harness:init first)", code: 1 };
