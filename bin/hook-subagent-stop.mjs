@@ -7425,8 +7425,26 @@ function repoHome(dir) {
   return join(harnessHome(), "repos", `${name}-${sha256(key).slice(0, 8)}`);
 }
 var NOT_ENROLLED = "not enrolled";
+var ORPHAN_HOME = "a Harness home with no repo.json, so not a repository";
+function homeContaining(dir) {
+  const repos = normalisedPath(join(harnessHome(), "repos"));
+  const here = resolve(dir).replace(/\\/g, "/").replace(/\/+$/, "");
+  if (!here.toLowerCase().startsWith(`${repos}/`)) return null;
+  const name = here.slice(repos.length + 1).split("/")[0];
+  return name ? join(harnessHome(), "repos", name) : null;
+}
+function repoDirOf(home) {
+  try {
+    const record = JSON.parse(readFileSync(join(home, "repo.json"), "utf8"));
+    return typeof record.repo_dir === "string" && record.repo_dir.length > 0 ? record.repo_dir : null;
+  } catch {
+    return null;
+  }
+}
 function projectDir(cwd = process.cwd()) {
-  return process.env.CLAUDE_PROJECT_DIR || git(cwd, "rev-parse", "--show-toplevel") || cwd;
+  const dir = process.env.CLAUDE_PROJECT_DIR || git(cwd, "rev-parse", "--show-toplevel") || cwd;
+  const home = homeContaining(dir);
+  return home && repoDirOf(home) || dir;
 }
 function repoIdentity(dir) {
   const remote = git(dir, "remote", "get-url", "origin");
@@ -7465,7 +7483,11 @@ var DEFAULT_TEST_GLOBS = [
   "**/*.Tests/**",
   "**/*Tests.cs"
 ];
-function loadConfig(dir = projectDir()) {
+function loadConfig(requested = projectDir()) {
+  const inside = homeContaining(requested);
+  const owner = inside ? repoDirOf(inside) : null;
+  if (inside && !owner) return { dir: requested, mode: "off", reason: ORPHAN_HOME, home: inside };
+  const dir = owner ?? requested;
   const home = repoHome(dir);
   const homed = existsSync(join(home, "routing.yaml"));
   if (!homed && !existsSync(join(dir, "routing.yaml"))) return { dir, mode: "off", reason: NOT_ENROLLED, home };

@@ -7369,6 +7369,7 @@ var require_dist = __commonJS({
 
 // src/lib/config.ts
 import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 var import_yaml = __toESM(require_dist(), 1);
@@ -7392,21 +7393,38 @@ function repoHome(dir2) {
   const name = basename(key).replace(/[^a-z0-9._-]+/g, "-") || "repo";
   return join(harnessHome(), "repos", `${name}-${sha256(key).slice(0, 8)}`);
 }
+function homeContaining(dir2) {
+  const repos = normalisedPath(join(harnessHome(), "repos"));
+  const here = resolve(dir2).replace(/\\/g, "/").replace(/\/+$/, "");
+  if (!here.toLowerCase().startsWith(`${repos}/`)) return null;
+  const name = here.slice(repos.length + 1).split("/")[0];
+  return name ? join(harnessHome(), "repos", name) : null;
+}
+function repoDirOf(home) {
+  try {
+    const record = JSON.parse(readFileSync(join(home, "repo.json"), "utf8"));
+    return typeof record.repo_dir === "string" && record.repo_dir.length > 0 ? record.repo_dir : null;
+  } catch {
+    return null;
+  }
+}
 function projectDir(cwd = process.cwd()) {
-  return process.env.CLAUDE_PROJECT_DIR || git(cwd, "rev-parse", "--show-toplevel") || cwd;
+  const dir2 = process.env.CLAUDE_PROJECT_DIR || git(cwd, "rev-parse", "--show-toplevel") || cwd;
+  const home = homeContaining(dir2);
+  return home && repoDirOf(home) || dir2;
 }
 
 // src/lib/home.ts
 import { execFileSync as execFileSync2 } from "node:child_process";
-import { chmodSync, existsSync as existsSync2, mkdirSync as mkdirSync2, readdirSync as readdirSync2, readFileSync as readFileSync2, rmSync as rmSync2, statSync, writeFileSync as writeFileSync2 } from "node:fs";
+import { chmodSync, existsSync as existsSync3, mkdirSync as mkdirSync2, readdirSync as readdirSync2, readFileSync as readFileSync3, rmSync as rmSync2, statSync, writeFileSync as writeFileSync2 } from "node:fs";
 var import_yaml2 = __toESM(require_dist(), 1);
 import { isAbsolute, join as join3, relative } from "node:path";
 
 // src/lib/spool.ts
-import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync as existsSync2, mkdirSync, readdirSync, readFileSync as readFileSync2, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join as join2, resolve as resolve2 } from "node:path";
 var registryPath = () => join2(harnessHome(), "spools.json");
-var readRegistry = (path) => existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : { version: 1, spools: [] };
+var readRegistry = (path) => existsSync2(path) ? JSON.parse(readFileSync2(path, "utf8")) : { version: 1, spools: [] };
 function writeRegistry(path, registry) {
   mkdirSync(join2(path, ".."), { recursive: true });
   writeFileSync(`${path}.tmp`, JSON.stringify(registry, null, 2) + "\n");
@@ -7432,14 +7450,14 @@ var git2 = (dir2, ...args2) => {
 };
 var readJson = (path) => {
   try {
-    return JSON.parse(readFileSync2(path, "utf8"));
+    return JSON.parse(readFileSync3(path, "utf8"));
   } catch {
     return null;
   }
 };
 var readSafely = (path) => {
   try {
-    return readFileSync2(path, "utf8");
+    return readFileSync3(path, "utf8");
   } catch {
     return "";
   }
@@ -7452,14 +7470,14 @@ function hooksState(dir2, home) {
 }
 function homes() {
   const root = join3(harnessHome(), "repos");
-  if (!existsSync2(root)) return [];
+  if (!existsSync3(root)) return [];
   return readdirSync2(root, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => join3(root, e.name)).map((home) => ({ home, repoDir: readJson(join3(home, "repo.json"))?.repo_dir ?? null }));
 }
 function spoolLines(home) {
   let lines = 0;
   for (const folder of ["events", "routing-log"]) {
     const dir2 = join3(home, folder);
-    if (!existsSync2(dir2)) continue;
+    if (!existsSync3(dir2)) continue;
     for (const name of readdirSync2(dir2).filter((n) => n.endsWith(".jsonl"))) {
       lines += readSafely(join3(dir2, name)).split("\n").filter((l) => l.trim()).length;
     }
@@ -7468,7 +7486,7 @@ function spoolLines(home) {
 }
 function forgetPlan(home, repoDir) {
   const steps = [];
-  if (repoDir && existsSync2(join3(repoDir, ".git"))) {
+  if (repoDir && existsSync3(join3(repoDir, ".git"))) {
     const hooks = hooksState(repoDir, home);
     if (hooks.ours) {
       const previous = hooks.previous;
@@ -7483,7 +7501,7 @@ function forgetPlan(home, repoDir) {
     }
   }
   const unsentRisk = spoolLines(home);
-  if (existsSync2(home)) {
+  if (existsSync3(home)) {
     steps.push({ what: `delete ${home}${unsentRisk ? ` (its spool holds ${unsentRisk} line(s))` : ""}`, apply: () => rmSync2(home, { recursive: true, force: true }) });
   }
   if (registered(home)) steps.push({ what: `remove it from ${registryPath()}`, apply: () => unregisterSpool(home) });

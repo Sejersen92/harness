@@ -7572,8 +7572,26 @@ function repoHome(dir2) {
   return join3(harnessHome(), "repos", `${name}-${sha256(key).slice(0, 8)}`);
 }
 var NOT_ENROLLED = "not enrolled";
+var ORPHAN_HOME = "a Harness home with no repo.json, so not a repository";
+function homeContaining(dir2) {
+  const repos = normalisedPath(join3(harnessHome(), "repos"));
+  const here = resolve(dir2).replace(/\\/g, "/").replace(/\/+$/, "");
+  if (!here.toLowerCase().startsWith(`${repos}/`)) return null;
+  const name = here.slice(repos.length + 1).split("/")[0];
+  return name ? join3(harnessHome(), "repos", name) : null;
+}
+function repoDirOf(home2) {
+  try {
+    const record = JSON.parse(readFileSync3(join3(home2, "repo.json"), "utf8"));
+    return typeof record.repo_dir === "string" && record.repo_dir.length > 0 ? record.repo_dir : null;
+  } catch {
+    return null;
+  }
+}
 function projectDir(cwd = process.cwd()) {
-  return process.env.CLAUDE_PROJECT_DIR || git(cwd, "rev-parse", "--show-toplevel") || cwd;
+  const dir2 = process.env.CLAUDE_PROJECT_DIR || git(cwd, "rev-parse", "--show-toplevel") || cwd;
+  const home2 = homeContaining(dir2);
+  return home2 && repoDirOf(home2) || dir2;
 }
 function pluginRoot() {
   if (process.env.CLAUDE_PLUGIN_ROOT) return process.env.CLAUDE_PLUGIN_ROOT;
@@ -7596,7 +7614,11 @@ var DEFAULT_TEST_GLOBS = [
   "**/*.Tests/**",
   "**/*Tests.cs"
 ];
-function loadConfig(dir2 = projectDir()) {
+function loadConfig(requested = projectDir()) {
+  const inside = homeContaining(requested);
+  const owner = inside ? repoDirOf(inside) : null;
+  if (inside && !owner) return { dir: requested, mode: "off", reason: ORPHAN_HOME, home: inside };
+  const dir2 = owner ?? requested;
   const home2 = repoHome(dir2);
   const homed = existsSync3(join3(home2, "routing.yaml"));
   if (!homed && !existsSync3(join3(dir2, "routing.yaml"))) return { dir: dir2, mode: "off", reason: NOT_ENROLLED, home: home2 };

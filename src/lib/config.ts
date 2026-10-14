@@ -51,9 +51,41 @@ export function repoHome(dir: string): string {
 /** loadConfig's reason when a repository is set up in neither layout. */
 export const NOT_ENROLLED = "not enrolled";
 
-/** The repository the session works in: Claude Code's project dir, else git's top level, else cwd. */
+/** loadConfig's reason when dir is inside a Harness home that doesn't say which repository it belongs to. */
+export const ORPHAN_HOME = "a Harness home with no repo.json, so not a repository";
+
+/**
+ * When dir is a repository's home or a folder inside one (~/.harness/repos/<name>-<hash>/...), that home;
+ * else null. A home holds a routing.yaml, so without this check it reads as an old-layout repository and
+ * its events land in a stray <home>/.harness/ that pu sync then sends under a phantom repository.
+ */
+export function homeContaining(dir: string): string | null {
+  const repos = normalisedPath(join(harnessHome(), "repos"));
+  const here = resolve(dir).replace(/\\/g, "/").replace(/\/+$/, "");
+  if (!here.toLowerCase().startsWith(`${repos}/`)) return null;
+  const name = here.slice(repos.length + 1).split("/")[0];
+  return name ? join(harnessHome(), "repos", name) : null;
+}
+
+/** The clone a home belongs to, from its repo.json; null when there is none or it can't be read. */
+function repoDirOf(home: string): string | null {
+  try {
+    const record = JSON.parse(readFileSync(join(home, "repo.json"), "utf8")) as { repo_dir?: unknown };
+    return typeof record.repo_dir === "string" && record.repo_dir.length > 0 ? record.repo_dir : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The repository the session works in: Claude Code's project dir, else git's top level, else cwd. A
+ * home, or any folder inside one, stands for the repository its repo.json names, so an orchestrator
+ * that changes into its home to edit PLAN.md still records into the repository's own spool.
+ */
 export function projectDir(cwd: string = process.cwd()): string {
-  return process.env.CLAUDE_PROJECT_DIR || git(cwd, "rev-parse", "--show-toplevel") || cwd;
+  const dir = process.env.CLAUDE_PROJECT_DIR || git(cwd, "rev-parse", "--show-toplevel") || cwd;
+  const home = homeContaining(dir);
+  return (home && repoDirOf(home)) || dir;
 }
 
 /**
@@ -105,7 +137,13 @@ export const DEFAULT_TEST_GLOBS: readonly string[] = [
  * repository root. Neither means the Harness is off for this repository. config_sha256 covers this
  * file only (C16): prompts and skills are versioned by the plugin.
  */
-export function loadConfig(dir: string = projectDir()): LoadedConfig {
+export function loadConfig(requested: string = projectDir()): LoadedConfig {
+  // A home is never a repository. Read it as the repository it belongs to, or as off: never as an
+  // old-layout repository with a spool of its own.
+  const inside = homeContaining(requested);
+  const owner = inside ? repoDirOf(inside) : null;
+  if (inside && !owner) return { dir: requested, mode: "off", reason: ORPHAN_HOME, home: inside };
+  const dir = owner ?? requested;
   const home = repoHome(dir);
   const homed = existsSync(join(home, "routing.yaml"));
   if (!homed && !existsSync(join(dir, "routing.yaml"))) return { dir, mode: "off", reason: NOT_ENROLLED, home };

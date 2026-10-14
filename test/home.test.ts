@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadConfig, NOT_ENROLLED, repoHome } from "../src/lib/config.ts";
+import { homeContaining, loadConfig, NOT_ENROLLED, ORPHAN_HOME, projectDir, repoHome } from "../src/lib/config.ts";
 import { isMarkerPath } from "../src/lib/gate.ts";
 import { root, type Line } from "./validators.ts";
 import { cleanEnv, git as runGit } from "./git.ts";
@@ -98,6 +98,62 @@ test("loadConfig finds the home first, then a routing.yaml in the repository, an
     assert.equal(homed.layout?.planPath, join(home, "PLAN.md"));
     assert.equal(homed.metadataDir, home);
   });
+});
+
+test("a home, or a folder inside it, stands for the repository its repo.json names", () => {
+  const { dir, harnessHome } = makeRepo();
+  const home = enrol(dir, harnessHome);
+  writeFileSync(join(home, "repo.json"), JSON.stringify({ schema: "harness.repo/v1", repo_dir: dir }));
+  mkdirSync(join(home, "state"), { recursive: true });
+  withHarnessHome(harnessHome, () => {
+    for (const where of [home, join(home, "state"), home.toUpperCase()]) {
+      const config = loadConfig(where);
+      assert.equal(config.mode, "observe", `${where} reads as the enrolled repository`);
+      assert.equal(config.dir, dir);
+      assert.equal(config.metadataDir, home, "its events go to the home, not to <home>/.harness");
+    }
+    assert.equal(homeContaining(dir), null, "the repository itself is not inside a home");
+    assert.equal(homeContaining(join(harnessHome, "repos")), null, "nor is the folder that holds the homes");
+
+    const previous = process.env.CLAUDE_PROJECT_DIR;
+    delete process.env.CLAUDE_PROJECT_DIR;
+    try {
+      assert.equal(projectDir(home), dir, "with no project dir, a shell in the home still means the repository");
+    } finally {
+      if (previous !== undefined) process.env.CLAUDE_PROJECT_DIR = previous;
+    }
+  });
+});
+
+test("a home with no repo.json is off, never an old-layout repository with a spool of its own", () => {
+  const harnessHome = mkdtempSync(join(tmpdir(), "harness-home-"));
+  const orphan = join(harnessHome, "repos", "gone-0badc0de");
+  mkdirSync(orphan, { recursive: true });
+  writeFileSync(join(orphan, "routing.yaml"), ROUTING);
+  withHarnessHome(harnessHome, () => {
+    const config = loadConfig(orphan);
+    assert.equal(config.mode, "off");
+    assert.equal(config.reason, ORPHAN_HOME);
+  });
+  assert.equal(existsSync(join(orphan, ".harness")), false);
+});
+
+test("harness-emit run from inside the home records into the repository's spool and leaves no stray .harness", () => {
+  const { dir, harnessHome } = makeRepo();
+  const home = enrol(dir, harnessHome);
+  writeFileSync(join(home, "repo.json"), JSON.stringify({ schema: "harness.repo/v1", repo_dir: dir }));
+  const env: NodeJS.ProcessEnv = { ...cleanEnv(), CLAUDE_CODE_SESSION_ID: SESSION, CLAUDE_PLUGIN_ROOT: root, HARNESS_HOME: harnessHome };
+  delete env.CLAUDE_PROJECT_DIR;
+  const run = spawnSync("node", [join(root, "bin", "harness-emit.mjs"), "plan.created", "--plan", "PLAN-1", "--data", '{"task_count":1}'],
+    { cwd: home, env, encoding: "utf8" });
+  assert.equal(run.status, 0, run.stderr);
+  assert.match(run.stdout, /plan\.created recorded/);
+  assert.equal(existsSync(join(home, ".harness")), false, "no spool inside the home");
+  const events = readFileSync(join(home, "events", `${new Date().toISOString().slice(0, 10)}.jsonl`), "utf8").trim().split("\n");
+  assert.equal(events.length, 1);
+  assert.equal((JSON.parse(events[0]!) as Line).type, "plan.created");
+  const registry = JSON.parse(readFileSync(join(harnessHome, "spools.json"), "utf8")) as { spools: { metadata_dir: string }[] };
+  assert.ok(registry.spools.every((s) => !/[\\/]\.harness$/.test(s.metadata_dir)), "no phantom spool registered");
 });
 
 test("the marker guard knows a home's marker as well as the old one", () => {
