@@ -1,0 +1,21 @@
+---
+name: definition-of-ready
+description: The checklist a Harness brief passes before harness:dispatcher gets the plan, from the GovernanceOS Lens. Ready is evidence, not a feeling. Preloaded into harness:orchestrator; not for other sessions.
+sources:
+  - app/(docs)/manual/lens/dor.tsx
+---
+
+# Definition of Ready
+
+*Ready is evidence, not a feeling.* A plan goes to `harness:dispatcher` only when its brief and tasks pass every line. These are the Lens's six axes, as they apply to a plan.
+
+- **Feasibility.** Every file, API, command and tool the plan relies on was checked to exist, not assumed.
+- **Behaviour.** The plan says how the change runs where it is used (the command, the page, the service), and how each success signal is observed there.
+- **Value.** The Goal says why, and for whom. The success signals measure that.
+- **Dependencies.** Each dependency is named with its owner: another repository, a deployed service, a decision by the person. None is still pending. See `boundaries-and-dependencies`.
+- **Blast radius.** The worst case if the change fails is known, and the rubric's blast and reversibility scores reflect it.
+- **Novelty.** Has this been done before in this repository? Guessing means novelty 2, or a spike task first.
+
+Placeholders invalidate a line: "TBD", "later", "link coming", or a criterion ending in "etc.".
+
+The gates also hold: intake is at or under `max_ambiguity` (or the person overruled it, with their reason), and the scores were reviewed. A plan that isn't ready isn't dispatched. Name what is missing.

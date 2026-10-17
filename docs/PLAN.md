@@ -163,6 +163,7 @@ Every fix from the review, plus three found while planning (C12, C13, C16).
 | C14 | PU stores Harness data through DocumentService (K4). | M1 |
 | C15 | Brief 04 (cost and observability) folds into this plan. Brief 01 is renamed *distillation evals* so it isn't confused with the Harness eval. | roadmap |
 | C16 | `config_sha256` covers only `routing.yaml`; the rubric and agent prompts live in the plugin. **Bump the plugin version on any prompt or skill change, freeze both during the baseline,** and have PU compare within one `config_sha256` + `producer.version`. | M1 onward |
+| C17 | **Skills by role** (0.11.0). Each agent preloads only its role's skills, generated from GovernanceOS and pinned in `skills/SOURCES.json`. The orchestrator gets its skills from a SessionStart hook, because `claude --agent` doesn't preload them. DESIGN.md has the table. The version bump splits M7's routed data at 0.11.0. Compare first-pass rate, rework rounds and cost per task within each version. | DESIGN.md, M7 |
 
 ## What we won't build, and why
 

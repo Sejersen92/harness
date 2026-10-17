@@ -71,6 +71,22 @@ C4 changes the Harness document's Sonnet evaluator for T1–T2: the evaluator is
 
 **Every report starts with a header naming its tasks:** `DONE: PLAN-7.2`, `PASS: PLAN-7.1, PLAN-7.2`. The `require-report` hook blocks a stop without one. The SubagentStop hook reads the header from `last_assistant_message` (spike S4) and records `task_ids[]`, which is how each run's cost is tied to its task.
 
+### Skills by role (0.11.0)
+
+Each agent gets only the skills its role uses, listed in its definition's `skills:` frontmatter. No agent has the Skill tool, so two runs of the same brief start from the same standards.
+
+| Agent | Skills |
+|---|---|
+| `orchestrator` | complexity-rubric, the-clarity-contract, the-assumption-tax, the-same-room, rigid-mobility, the-tunnel, definition-of-ready, boundaries-and-dependencies, plan-honestly |
+| `dispatcher` | none, on purpose: everything it needs is in `PLAN.md`, and principles would invite it to interpret |
+| `impl-t1`, `impl-t2` | gfa-precepts |
+| `impl-t3`, `impl-t4` | gfa-precepts, gfa-blueprint |
+| `evaluator` | definition-of-done, audit-exhaust, the-same-room, gfa-precepts |
+
+- **How they arrive.** Claude Code preloads `skills:` into a subagent, but not into a main-thread `claude --agent` session (probed on 2.1.292, 2026-10-17). That gap is why an orchestrator could plan without the rubric. The `session-skills` SessionStart hook reads the orchestrator's list and injects the skills itself. A hook's context is cut to a preview above 10,000 characters, per hook, so the skills are packed in order into up to four parts, one hook per part. Anything that can't be injected is named at the top of part 1.
+- **Where they come from.** `npm run skills -- <governanceos checkout>` writes `skills/` from `skills-src/`. A principle skill takes its name, short form and test from governanceos's `lib/principles/core.ts`, so the website and the Harness can't say two things. `skills/SOURCES.json` pins the governanceos commit and every skill's SHA-256, and a test fails if a skill is edited by hand. The routing log ties each event to the skills through `producer.version` (C16).
+- **Precedence.** The agent's definition comes first, then the brief and `PLAN.md`, then the skills. Every conflict is reported, never settled quietly. For the evaluator, a skill finding that no criterion or stage covers is a gap in its report, not a FAIL. Anything that must always hold belongs in a criterion or an eval stage.
+
 ## Hooks
 
 Plugin subagents ignore `hooks`, `mcpServers` and `permissionMode` in their frontmatter. So **every hook lives in the plugin's `hooks/hooks.json`**, session-wide, and each script branches on `agent_type` from the hook input (spike S3). For example, `protect-tests` acts only for `harness:impl-t*`.

@@ -1,7 +1,13 @@
 {
   "hooks": {
     "SessionStart": [
-      { "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/bin/hook-session-start.mjs"], "timeout": 10 } ] }
+      { "hooks": [
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/bin/hook-session-start.mjs"], "timeout": 10 },
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/bin/hook-session-skills.mjs", "1"], "timeout": 10 },
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/bin/hook-session-skills.mjs", "2"], "timeout": 10 },
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/bin/hook-session-skills.mjs", "3"], "timeout": 10 },
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/bin/hook-session-skills.mjs", "4"], "timeout": 10 }
+      ] }
     ],
     "PreToolUse": [
       { "matcher": "Bash|Edit|Write|MultiEdit|NotebookEdit|Agent|Task", "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/bin/hook-pre-tool-use.mjs"], "timeout": 30 } ] }
