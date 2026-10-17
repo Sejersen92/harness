@@ -1,0 +1,104 @@
+{
+  "governanceos": {
+    "repository": "github.com/Sejersen92/GovernanceOS",
+    "commit": "e8fb608efb143792fd033e57544b8641e1f99f4f"
+  },
+  "skills": {
+    "audit-exhaust": {
+      "source": "skills-src/audit-exhaust.md",
+      "from": [
+        "lib/principles/core.ts",
+        "app/(docs)/manual/runtime/audit.tsx"
+      ],
+      "sha256": "db646431821bf3db955ee350e389d62d13f71007e4e4a9ae114eba7239cb671e"
+    },
+    "boundaries-and-dependencies": {
+      "source": "skills-src/boundaries-and-dependencies.md",
+      "from": [
+        "app/(docs)/manual/lens/boundaries.tsx"
+      ],
+      "sha256": "0f347068d90abd2d1bfb9c6c8eff5d976921b31932880c03c5e79d59153eff7e"
+    },
+    "definition-of-done": {
+      "source": "skills-src/definition-of-done.md",
+      "from": [
+        "app/(docs)/manual/lens/dod.tsx"
+      ],
+      "sha256": "a102562007ed2abde0d9be00ba039150c72889ceb1062707229ece27fa6d0ce8"
+    },
+    "definition-of-ready": {
+      "source": "skills-src/definition-of-ready.md",
+      "from": [
+        "app/(docs)/manual/lens/dor.tsx"
+      ],
+      "sha256": "aed67836762ae934a09e228d9b4cc6cded306697fca4c5e6a46a700a312d6d76"
+    },
+    "gfa-blueprint": {
+      "source": "skills-src/gfa-blueprint.md",
+      "from": [
+        "~/.claude/skills/governance-os/SKILL.md (Shift-Left Infrastructure, Implementation Blueprint, New service bootstrap)"
+      ],
+      "sha256": "a8faa810cd08503a53989eb3aa918240afa2a4d8ddd73c4a933f56aec53b3b58"
+    },
+    "gfa-precepts": {
+      "source": "skills-src/gfa-precepts.md",
+      "from": [
+        "~/.claude/skills/governance-os/SKILL.md (The Six Core Precepts)",
+        "app/(docs)/manual/core/the-same-room.tsx (Headless-First)"
+      ],
+      "sha256": "e917698b91d55332d799cbb48cee0ef086a8759e8b249bfb8ed7af6f82bef828"
+    },
+    "plan-honestly": {
+      "source": "skills-src/plan-honestly.md",
+      "from": [
+        "~/.claude/skills/plan-honestly/SKILL.md (body verbatim)"
+      ],
+      "sha256": "0e6ce754555ad20d5ffabd40b4313d11141440dc2ccefcf965a86ef0e8750d4a"
+    },
+    "rigid-mobility": {
+      "source": "skills-src/rigid-mobility.md",
+      "from": [
+        "lib/principles/core.ts",
+        "app/(docs)/manual/accelerator/rigid-mobility.tsx"
+      ],
+      "sha256": "8e0e27c6394a0da242753fcb038d9b78eb0136a56190db76627e181f079700ae"
+    },
+    "the-assumption-tax": {
+      "source": "skills-src/the-assumption-tax.md",
+      "from": [
+        "lib/principles/core.ts",
+        "app/(docs)/manual/core/the-assumption-tax.tsx"
+      ],
+      "sha256": "eb72236590c0138f1322f903adfeec57142e39878e73adf5e1ddd28bc2b53b2a"
+    },
+    "the-clarity-contract": {
+      "source": "skills-src/the-clarity-contract.md",
+      "from": [
+        "lib/principles/core.ts",
+        "app/(docs)/manual/core/the-clarity-contract.tsx"
+      ],
+      "sha256": "f49594f8d9c0bba7bfbbd99543f551c4a055d337a07a7d6b5f7d944464cdf72c"
+    },
+    "the-same-room": {
+      "source": "skills-src/the-same-room.md",
+      "from": [
+        "lib/principles/core.ts",
+        "app/(docs)/manual/core/the-same-room.tsx"
+      ],
+      "sha256": "17e4ed882f40dc4074a76c6f51e205c6096fe1e1172ddcff6059e5624bef004b"
+    },
+    "the-tunnel": {
+      "source": "skills-src/the-tunnel.md",
+      "from": [
+        "lib/principles/core.ts",
+        "app/(docs)/manual/core/the-tunnel.tsx",
+        "app/(docs)/manual/shield/stop-work.tsx"
+      ],
+      "sha256": "1e13fe1cad93b3a2b1f7f4e3b1f91ace9091eebde1b8674b41a0eb0ab8f22be9"
+    },
+    "complexity-rubric": {
+      "source": "hand-written",
+      "sha256": "89c2dc2986e34d9e1d49e3e7a44b82502d6b5b17fd99b18ed539f94461c02b56"
+    }
+  }
+}

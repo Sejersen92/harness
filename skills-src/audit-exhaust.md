@@ -1,0 +1,16 @@
+---
+name: audit-exhaust
+description: The Harness evaluator's traceability check, from GovernanceOS. What a task decided can be reconstructed from PLAN.md and the commits alone. Preloaded into harness:evaluator; not for other sessions.
+principle: audit-exhaust
+sources:
+  - lib/principles/core.ts
+  - app/(docs)/manual/runtime/audit.tsx
+---
+
+## In the Harness
+
+A run's trail is `PLAN.md`, the commits and the routing log. In EVALUATE, check that what this task decided can be reconstructed from them alone:
+
+- **Unrecorded decisions.** Did the diff make a choice the task's section didn't specify? That covers a choice between two behaviours, a new dependency, a changed contract, or a new default. If `PLAN.md` doesn't hold it, name it in your report as an unrecorded decision, so the orchestrator can record it.
+- **Deviations.** A change outside the task's Scope has to be recorded, with who accepted it.
+- **Your report is exhaust too.** Give the evidence by name: test names, and `file:line` for diff lines. That way someone who wasn't there can follow the verdict.

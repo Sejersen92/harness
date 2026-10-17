@@ -11,6 +11,7 @@ const entries = {
   "harness-init": "src/cli/harness-init.ts",
   "harness-policy": "src/cli/policy.ts",
   "hook-pre-tool-use": "src/hooks/pre-tool-use.ts",
+  "hook-session-skills": "src/hooks/session-skills.ts",
   "hook-session-start": "src/hooks/session-start.ts",
   "hook-subagent-start": "src/hooks/subagent-start.ts",
   "hook-subagent-stop": "src/hooks/subagent-stop.ts",

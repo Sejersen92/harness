@@ -1,6 +1,6 @@
 {
   "name": "harness",
-  "version": "0.10.4",
+  "version": "0.11.0",
   "private": true,
   "description": "The Harness: complexity-routed models and eval-gated commits for Claude Code, part of PreviouslyUpcoming.",
   "type": "module",
@@ -11,6 +11,7 @@
     "build": "node scripts/build.mjs",
     "typecheck": "tsc -p . && tsc -p test",
     "test": "node --experimental-strip-types --no-warnings=ExperimentalWarning --import ./test/setup-env.ts --test test/*.test.ts",
+    "skills": "node --experimental-strip-types --no-warnings=ExperimentalWarning scripts/skills.mjs",
     "check:bin": "npm run build && git diff --exit-code -- bin"
   },
   "devDependencies": {

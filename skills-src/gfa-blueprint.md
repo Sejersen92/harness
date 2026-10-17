@@ -1,0 +1,46 @@
+---
+name: gfa-blueprint
+description: The Governance-First Architecture blueprint for structural changes in a Harness run. Contracts before logic, the standard src/ layout and shift-left infrastructure. Preloaded into the Harness implementers at T3 and T4; not for other sessions.
+sources:
+  - ~/.claude/skills/governance-os/SKILL.md (Shift-Left Infrastructure, Implementation Blueprint, New service bootstrap)
+---
+
+# GFA blueprint
+
+Use this when a task adds a module, a service or an integration. **A repository's existing layout wins over this one.** Follow what is already there.
+
+## Contracts before logic
+
+Write the API contract, the event schema and the data model before the logic. If a consumer can't easily understand the interface, the implementation has failed: fix the interface first.
+
+## The standard layout, for a new .NET service
+
+```
+src/
+├─ Functions/       entry points and triggers
+├─ Services/        business logic
+├─ Interfaces/      contracts and abstractions
+├─ Repositories/    data access
+├─ Clients/         external service clients
+├─ Factories/       object construction
+├─ Helpers/         pure utilities
+└─ Models/  Requests/ · Responses/ · Data/
+```
+
+Put new code in the right layer, with dependencies pointing inward.
+
+## Shift-left
+
+A new service needs these before its business logic:
+
+- a pipeline that builds, tests and deploys it;
+- its environments;
+- a Key Vault and Managed Identity RBAC.
+
+If your task builds a new service and the plan has no task for one of these, say so in your report.
+
+## Defaults for new services
+
+- **Right-size the boundaries.** Co-host closely related domains in one app first, and split them only when a boundary justifies it.
+- **Prefer events.** Prefer subscribe-only services: a consumer listens to an event and is never called directly.
+- **Cosmos:** hierarchical partition keys for tenant isolation, and Patch operations to keep RU low.
