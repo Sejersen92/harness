@@ -106,7 +106,10 @@ test("a home, or a folder inside it, stands for the repository its repo.json nam
   writeFileSync(join(home, "repo.json"), JSON.stringify({ schema: "harness.repo/v1", repo_dir: dir }));
   mkdirSync(join(home, "state"), { recursive: true });
   withHarnessHome(harnessHome, () => {
-    for (const where of [home, join(home, "state"), home.toUpperCase()]) {
+    // Another spelling of the same path only names the same folder where paths ignore case (Windows);
+    // on Linux, where CI runs, an upper-cased path is a folder that doesn't exist.
+    const spellings = process.platform === "win32" ? [home.toUpperCase()] : [];
+    for (const where of [home, join(home, "state"), ...spellings]) {
       const config = loadConfig(where);
       assert.equal(config.mode, "observe", `${where} reads as the enrolled repository`);
       assert.equal(config.dir, dir);

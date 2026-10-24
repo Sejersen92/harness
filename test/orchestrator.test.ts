@@ -109,3 +109,18 @@ test("PLAN-1.4/AC-4 an overridden dispatch example asks for an alias, never inhe
     assert.notEqual(d.model_requested, "inherit", "an override passes its alias as model, so model_requested is the alias");
   }
 });
+
+test("M5 criterion 4: a task re-run after a re-plan is recorded as task.redispatched with reason replan and its tier", () => {
+  const replan = emitExamples().filter((e) => e.event.type === "task.redispatched" && (e.event.data as { reason?: string }).reason === "replan");
+  assert.ok(replan.length > 0, "the dispatcher shows a task.redispatched replan example");
+  for (const e of replan) assert.match(String((e.event.data as { tier?: string }).tier), /^T[1-4]$/, e.where);
+});
+
+test("M5 criterion 4: a task that stops a second time is the person's, and that choice comes first", () => {
+  const text = readFileSync(join(root, "agents/orchestrator.md"), "utf8").replace(/\r\n/g, "\n");
+  const choices = text.slice(text.indexOf("**Then read the reports and the working tree, and choose one:**"));
+  const first = choices.split("\n").find((l) => l.trim().startsWith("- **"));
+  assert.match(first ?? "", /stopped before/, "the first choice after a stop is the second-stop rule");
+  assert.match(first ?? "", /always the person's/);
+  assert.match(first ?? "", /human\.intervention/);
+});

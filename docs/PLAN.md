@@ -123,9 +123,19 @@ The core idea working end to end: one real task is scored, dispatched and shown 
 
 ### M5 — Escalation (2 days)
 
-- **Harness:** `failure-counter` (test failures and edits per file), the escalation brief template, the architect re-plan flow, events `escalation.*`, `task.redispatched` and `human.intervention`.
+- **Harness:** the dispatcher's stop rules S1–S5 (0.10.0), the stop report as the escalation brief, the orchestrator's re-plan after a stop (0.10.3), events `escalation.*`, `task.redispatched` and `human.intervention`. The `failure-counter` and the separate architect are replaced (C18).
 - **PU:** an exceptions list where every escalated task links to its session summary. Only PU can offer that join.
-- **Done when:** the original Phase 3 exit criteria hold.
+- **Done when:** the original Phase 3 exit criteria hold, as amended by C18 on 2026-10-24:
+
+  | # | Phase 3 criterion | As amended | Proven by |
+  |---|---|---|---|
+  | 1 | Three forced test failures trigger the threshold message and an ESCALATE report | A second failed evaluation stops the task (S1), and so does the same tool call failing twice (S5); the dispatcher returns `ESCALATE` and the orchestrator records `escalation.triggered` | a real run (BRIEF-5) |
+  | 2 | An implementer that stops without DONE or ESCALATE is sent back to finish | unchanged | `test/runtime.test.ts` (require-report), since M2 |
+  | 3 | The architect returns a re-scored plan from a brief alone, with no other context | The dispatcher's stop report holds everything a re-plan needs (the reports whole, the working tree, the tasks not started); the orchestrator re-plans from it, re-scores when the tier changes, and records `escalation.resolved` with the new tiers | a real run (BRIEF-5) |
+  | 4 | Re-dispatched tasks run at their new tier; a second escalation stops and asks the human | The dispatcher records `task.redispatched` with `reason: replan` and the tier it runs at; a task that stops again after an escalation is always the person's (`human.intervention`) | 0.11.1 instructions, then a real run (BRIEF-5) |
+  | 5 | (PU) every escalated task is on an exceptions list linked to its session | — | the deployed `/routing` page |
+
+- **Status 2026-10-24:** criterion 2 holds. 0.11.1 adds criterion 4's two rules. Criteria 1, 3 and 4 wait for one real run of BRIEF-5 in harness-scratch, which is built to stop. Criterion 5 is PU's exceptions list.
 
 ### M6 — Parallel groups (2 days), only if justified
 
@@ -164,6 +174,7 @@ Every fix from the review, plus three found while planning (C12, C13, C16).
 | C15 | Brief 04 (cost and observability) folds into this plan. Brief 01 is renamed *distillation evals* so it isn't confused with the Harness eval. | roadmap |
 | C16 | `config_sha256` covers only `routing.yaml`; the rubric and agent prompts live in the plugin. **Bump the plugin version on any prompt or skill change, freeze both during the baseline,** and have PU compare within one `config_sha256` + `producer.version`. | M1 onward |
 | C17 | **Skills by role** (0.11.0). Each agent preloads only its role's skills, generated from GovernanceOS and pinned in `skills/SOURCES.json`. The orchestrator gets its skills from a SessionStart hook, because `claude --agent` doesn't preload them. DESIGN.md has the table. The version bump splits M7's routed data at 0.11.0. Compare first-pass rate, rework rounds and cost per task within each version. | DESIGN.md, M7 |
+| C18 | **M5 without a failure counter or a separate architect** (Mikkel, 2026-10-24). The dispatcher's stop rules already stop a task that keeps failing: S1 after a second failed evaluation, S5 when the same tool call fails twice. Implementers are about 4% of a run's cost, and no run so far has shown one thrashing inside a task, so a per-file counter would add a hook to save little. Re-planning after a stop is the orchestrator's, as RUN-ROLES.md decided: it re-plans from the dispatcher's stop report, which must be complete enough to stand alone. Phase 3's criteria 1 and 3 are amended accordingly (see M5). Revisit the counter if a run shows an implementer looping. | M5 |
 
 ## What we won't build, and why
 

@@ -26,6 +26,8 @@ Read `routing.yaml` for `mode` and `tiers`, and the plan's sections in `PLAN.md`
 ## For every task, in the order given
 
 1. **Tests first.** Dispatch `harness:evaluator` with `WRITE-TESTS: PLAN-n.m` and the task's whole `PLAN.md` section. Never pass it a `model`: its own definition puts it on Opus at every tier (D11). It writes failing tests named after the acceptance criteria, and may report some criteria as untestable; hand those on to the implementer and the evaluation unchanged.
+   **A task your prompt says was escalated** runs again from here, at the tier its `PLAN.md` section now names: the orchestrator may have raised it, split the task or changed its criteria. Before the evaluator's WRITE-TESTS call, record that it is rerun after a re-plan, with that tier:
+   `harness-emit task.redispatched --task PLAN-n.m --data '{"reason":"replan","tier":"T3"}'`
 2. **Dispatch** the task to `harness:impl-tN` for its planned tier, with `IMPLEMENT: PLAN-n.m` as the first line. Hand over the task's whole `PLAN.md` section, the tests the evaluator wrote, the files and facts the plan names, and the path of `routing.yaml`: its `eval.stages` are the commands the implementer checks its work with. Always pass a `model`:
    - `mode: observe`: `model` = `opus`. That is the baseline: every implementer on the session's model. A nested agent takes its caller's model when none is passed, so you pass it.
    - `mode: route`: `model` = `tiers.TN.model` from `routing.yaml` (an alias such as `haiku`, `sonnet` or `opus`).
