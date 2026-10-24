@@ -135,7 +135,16 @@ The core idea working end to end: one real task is scored, dispatched and shown 
   | 4 | Re-dispatched tasks run at their new tier; a second escalation stops and asks the human | The dispatcher records `task.redispatched` with `reason: replan` and the tier it runs at; a task that stops again after an escalation is always the person's (`human.intervention`) | 0.11.1 instructions, then a real run (BRIEF-5) |
   | 5 | (PU) every escalated task is on an exceptions list linked to its session | — | the deployed `/routing` page |
 
-- **Status 2026-10-24:** criterion 2 holds. 0.11.1 adds criterion 4's two rules. Criteria 1, 3 and 4 wait for one real run of BRIEF-5 in harness-scratch, which is built to stop. Criterion 5 is PU's exceptions list.
+- **Shipped 2026-10-24.** One real run on 0.11.1: BRIEF-5 in harness-scratch (PLAN-5, session 24e29bb5, commits de4d487 and ce0bdc9), checked against the spool's events and the deployed `/routing` page.
+  - **Intake** caught the brief's built-in contradiction (ambiguity 2) before any dispatch; Mikkel overruled it so the run would reach the stops.
+  - **Criterion 1:** PLAN-5.1 stopped twice, both by rule S2 (the implementer reported `ESCALATE`), and each stop has its `escalation.triggered`.
+  - **Criterion 3:** each stop was re-planned from the dispatcher's report: `plan.created` revisions 2 and 3, each with `escalation.resolved` `new_tiers: ["T2"]`.
+  - **Criterion 4:** both re-runs recorded `task.redispatched` `{reason: replan, tier: T2}`. The second stop was a fact about the tools (implementers can't edit test files), which before 0.11.1 the orchestrator would have fixed alone; it asked instead, and both stops have a `human.intervention`. PLAN-5.1 completed `escalated_then_pass`, escalations 2, final tier T2.
+  - **Criterion 5:** `/routing` → Exceptions lists PLAN-5.1, "escalated, then passed · a person stepped in 2 times", and its link opens the session summary.
+  - **What this doesn't prove:**
+    - **Rule S1 itself didn't fire.** Both stops came from the implementer (S2), not from two failed evaluations. What follows a stop is the same whatever the rule, but S1's counting is proven only by reading the dispatcher's instructions.
+    - **No tier change.** PLAN-5.1 scored T2 from the start, so the re-runs stayed at T2. That a raised tier is the one dispatched is recorded by the same `replan` event, but no run has shown a raise yet.
+  - **Found by the run, not fixed here:** the orchestrator's revision 2 handed the test edits to the implementer, which the Harness forbids; test changes belong in the evaluator's WRITE-TESTS. And it twice recorded `plan.created` a moment before its `PLAN.md` edit had succeeded.
 
 ### M6 — Parallel groups (2 days), only if justified
 
