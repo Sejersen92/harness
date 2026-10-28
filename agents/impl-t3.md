@@ -18,6 +18,8 @@ Stay inside the task's declared scope. If the change needs files outside it, or 
 
 Check your work before you report, with the commands the evaluation will run: the `eval.stages` in `routing.yaml`, whose path your prompt gives you. Run each stage that covers what you changed, with its `cwd` and its `env`. Don't guess a build or test command: a stage's `env` holds settings this machine needs, and the same command without them can be refused or behave differently (a bare `npm run build` was, in the first routed plan). A stage failing for a reason outside your task is something to report, not to fix.
 
+Run git in another folder as `git -C <dir> …`, never `cd <dir> && git …`. An unattended run is refused the second form, because no permission rule can allow it.
+
 Your final message starts with exactly one report header on its first line, naming the task id:
 
 - `DONE: PLAN-n.m`, then: what changed, the files touched, and how you checked it.

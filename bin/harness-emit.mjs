@@ -7733,11 +7733,13 @@ var seconds = (from, to) => Math.max(0, Math.round((Date.parse(to) - Date.parse(
 var last = (items) => items[items.length - 1];
 function buildRecord(config2, taskId2, events = readEvents(config2), previous = readRoutingLog(config2)) {
   const about = (e) => e.task_id === taskId2 || Array.isArray(e.data?.task_ids) && e.data.task_ids.includes(taskId2);
-  const mine = events.filter(about);
-  const ofType = (type2) => mine.filter((e) => e.type === type2);
-  const completed = last(ofType("task.completed"));
+  const all = events.filter(about);
+  const completed = last(all.filter((e) => e.type === "task.completed"));
   if (!completed) return { error: `${taskId2}: no task.completed event` };
-  const scored = last(ofType("task.scored").filter((e) => e.ts <= completed.ts));
+  const since = last(all.filter((e) => e.type === "task.completed" && e.ts < completed.ts))?.ts;
+  const mine = since === void 0 ? all : all.filter((e) => e.ts > since);
+  const ofType = (type2) => mine.filter((e) => e.type === type2);
+  const scored = last(all.filter((e) => e.type === "task.scored" && e.ts <= completed.ts));
   if (!scored) return { error: `${taskId2}: no task.scored event, so there is no rubric to record` };
   const missing = [];
   const dispatched = ofType("task.dispatched");
@@ -7840,7 +7842,13 @@ function writeTaskRecord(config2, taskId2) {
     recordFailure(config2, `routing log: ${error}`);
     return null;
   }
-  return writeRoutingLog(config2, record) ? record : null;
+  return writeRoutingLog(config2, fitted(record)) ? record : null;
+}
+function fitted(record) {
+  if (Buffer.byteLength(JSON.stringify(record)) < MAX_LINE_BYTES) return record;
+  const runs = record.runs.map(({ model_requested: _requested, effort: _effort, ...kept }) => kept);
+  const evalRounds = record.eval_rounds.map((round) => ({ ...round, stages: [] }));
+  return { ...record, runs, eval_rounds: evalRounds, trimmed: ["runs.model_requested", "runs.effort", "eval_rounds.stages"] };
 }
 
 // src/cli/harness-emit.ts

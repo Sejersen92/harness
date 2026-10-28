@@ -8,7 +8,7 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { repoHome } from "../src/lib/config.ts";
-import { detectStages, homeDeny } from "../src/lib/home.ts";
+import { detectStages, homeAllow, homeDeny, stagesIn } from "../src/lib/home.ts";
 import { checks, type CheckResult } from "../src/lib/setup.ts";
 import { root } from "./validators.ts";
 import { cleanEnv, spawnGit } from "./git.ts";
@@ -103,6 +103,14 @@ test("init --apply enrols with nothing in the repository, doctor passes, and aga
   const settings = JSON.parse(readFileSync(join(home, "settings.json"), "utf8"));
   assert.deepEqual(settings.permissions.deny, homeDeny(home));
   assert.ok(settings.permissions.deny.every((rule: string) => !rule.startsWith("Write(")), "Edit rules only (S9)");
+  // U1, H2: the allow-list a headless run needs, from this repository's stages and this plugin's folder.
+  const allow: string[] = settings.permissions.allow;
+  assert.ok(allow.includes(`Bash(node "${root.replace(/\\/g, "/")}/bin/*)`), "the plugin's own scripts, by path");
+  assert.ok(allow.includes("Bash(npm run test*)"), "the detected test stage");
+  assert.ok(allow.includes("Bash(git -C *)") && allow.includes("Bash(git commit *)"));
+  assert.ok(!allow.includes("Bash(node *)"), "never node *, which allows node -e");
+  assert.ok(!allow.some((rule) => /\b(push|gh|az|vercel)\b/.test(rule)), "nothing outward: pu pushes, after a DONE");
+  for (const rule of ["Bash(gh *)", "Bash(az *)", "Bash(vercel *)", "Bash(git push -f*)", "Bash(git push *:main*)"]) assert.ok(settings.permissions.deny.includes(rule), rule);
   assert.equal(settings.worktree.baseRef, "head");
   assert.deepEqual(settings.env, {
     ANTHROPIC_DEFAULT_HAIKU_MODEL: "claude-haiku-5-5",
@@ -315,4 +323,22 @@ test("an old Claude Code fails the doctor; a missing one only warns", () => {
   const { dir } = makeRepo();
   assert.equal(status(checks(dir, { pluginRoot: root, claudeVersion: "2.1.236 (Claude Code)" }), "claude-code"), "fail");
   assert.equal(status(checks(dir, { pluginRoot: root, claudeVersion: null }), "claude-code"), "warn");
+});
+
+test("each eval stage is allowed by its exact command, and again with its env in front", () => {
+  const allow = homeAllow(String.raw`C:\tools\harness`, [
+    { run: "dotnet test DocumentService.sln --no-build --nologo" },
+    { run: "npm run build", env: { ALLOW_LOCAL_UPSTREAM: 1 } },
+  ]);
+  assert.ok(allow.includes('Bash(node "C:/tools/harness/bin/*)'));
+  assert.ok(allow.includes("Bash(dotnet test DocumentService.sln --no-build --nologo*)"));
+  assert.ok(allow.includes("Bash(npm run build*)"));
+  assert.ok(allow.includes("Bash(ALLOW_LOCAL_UPSTREAM=1 npm run build*)"));
+  assert.equal(allow.length, new Set(allow).size, "no rule twice");
+});
+
+test("a routing.yaml's stages are read for the allow-list, and an unreadable one gives none", () => {
+  assert.deepEqual(stagesIn("eval:\n  stages:\n    - { name: test, run: npm test }\n    - { name: empty, run: '' }\n").map((s) => s.run), ["npm test"]);
+  assert.deepEqual(stagesIn("eval: [unclosed"), []);
+  assert.deepEqual(stagesIn(""), []);
 });

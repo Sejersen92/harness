@@ -3,7 +3,7 @@
 // to emit something the schema rejects. Elided examples (with `...`) are not JSON and are skipped.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, root, validators, type Line } from "./validators.ts";
 
@@ -123,4 +123,15 @@ test("M5 criterion 4: a task that stops a second time is the person's, and that 
   assert.match(first ?? "", /stopped before/, "the first choice after a stop is the second-stop rule");
   assert.match(first ?? "", /always the person's/);
   assert.match(first ?? "", /human\.intervention/);
+});
+
+test("every agent definition says to run git as git -C, and none shows cd … && git (U1, H4)", () => {
+  // `cd X && git …` is a form no permission rule can allow, so an unattended run is refused it (S17, PLAN-15).
+  // The rule's own wording names it with a placeholder (`cd <dir> && git`), which this doesn't count.
+  const dir = join(root, "agents");
+  for (const name of readdirSync(dir).filter((n) => n.endsWith(".md"))) {
+    const text = readFileSync(join(dir, name), "utf8");
+    assert.match(text, /`git -C <dir> …`/, `${name} doesn't say to use git -C`);
+    assert.doesNotMatch(text, /\bcd\s+(?!<)\S+\s*&&\s*git\b/, `${name} shows cd … && git`);
+  }
 });

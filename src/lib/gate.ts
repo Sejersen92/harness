@@ -17,14 +17,14 @@ export interface GateVerdict {
 // assignments and a few wrappers that run the command after them, then git itself. A path separator
 // right before git also starts it, so /usr/bin/git and "C:/Program Files/Git/bin/git.exe" count
 // however the path is quoted or escaped.
-const COMMAND_GIT = /(?:^|[\n;&|(`"'\\/])\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*(?:(?:sudo|env|command|exec|nohup|time|xargs)\s+(?:-\S+\s+)*)*git(?:\.exe)?["']?(?=\s)/g;
+export const COMMAND_GIT = /(?:^|[\n;&|(`"'\\/])\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*(?:(?:sudo|env|command|exec|nohup|time|xargs)\s+(?:-\S+\s+)*)*git(?:\.exe)?["']?(?=\s)/g;
 
 // git's global options that take their value as the next word. Every other option before the
 // subcommand is a single word (--no-pager, -p, --git-dir=x).
-const TAKES_VALUE = new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--super-prefix", "--config-env", "--exec-path"]);
+export const TAKES_VALUE = new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--super-prefix", "--config-env", "--exec-path"]);
 
 /** The words after a match, honouring quotes so `-C "a path"` is one word. */
-const words = (text: string): string[] => (text.match(/"[^"]*"|'[^']*'|[^\s"']+["']?/g) ?? []).map((w) => w.replace(/^["']|["']$/g, ""));
+export const words = (text: string): string[] => (text.match(/"[^"]*"|'[^']*'|[^\s"']+["']?/g) ?? []).map((w) => w.replace(/^["']|["']$/g, ""));
 
 /**
  * Whether a shell command runs `git commit` (C2). It errs towards yes: `echo "git commit"` counts,
@@ -90,6 +90,45 @@ export function stripAttribution(message: string): string | null {
  * eval-pass.json counts; a false yes only denies an edit to a file no one else should write.
  */
 export const isMarkerPath = (path: unknown): boolean => /(?:^|[\\/])state[\\/]+eval-pass\.json/i.test(String(path ?? ""));
+
+// The commands that only read a file they are given. A shell redirect can still make one write, so a
+// segment with one is judged as a write.
+const READERS = new Set(["cat", "head", "tail", "grep", "rg", "wc", "jq", "less", "more", "type", "get-content", "gc", "select-string"]);
+// A redirect that writes nothing: stderr to stdout, or to the null device.
+const HARMLESS_REDIRECT = /\b2>(?:&1|\s*\/dev\/null|\s*nul)\b/gi;
+
+/** A shell command cut at its separators (; & | and new lines) outside quotes. */
+function segments(command: string): string[] {
+  const out: string[] = [];
+  let quote: string | null = null;
+  let start = 0;
+  for (let i = 0; i < command.length; i++) {
+    const c = command[i];
+    if (quote) {
+      if (c === quote) quote = null;
+    } else if (c === '"' || c === "'") quote = c;
+    else if (c === "\n" || c === ";" || c === "&" || c === "|") {
+      out.push(command.slice(start, i));
+      start = i + 1;
+    }
+  }
+  out.push(command.slice(start));
+  return out;
+}
+
+/**
+ * Whether a Bash command touches the pass marker by anything but reading it. Reading it is how a
+ * session checks the gate's state (S21's orchestrator was refused a `cat`); every other use, a
+ * redirect, a copy, a script, is a write as far as this can tell, so it is one.
+ */
+export function writesMarker(command: string): boolean {
+  if (!/eval-pass\.json/i.test(command) || /harness-eval(\.mjs)?\b/.test(command)) return false;
+  return segments(command).some((segment) => {
+    if (!/eval-pass\.json/i.test(segment)) return false;
+    const [first = ""] = words(segment.trim().replace(/^(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*/, ""));
+    return !READERS.has(first.toLowerCase()) || segment.replace(HARMLESS_REDIRECT, "").includes(">");
+  });
+}
 
 const unstagedTracked = (dir: string): boolean =>
   execFileSync("git", ["-C", dir, "diff", "--name-only"], { stdio: ["ignore", "pipe", "ignore"] }).toString().trim().length > 0;

@@ -95,6 +95,7 @@ Plugin subagents ignore `hooks`, `mcpServers` and `permissionMode` in their fron
 |---|---|---|
 | `commit-gate` | PreToolUse, Bash, **every call** | Deny commits without a matching eval pass |
 | `marker-guard` | PreToolUse, Bash | Refuse direct writes to the pass marker |
+| `push-guard` | PreToolUse, Bash | Refuse a forced push, or one to main or the default branch (U1) |
 | `protect-tests` | PreToolUse, Edit/Write | Implementers can't edit test files |
 | `tests-only` | PreToolUse, Edit/Write | The evaluator can only edit test files |
 | `failure-counter` | PostToolUse, Bash/Edit/Write | Count failing test runs and edits per file; signal escalation |
@@ -104,7 +105,8 @@ Plugin subagents ignore `hooks`, `mcpServers` and `permissionMode` in their fron
 **One process per event, not per policy.** The `PreToolUse` policies (`commit-gate`, `marker-guard`, `protect-tests` and `tests-only`) all run inside one script, `bin/hook-pre-tool-use.mjs`, registered for `Bash|Edit|Write|MultiEdit|NotebookEdit`. It runs on every Bash call, and Node's start-up is most of its cost. A call that is not a commit, not about the marker, and not an edit by a Harness agent leaves before `routing.yaml` is read. Measured on Windows (2026-10-07): 64 ms for a non-commit call against 63 ms for bare `node`, and about 100 ms for a commit check.
 
 - **`commit-gate`** allows a commit only with a marker for exactly the staged diff, on the current `HEAD`, younger than `gate.marker_ttl_minutes`, and with no unstaged edits to tracked files. Without that last check, `git commit -a` would take changes the eval never saw. Every decision is recorded as `gate.decision`. If the hook itself fails, it allows the commit and the git `pre-commit` hook decides.
-- **`marker-guard`** denies any Edit/Write to `.claude/state/eval-pass.json`, and any Bash command naming `eval-pass.json` unless it runs `harness-eval`.
+- **`marker-guard`** denies any Edit/Write to `.claude/state/eval-pass.json`, and any Bash command naming `eval-pass.json` unless it runs `harness-eval` or only reads it (`cat`, `head`, `grep`, `jq`, `Get-Content` and the like, with no redirect; 0.12.0).
+- **`push-guard`** (0.12.0, U1) parses `git push` and `git -C <dir> push` as the commit gate parses a commit, and denies `-f`, `--force*`, a `+<ref>` refspec, `--mirror`/`--all`, a destination of `main` or the default branch (`main`, `HEAD:main`, `refs/heads/main`, `:main`), a bare push from the default branch, and a refspec it can't read (a variable). A push of a feature branch passes. The home's deny patterns stay as a second layer: S21 showed them missing `HEAD:main`, `-f` and `+HEAD`.
 - **`protect-tests`** denies an edit by `harness:impl-t*` to a test file, and **`tests-only`** denies an edit by `harness:evaluator` to anything else. Which files are tests comes from `routing.yaml`'s `eval.tests` globs, and when that is absent from the usual names (`*.test.*`, `*.spec.*`, `*_test.*`, `test_*.py`, `test/`, `tests/`, `__tests__/`, `*.Tests/`, `*Tests.cs`). Both cover the edit tools only. A file rewritten through Bash is beyond what a hook can see reliably, so the evaluator's review of the diff is the backstop there.
 
 **Implementation rules from the spikes:**

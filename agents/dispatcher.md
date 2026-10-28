@@ -19,6 +19,8 @@ Your prompt starts with `DISPATCH: PLAN-n` and gives you:
 
 Read `routing.yaml` for `mode` and `tiers`, and the plan's sections in `PLAN.md`, before the first task.
 
+Run git in another folder as `git -C <dir> …`, never `cd <dir> && git …`. An unattended run is refused the second form, because no permission rule can allow it.
+
 **Every Agent call's prompt starts with its header line**: `WRITE-TESTS: PLAN-n.m`, `IMPLEMENT: PLAN-n.m` or `EVALUATE: PLAN-n.m`, re-dispatches included. The intake gate reads the task from that line only.
 
 **One Agent call at a time.** Each step waits for the one before it, and the Harness times and records each agent as it finishes.

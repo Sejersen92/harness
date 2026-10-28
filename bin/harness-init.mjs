@@ -7267,7 +7267,7 @@ var require_public_api = __commonJS({
       }
       return doc;
     }
-    function parse3(src, reviver, options) {
+    function parse4(src, reviver, options) {
       let _reviver = void 0;
       if (typeof reviver === "function") {
         _reviver = reviver;
@@ -7308,7 +7308,7 @@ var require_public_api = __commonJS({
         return value.toString(options);
       return new Document.Document(value, _replacer, options).toString(options);
     }
-    exports.parse = parse3;
+    exports.parse = parse4;
     exports.parseAllDocuments = parseAllDocuments;
     exports.parseDocument = parseDocument;
     exports.stringify = stringify3;
@@ -7761,10 +7761,17 @@ var GIT_DENY = [
   "Bash(git commit -n*)",
   "Bash(git commit-tree*)",
   "Bash(git * commit-tree*)",
-  // No history rewrites and no merges to main from an agent: those stay human actions.
+  // No history rewrites and no merges to main from an agent: those stay human actions. Patterns miss
+  // spellings (S21 c), so the PreToolUse push guard (lib/push.ts) is the fence and these a second layer.
   "Bash(git push --force*)",
   "Bash(git push * --force*)",
+  "Bash(git push -f*)",
+  "Bash(git push * -f*)",
+  "Bash(git push * +*)",
   "Bash(git push * main*)",
+  "Bash(git push *:main*)",
+  "Bash(git checkout main*)",
+  "Bash(git switch main*)",
   "Bash(git reset --hard*)",
   "Bash(gh pr merge*)",
   "Bash(gh release*)",
@@ -7807,14 +7814,51 @@ function homeDeny(home2) {
     `Edit(${h}/repo.json)`,
     `Edit(${h}/githooks/**)`,
     "Edit(.github/workflows/**)",
-    ...GIT_DENY
+    ...GIT_DENY,
+    ...OUTWARD_DENY
   ];
+}
+var OUTWARD_DENY = ["Bash(gh *)", "Bash(az *)", "Bash(vercel *)"];
+function stagesIn(routingYaml) {
+  try {
+    const stages = (0, import_yaml3.parse)(routingYaml)?.eval?.stages;
+    return Array.isArray(stages) ? stages.filter((s) => typeof s?.run === "string" && s.run.trim() !== "") : [];
+  } catch {
+    return [];
+  }
+}
+var ALWAYS_ALLOW = [
+  "Bash(git status*)",
+  "Bash(git log*)",
+  "Bash(git diff*)",
+  "Bash(git show*)",
+  "Bash(git branch*)",
+  "Bash(git rev-parse*)",
+  "Bash(git add *)",
+  "Bash(git commit *)",
+  "Bash(git -C *)",
+  "Bash(cd *)",
+  "Bash(ls*)",
+  "Bash(cat *)",
+  "Bash(grep *)",
+  "Bash(head *)",
+  "Bash(tail *)",
+  "Bash(wc *)",
+  "Bash(sort*)",
+  "Bash(cut *)"
+];
+function homeAllow(pluginRoot2, stages) {
+  const forStage = (s) => {
+    const env = Object.entries(s.env ?? {}).map(([k, v]) => `${k}=${String(v)}`).join(" ");
+    return [`Bash(${s.run.trim()}*)`, ...env ? [`Bash(${env} ${s.run.trim()}*)`] : []];
+  };
+  return [.../* @__PURE__ */ new Set([`Bash(node "${forward(join5(pluginRoot2, "bin"))}/*)`, ...stages.flatMap(forStage), ...ALWAYS_ALLOW])];
 }
 var ALIAS_MODELS = { haiku: "claude-haiku-5-5", sonnet: "claude-sonnet-5-5", opus: "claude-opus-5-5" };
 var aliasEnv = () => Object.fromEntries(Object.entries(ALIAS_MODELS).map(([alias, model]) => [`ANTHROPIC_DEFAULT_${alias.toUpperCase()}_MODEL`, model]));
 var FOREGROUND_ENV = { CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1" };
-var homeSettings = (home2) => ({
-  permissions: { deny: homeDeny(home2) },
+var homeSettings = (home2, pluginRoot2, stages) => ({
+  permissions: { allow: homeAllow(pluginRoot2, stages), deny: homeDeny(home2) },
   env: { ...aliasEnv(), ...FOREGROUND_ENV },
   // Worktree subagents start from the current branch, not the default one (S6).
   worktree: { baseRef: "head" }
@@ -7878,12 +7922,15 @@ function hooksState(dir2, home2) {
 function enrolPlan(dir2, pluginRoot2, { branch: branch2, now = /* @__PURE__ */ new Date() } = {}) {
   const home2 = repoHome(dir2);
   const steps2 = [];
+  let routing = readSafely(join5(home2, "routing.yaml"));
   if (!existsSync5(join5(home2, "routing.yaml"))) {
     const old = join5(dir2, "routing.yaml");
     if (existsSync5(old)) {
+      routing = readFileSync5(old, "utf8");
       steps2.push({ what: `copy routing.yaml into ${home2} (the repository's copy is left as it is)`, apply: () => writeHome(home2, "routing.yaml", readFileSync5(old)) });
     } else {
       const { text, stages } = routingYamlFor(dir2, pluginRoot2);
+      routing = text;
       steps2.push({ what: `write ${join5(home2, "routing.yaml")} (mode observe; stages: ${stages.join(", ") || "none detected"})`, apply: () => writeHome(home2, "routing.yaml", text) });
     }
   }
@@ -7891,9 +7938,10 @@ function enrolPlan(dir2, pluginRoot2, { branch: branch2, now = /* @__PURE__ */ n
     const record = { schema: "harness.repo/v1", repo_dir: dir2, enrolled: utcNow(now) };
     steps2.push({ what: `write ${join5(home2, "repo.json")}`, apply: () => writeHome(home2, "repo.json", JSON.stringify(record, null, 2) + "\n") });
   }
-  const settings = JSON.stringify(homeSettings(home2), null, 2) + "\n";
+  const wanted = homeSettings(home2, pluginRoot2, stagesIn(routing));
+  const settings = JSON.stringify(wanted, null, 2) + "\n";
   if (readSafely(join5(home2, "settings.json")) !== settings) {
-    steps2.push({ what: `write ${join5(home2, "settings.json")} (${homeDeny(home2).length} deny rules for Harness sessions, haiku/sonnet/opus pinned to 5.5, subagents in the foreground, worktrees from HEAD)`, apply: () => writeHome(home2, "settings.json", settings) });
+    steps2.push({ what: `write ${join5(home2, "settings.json")} (${wanted.permissions.allow.length} allow and ${wanted.permissions.deny.length} deny rules for Harness sessions, haiku/sonnet/opus pinned to 5.5, subagents in the foreground, worktrees from HEAD)`, apply: () => writeHome(home2, "settings.json", settings) });
   }
   const hooks = hooksState(dir2, home2);
   const own = ownHooks(dir2, hooks.previous);
@@ -8014,7 +8062,7 @@ function checks(dir2, { pluginRoot: pluginRoot2, claudeVersion = readClaudeVersi
       add("spool-writable", "fail", messageOf(error));
     }
   }
-  if (config.layout?.kind === "home") homeChecks(dir2, config.layout.root, add);
+  if (config.layout?.kind === "home") homeChecks(dir2, config.layout.root, add, pluginRoot2 ?? null, config.stages ?? []);
   else if (config.layout) repositoryChecks(dir2, add);
   const ciConfig = join6(dir2, CI_CONFIG);
   if (config.layout && (existsSync6(ciConfig) || existsSync6(join6(dir2, CI_WORKFLOW)))) {
@@ -8045,7 +8093,7 @@ function checks(dir2, { pluginRoot: pluginRoot2, claudeVersion = readClaudeVersi
   );
   return results2;
 }
-function homeChecks(dir2, home2, add) {
+function homeChecks(dir2, home2, add, pluginRoot2, stages) {
   const hooks = hooksState(dir2, home2);
   const folder = githooksDir(home2);
   const own = ownHooks(dir2, hooks.previous);
@@ -8066,6 +8114,16 @@ function homeChecks(dir2, home2, add) {
     missingDeny.length ? "warn" : "pass",
     missingDeny.length ? `${missingDeny.length} deny rule(s) missing from ${join6(home2, "settings.json")} (/harness:init writes them)` : `${denied.size} deny rules for Harness sessions, in ${join6(home2, "settings.json")}`
   );
+  if (!pluginRoot2) add("allow-list", "warn", "the plugin's folder is unknown here, so the allow rules can't be checked");
+  else {
+    const allowed = new Set(settings.permissions?.allow ?? []);
+    const missingAllow = homeAllow(pluginRoot2, stages).filter((rule) => !allowed.has(rule));
+    add(
+      "allow-list",
+      missingAllow.length ? "warn" : "pass",
+      missingAllow.length ? `${missingAllow.length} allow rule(s) missing from ${join6(home2, "settings.json")}, e.g. ${missingAllow.slice(0, 2).join(", ")}: a headless run (pu harness run) is refused those calls (/harness:init writes them)` : `${allowed.size} allow rules: the Harness's scripts, ${stages.length} eval stage(s), git and read-only helpers`
+    );
+  }
   const unpinned = Object.entries(aliasEnv()).filter(([name, model]) => settings.env?.[name] !== model).map(([name]) => name);
   add(
     "alias-models",

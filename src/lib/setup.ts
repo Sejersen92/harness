@@ -6,7 +6,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSyn
 import { join, resolve } from "node:path";
 import { CI_CONFIG, CI_WORKFLOW, readCiStages, stageDrift } from "./ci.ts";
 import { loadConfig, NOT_ENROLLED } from "./config.ts";
-import { aliasEnv, FOREGROUND_ENV, GIT_DENY, githooksDir, HARNESS_HOOKS, harnessBranches, homeDeny, hooksState, orphans, ownHooks } from "./home.ts";
+import { aliasEnv, FOREGROUND_ENV, GIT_DENY, githooksDir, HARNESS_HOOKS, harnessBranches, homeAllow, homeDeny, hooksState, orphans, ownHooks, type StageCommand } from "./home.ts";
 import { pluginRecordPath } from "./spool.ts";
 import { messageOf } from "./types.ts";
 
@@ -19,7 +19,7 @@ export interface CheckResult {
 
 /** The parts of a Claude Code settings file the doctor reads. */
 export interface Settings {
-  permissions?: { deny?: string[]; [key: string]: unknown };
+  permissions?: { allow?: string[]; deny?: string[]; [key: string]: unknown };
   env?: Record<string, string>;
   attribution?: { commit?: string; [key: string]: unknown };
   worktree?: { baseRef?: string; [key: string]: unknown };
@@ -116,7 +116,7 @@ export function checks(
     }
   }
 
-  if (config.layout?.kind === "home") homeChecks(dir, config.layout.root, add);
+  if (config.layout?.kind === "home") homeChecks(dir, config.layout.root, add, pluginRoot ?? null, config.stages ?? []);
   else if (config.layout) repositoryChecks(dir, add);
 
   // The stages are written twice in a repository with the CI files (C1): the two copies must agree, or
@@ -154,7 +154,7 @@ export function checks(
 }
 
 /** A home's hooks and settings, as enrolment leaves them. */
-function homeChecks(dir: string, home: string, add: Add): void {
+function homeChecks(dir: string, home: string, add: Add, pluginRoot: string | null, stages: readonly StageCommand[]): void {
   const hooks = hooksState(dir, home);
   const folder = githooksDir(home);
   const own = ownHooks(dir, hooks.previous);
@@ -173,6 +173,16 @@ function homeChecks(dir: string, home: string, add: Add): void {
   const missingDeny = homeDeny(home).filter((rule) => !denied.has(rule));
   add("permissions", missingDeny.length ? "warn" : "pass",
     missingDeny.length ? `${missingDeny.length} deny rule(s) missing from ${join(home, "settings.json")} (/harness:init writes them)` : `${denied.size} deny rules for Harness sessions, in ${join(home, "settings.json")}`);
+  // Without the allow-list a headless run (pu harness run) is refused every Bash call, its own harness-emit included (S17).
+  if (!pluginRoot) add("allow-list", "warn", "the plugin's folder is unknown here, so the allow rules can't be checked");
+  else {
+    const allowed = new Set(settings.permissions?.allow ?? []);
+    const missingAllow = homeAllow(pluginRoot, stages).filter((rule) => !allowed.has(rule));
+    add("allow-list", missingAllow.length ? "warn" : "pass",
+      missingAllow.length
+        ? `${missingAllow.length} allow rule(s) missing from ${join(home, "settings.json")}, e.g. ${missingAllow.slice(0, 2).join(", ")}: a headless run (pu harness run) is refused those calls (/harness:init writes them)`
+        : `${allowed.size} allow rules: the Harness's scripts, ${stages.length} eval stage(s), git and read-only helpers`);
+  }
   const unpinned = Object.entries(aliasEnv()).filter(([name, model]) => settings.env?.[name] !== model).map(([name]) => name);
   add("alias-models", unpinned.length ? "warn" : "pass",
     unpinned.length ? `${unpinned.join(", ")} not pinned in ${join(home, "settings.json")}, so a tier's model is whatever this Claude Code version makes of the alias (/harness:init writes them)` : `haiku, sonnet and opus are pinned to ${Object.values(aliasEnv()).join(", ")}`);

@@ -157,7 +157,8 @@
     "final_tier": { "$ref": "harness.events.v1.json#/$defs/tier" },
     "wall_clock_s": { "$ref": "harness.events.v1.json#/$defs/count" },
     "complete": { "description": "C12: false when an event this record expected was missing, so the record was built from partial evidence.", "type": "boolean" },
-    "missing_events": { "description": "Which expected event types were missing. Present when complete is false.", "type": "array", "items": { "type": "string" } }
+    "missing_events": { "description": "Which expected event types were missing. Present when complete is false.", "type": "array", "items": { "type": "string" } },
+    "trimmed": { "description": "0.12.0: present when the record was trimmed to fit one 4 KB spool line, naming what was dropped. Every run keeps its agent_id, so it can still be priced.", "type": "array", "items": { "type": "string", "minLength": 1 } }
   },
   "if": { "properties": { "complete": { "const": false } } },
   "then": { "required": ["missing_events"] }
