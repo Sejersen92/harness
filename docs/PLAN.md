@@ -181,6 +181,18 @@ From PU's M9: the brief is PreviouslyUpcoming's `U1-UNATTENDED-RUN.md`, and the 
 
 **Done when:** `pu harness run PLAN-n` takes a planned plan in a freshly enrolled repository to commits or to a `HANDBACK.md`, with no hand-written prompt or settings file. Shown on harness-scratch (PLAN-6 to finish, PLAN-7 to stop) and on one real repository.
 
+- **Built and accepted 2026-10-28** on Harness `feat/u1-unattended` (aee599a, c8967ea) and pu `feat/u1-harness-run` (d9f5273, 1.29.0). 325 Harness tests and the pu tests pass. All three runs were launched by Mikkel with `pu harness run`, with no hand-written prompt or settings file:
+
+  | Run | Plan | Outcome | Evidence |
+  |---|---|---|---|
+  | finish | harness-scratch PLAN-8 (BRIEF-6 re-planned, since PLAN-6 already had completions from the spikes) | DONE in 4 min, $0.94, `pass_first_try`, exit 0 | commit 839a716 pushed by pu as `u1/finish`. Routing-log line 2,024 bytes, one attempt's 3 runs, `complete: true` (H5) |
+  | stop | harness-scratch PLAN-7 | handed back in 1 min, $0.46, exit 3 | `human.intervention` and a `HANDBACK.md` with the evidence and one question (H1). It didn't dispatch: PLAN-7.1 had already stopped once and the plan hadn't changed, which the definition makes the person's |
+  | real repository | PreviouslyUpcoming PLAN-16 (thread `thr_runs-page-machine-label`) | DONE in 5 min, $0.56, `pass_first_try`, exit 0 | commit f6647ae pushed as `u1/runs-machine-label`. Haiku implemented (T1), Opus evaluated |
+
+  - **H2's criterion took two tries.** The first allow-list allowed each stage only as written (`npm run test`), and PLAN-8's agents were refused six of their own checks: `npm test`, `npm --prefix … test`, `node --test <file>`, `echo`. The run passed anyway, because `harness-eval` goes through the plugin's path. c8967ea allows each stage the way the agents run it. PLAN-16, with dotnet and npm stages, `cwd` and `env`, then had none of these. Its one denial was a redirect to `/tmp`, which Claude Code refuses outside the project whatever the allow-list says, as in S17.
+  - **The push guard (H3)** was proven by its tests against S21's five probes. No run tried a forbidden push.
+  - **What this doesn't prove:** a fresh dispatch that stops and hands back in the same unattended run. S18 showed that path with a hand-typed prompt, and PLAN-7 stopped before dispatching. The `node` rule's quoting on Windows does match: every `harness-emit` call in all three runs was allowed.
+
 ## Changes to the design
 
 Every fix from the review, plus three found while planning (C12, C13, C16).
