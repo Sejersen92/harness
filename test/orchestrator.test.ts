@@ -135,3 +135,11 @@ test("every agent definition says to run git as git -C, and none shows cd … &&
     assert.doesNotMatch(text, /\bcd\s+(?!<)\S+\s*&&\s*git\b/, `${name} shows cd … && git`);
   }
 });
+
+test("the SERIES-n.md template's Plans line is the contract pu harness series run reads (U2, H6)", () => {
+  // pu reads the plan ids in run order from this one line: `- Plans: PLAN-8, PLAN-9`, nothing else on it.
+  const text = readFileSync(join(root, "agents/orchestrator.md"), "utf8").replace(/\r\n/g, "\n");
+  const template = text.split("## SERIES-n.md template")[1]?.split("## Unattended runs")[0] ?? "";
+  assert.match(template, /^- Plans: PLAN-[a-z0-9]+(?:, PLAN-[a-z0-9]+)*$/m, "the template has no Plans line pu can read");
+  assert.match(text, /\*\*At most 4 plans\.\*\*/, "the series cap (decision 4) is not in the definition");
+});
