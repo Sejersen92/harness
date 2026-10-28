@@ -7821,14 +7821,32 @@ var ALWAYS_ALLOW = [
   "Bash(tail *)",
   "Bash(wc *)",
   "Bash(sort*)",
-  "Bash(cut *)"
+  "Bash(cut *)",
+  "Bash(echo*)",
+  "Bash(printf *)",
+  "Bash(pwd*)"
 ];
+var PACKAGE_MANAGERS = /* @__PURE__ */ new Set(["npm", "pnpm", "yarn", "bun"]);
+var SCRIPT_RUNNERS = {
+  test: ["node --test", "npx vitest", "npx jest"],
+  lint: ["npx eslint"],
+  build: ["npx tsc"],
+  typecheck: ["npx tsc"]
+};
+function stageRules(stage) {
+  const run = stage.run.trim();
+  const env = Object.entries(stage.env ?? {}).map(([k, v]) => `${k}=${String(v)}`).join(" ");
+  const forms = [run];
+  const [tool = "", verb = "", script = ""] = run.split(/\s+/);
+  if (PACKAGE_MANAGERS.has(tool) && verb === "run" && script) {
+    forms.push(`${tool} run ${script}`, `${tool} ${script}`, `${tool} --prefix * run ${script}`, `${tool} --prefix * ${script}`, ...SCRIPT_RUNNERS[script] ?? []);
+  } else if (tool === "dotnet" && verb && !verb.startsWith("-")) {
+    forms.push(`dotnet ${verb}`, "dotnet restore");
+  }
+  return forms.flatMap((form) => [`Bash(${form}*)`, ...env ? [`Bash(${env} ${form}*)`] : []]);
+}
 function homeAllow(pluginRoot2, stages) {
-  const forStage = (s) => {
-    const env = Object.entries(s.env ?? {}).map(([k, v]) => `${k}=${String(v)}`).join(" ");
-    return [`Bash(${s.run.trim()}*)`, ...env ? [`Bash(${env} ${s.run.trim()}*)`] : []];
-  };
-  return [.../* @__PURE__ */ new Set([`Bash(node "${forward(join3(pluginRoot2, "bin"))}/*)`, ...stages.flatMap(forStage), ...ALWAYS_ALLOW])];
+  return [.../* @__PURE__ */ new Set([`Bash(node "${forward(join3(pluginRoot2, "bin"))}/*)`, ...stages.flatMap(stageRules), ...ALWAYS_ALLOW])];
 }
 var ALIAS_MODELS = { haiku: "claude-haiku-5-5", sonnet: "claude-sonnet-5-5", opus: "claude-opus-5-5" };
 var aliasEnv = () => Object.fromEntries(Object.entries(ALIAS_MODELS).map(([alias, model]) => [`ANTHROPIC_DEFAULT_${alias.toUpperCase()}_MODEL`, model]));

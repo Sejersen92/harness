@@ -337,6 +337,43 @@ test("each eval stage is allowed by its exact command, and again with its env in
   assert.equal(allow.length, new Set(allow).size, "no rule twice");
 });
 
+/** Whether Claude Code would allow a command under these rules: every part of it matches one, `*` matching anything. */
+function allowedBy(rules: readonly string[], command: string): boolean {
+  const patterns = rules.filter((r) => r.startsWith("Bash(")).map((r) =>
+    new RegExp(`^${r.slice(5, -1).replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*")}$`, "s"));
+  // Split at && || ; | outside quotes, as Claude Code splits a compound command before matching each part.
+  const parts = command.match(/(?:"[^"]*"|'[^']*'|[^"'&|;])+/g) ?? [];
+  return parts.map((part) => part.trim().replace(/\s*2>$/, "").replace(/\s*2>&1$/, "")).filter((p) => p && p !== "1")
+    .every((part) => patterns.some((p) => p.test(part)));
+}
+
+test("the checks U1's first acceptance run was refused are allowed; node -e and unknown commands still are not", () => {
+  // harness-scratch's one stage, and what its agents ran on 2026-10-28 (PLAN-8, six permission denials).
+  const allow = homeAllow(String.raw`C:\src\privateProjects\harness`, [{ run: "npm run test" }]);
+  for (const command of [
+    "cd C:/src/privateProjects/harness-scratch/test/fixtures; head -c 1500 notes.v1.json; echo; echo ----; head -c 1500 notes.v2.json",
+    "node --test C:/src/privateProjects/harness-scratch/test/tags.test.js 2>&1 | grep -E \"^not ok|^ok\" | head -40",
+    "node --test C:/src/privateProjects/harness-scratch/test/tags.test.js",
+    "npm --prefix C:/src/privateProjects/harness-scratch test",
+    "npm test",
+    "git log --oneline -2 && git show --stat HEAD | tail -5 && git status --short && npm test 2>&1 | tail -8 && printf -- '---\\n' && git diff HEAD~1 --stat -- test",
+    'node "C:/src/privateProjects/harness/bin/harness-emit.mjs" task.completed --task PLAN-8.1',
+  ]) assert.ok(allowedBy(allow, command), command);
+
+  for (const command of [
+    "node -e \"require('fs').writeFileSync('x', '')\"",
+    "npm run deploy",
+    "npx some-tool",
+    "curl https://example.com",
+    "bash scripts/anything.sh",
+  ]) assert.ok(!allowedBy(allow, command), command);
+
+  const dotnet = homeAllow("/p", [{ run: "dotnet test DocumentService.sln --no-build --nologo" }]);
+  assert.ok(allowedBy(dotnet, "dotnet test DocumentService.Tests --filter Name~Digest"));
+  assert.ok(allowedBy(dotnet, "dotnet restore"));
+  assert.ok(!allowedBy(homeAllow("/p", [{ run: "bash scripts/check.sh" }]), "bash -c anything"), "an unknown stage stays exact");
+});
+
 test("a routing.yaml's stages are read for the allow-list, and an unreadable one gives none", () => {
   assert.deepEqual(stagesIn("eval:\n  stages:\n    - { name: test, run: npm test }\n    - { name: empty, run: '' }\n").map((s) => s.run), ["npm test"]);
   assert.deepEqual(stagesIn("eval: [unclosed"), []);

@@ -170,21 +170,49 @@ const ALWAYS_ALLOW: readonly string[] = [
   "Bash(git status*)", "Bash(git log*)", "Bash(git diff*)", "Bash(git show*)", "Bash(git branch*)", "Bash(git rev-parse*)",
   "Bash(git add *)", "Bash(git commit *)", "Bash(git -C *)",
   "Bash(cd *)", "Bash(ls*)", "Bash(cat *)", "Bash(grep *)", "Bash(head *)", "Bash(tail *)", "Bash(wc *)", "Bash(sort*)", "Bash(cut *)",
+  "Bash(echo*)", "Bash(printf *)", "Bash(pwd*)",
 ];
+
+const PACKAGE_MANAGERS = new Set(["npm", "pnpm", "yarn", "bun"]);
+
+// The runner a package script usually calls, which the agents also run on one file: the evaluator
+// confirms its new tests fail, an implementer checks one suite (U1's acceptance run, 2026-10-28).
+const SCRIPT_RUNNERS: Record<string, readonly string[]> = {
+  test: ["node --test", "npx vitest", "npx jest"],
+  lint: ["npx eslint"],
+  build: ["npx tsc"],
+  typecheck: ["npx tsc"],
+};
+
+/**
+ * The rules one eval stage needs: the stage as written, and the ways an agent runs the same check.
+ * A package script (`npm run test`) with or without `run`, from another folder (`--prefix`), and the
+ * runner it calls; `dotnet build|test` for any target, with `restore`, which both need. Anything else
+ * stays exactly as written: widening an unknown command to its first word could allow anything.
+ */
+function stageRules(stage: StageCommand): string[] {
+  const run = stage.run.trim();
+  const env = Object.entries(stage.env ?? {}).map(([k, v]) => `${k}=${String(v)}`).join(" ");
+  const forms = [run];
+  const [tool = "", verb = "", script = ""] = run.split(/\s+/);
+  if (PACKAGE_MANAGERS.has(tool) && verb === "run" && script) {
+    forms.push(`${tool} run ${script}`, `${tool} ${script}`, `${tool} --prefix * run ${script}`, `${tool} --prefix * ${script}`, ...(SCRIPT_RUNNERS[script] ?? []));
+  } else if (tool === "dotnet" && verb && !verb.startsWith("-")) {
+    forms.push(`dotnet ${verb}`, "dotnet restore");
+  }
+  return forms.flatMap((form) => [`Bash(${form}*)`, ...(env ? [`Bash(${env} ${form}*)`] : [])]);
+}
 
 /**
  * The allow rules a home's sessions run under (U1, H2). A headless run (`claude -p`) is refused any call
  * that would ask, so without these it can't record its own stop (S17). The plugin's scripts are allowed
  * by their path, spelled as the session context hands it out, rather than `node *`, which would allow
- * `node -e` and so anything. Each eval stage is allowed by its exact command, with and without its env.
- * `git -C *` lets a push through the allow-list, so the deny rules and the push guard hold the fence.
+ * `node -e` and so anything. Each eval stage is allowed as the agents run it (stageRules).
+ * A test runner runs code the agents wrote, and `git -C *` lets a push through the allow-list, so the
+ * deny rules and the PreToolUse guards hold the fence, not this list.
  */
 export function homeAllow(pluginRoot: string, stages: readonly StageCommand[]): string[] {
-  const forStage = (s: StageCommand): string[] => {
-    const env = Object.entries(s.env ?? {}).map(([k, v]) => `${k}=${String(v)}`).join(" ");
-    return [`Bash(${s.run.trim()}*)`, ...(env ? [`Bash(${env} ${s.run.trim()}*)`] : [])];
-  };
-  return [...new Set([`Bash(node "${forward(join(pluginRoot, "bin"))}/*)`, ...stages.flatMap(forStage), ...ALWAYS_ALLOW])];
+  return [...new Set([`Bash(node "${forward(join(pluginRoot, "bin"))}/*)`, ...stages.flatMap(stageRules), ...ALWAYS_ALLOW])];
 }
 
 /**
