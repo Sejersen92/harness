@@ -2,7 +2,7 @@
 // and nothing else. A model never writes this. Where evidence is missing the record says so
 // (complete: false, missing_events) instead of guessing (C12).
 import { planSection } from "./plan.ts";
-import { readEvents, readRoutingLog, recordFailure, writeRoutingLog, type RoutingRecord } from "./spool.ts";
+import { MAX_LINE_BYTES, readEvents, readRoutingLog, recordFailure, writeRoutingLog, type RoutingRecord } from "./spool.ts";
 import type { Config, HarnessEvent } from "./types.ts";
 
 // The data of each event type this reads, as harness-emit and the hooks write it (schema/ has the
@@ -37,12 +37,17 @@ export function buildRecord(
   config: Config, taskId: string, events: HarnessEvent[] = readEvents(config), previous: RoutingRecord[] = readRoutingLog(config),
 ): { record: RoutingRecord; error?: undefined } | { error: string; record?: undefined } {
   const about = (e: HarnessEvent): boolean => e.task_id === taskId || (Array.isArray(e.data?.task_ids) && e.data.task_ids.includes(taskId));
-  const mine = events.filter(about);
+  const all = events.filter(about);
+  const completed = last(all.filter((e) => e.type === "task.completed"));
+  if (!completed) return { error: `${taskId}: no task.completed event` };
+  // One record is one attempt: what happened after the task's previous completion, if it had one. A task
+  // run again (S17–S21 ran PLAN-6.1 five times) otherwise carries every earlier run and outgrew 4 KB.
+  // A killed attempt with no completion stays in the next one, since it was work towards it.
+  const since = last(all.filter((e) => e.type === "task.completed" && e.ts < completed.ts))?.ts;
+  const mine = since === undefined ? all : all.filter((e) => e.ts > since);
   const ofType = (type: string): HarnessEvent[] => mine.filter((e) => e.type === type);
 
-  const completed = last(ofType("task.completed"));
-  if (!completed) return { error: `${taskId}: no task.completed event` };
-  const scored = last(ofType("task.scored").filter((e) => e.ts <= completed.ts));
+  const scored = last(all.filter((e) => e.type === "task.scored" && e.ts <= completed.ts));
   if (!scored) return { error: `${taskId}: no task.scored event, so there is no rubric to record` };
 
   const missing: string[] = [];
@@ -164,5 +169,18 @@ export function writeTaskRecord(config: Config, taskId: string): RoutingRecord |
     recordFailure(config, `routing log: ${error}`);
     return null;
   }
-  return writeRoutingLog(config, record) ? record : null;
+  return writeRoutingLog(config, fitted(record)) ? record : null;
+}
+
+/**
+ * The record trimmed to fit one spool line, when it doesn't already: each run keeps the fields PU prices
+ * and routes by (agent, id, times, report, model) and loses model_requested and effort, and each eval
+ * round loses its stages. `trimmed` says so. A record still too long is refused by the spool and
+ * recorded as a failure, as before: never dropped silently.
+ */
+export function fitted(record: RoutingRecord): RoutingRecord {
+  if (Buffer.byteLength(JSON.stringify(record)) < MAX_LINE_BYTES) return record;
+  const runs = (record.runs as Run[]).map(({ model_requested: _requested, effort: _effort, ...kept }) => kept);
+  const evalRounds = (record.eval_rounds as EvalRound[]).map((round) => ({ ...round, stages: [] }));
+  return { ...record, runs, eval_rounds: evalRounds, trimmed: ["runs.model_requested", "runs.effort", "eval_rounds.stages"] };
 }

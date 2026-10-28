@@ -128,6 +128,7 @@ export interface HarnessEvent {
 /** What Claude Code sends a hook on stdin. Only the fields the Harness reads; any can be missing. */
 export interface HookInput {
   session_id?: string;
+  cwd?: string;
   prompt_id?: string;
   agent_id?: string;
   agent_type?: string;

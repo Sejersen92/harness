@@ -17,7 +17,7 @@ Both outputs are designed to be **safe to ship off the machine**. They carry ide
 - **Atomic lines.** Each event is one line under 4 KB, appended with `O_APPEND`, so parallel subagents never interleave partial lines.
 - **Order.** Lines are in write order, which can differ slightly from `ts` order across parallel agents. Readers sort by `ts`, then `event_id`.
 - **Retention.** Files older than `metadata.retention_days` (one key, C10; default 30) are deleted by `harness-emit` on its first write each day.
-- **Failure never blocks work, but is never silent (C12).** If a write fails, `harness-emit` logs to stderr, adds one to `.harness/emit-failures` and exits 0. `/harness:doctor` reports the count, and a routing-log record built without an event it expected is marked `complete: false` with `missing_events`.
+- **Failure never blocks work, but is never silent (C12).** If a write fails, `harness-emit` logs to stderr, adds one to `.harness/emit-failures` and exits 0. `/harness:doctor` reports the count, and a routing-log record built without an event it expected is marked `complete: false` with `missing_events`. A record is one attempt at its task: the events after the task's previous `task.completed` (0.12.0). One still too long for a 4 KB line is trimmed, keeping every run's id, and says so in `trimmed`.
 - **`mode: off` writes nothing.** So `mode` in a line is always `observe` or `route`.
 - **`harness-tasklog` writes the routing log** when `task.completed` is emitted. It assembles the record from that task's events, its `PLAN.md` section and git. A reopened task that completes again gets a new line with `revision` + 1.
 

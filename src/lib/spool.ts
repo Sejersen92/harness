@@ -21,7 +21,7 @@ export interface RoutingRecord {
   [field: string]: unknown;
 }
 
-const MAX_LINE_BYTES = 4096;
+export const MAX_LINE_BYTES = 4096;
 
 /**
  * The machine's list of repositories with a spool, so a reader (PU's `pu sync`) finds every one

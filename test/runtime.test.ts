@@ -7,7 +7,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } fro
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseReport } from "../src/lib/ids.ts";
-import { buildRecord } from "../src/lib/tasklog.ts";
+import { buildRecord, fitted } from "../src/lib/tasklog.ts";
 import type { Config } from "../src/lib/types.ts";
 import { describe, root, validatorFor, type Line } from "./validators.ts";
 import { cleanEnv, git } from "./git.ts";
@@ -232,6 +232,51 @@ test("a task's gate decisions are the ones made while it was being worked, not s
   // tests, before its dispatch) -> 10:10:02. From scoring, PLAN-1.2 would have read 600 s.
   assert.equal(first.wall_clock_s, 242);
   assert.equal(second.wall_clock_s, 272);
+});
+
+test("a task run again is recorded as its latest attempt, and a record too long for a line is trimmed to fit", () => {
+  // As in S17–S21: one task, scored once, run to completion five times on the same day.
+  const dir = makeRepo();
+  const at = (ts: string, type: string, task: string | null, data: Record<string, unknown> = {}): Line => ({
+    ts, type, session_id: SESSION, event_id: ts, ...(task ? { task_id: task, plan_id: "PLAN-1" } : {}), data,
+    repo: { name: "r", remote_sha256: "0".repeat(64) }, producer: { name: "harness", version: "0.2.3" }, mode: "observe", config_sha256: "0".repeat(64),
+  });
+  const scores = { scores: { ambiguity: 0, blast: 0, coupling: 0, novelty: 0, reversibility: 0, verification: 0 }, total: 0, score_band: "T1", overrides: [], tier_planned: "T1" };
+  const done = { outcome: "pass_first_try", final_tier: "T1", eval_rounds: 1, escalations: 0 };
+  const stage = { name: "test", command: "npm test", result: "pass", exit_code: 0, duration_ms: 1000, log: "x".repeat(60) };
+  const attempt = (n: number): Line[] => {
+    const t = (m: number): string => `2026-10-27T1${n}:${String(m).padStart(2, "0")}:00Z`;
+    const run = (id: string, agent: string, from: number, to: number): Line[] => [
+      { ...at(t(from), "subagent.started", null), agent_id: id, agent_type: agent },
+      { ...at(t(to), "subagent.stopped", null, { report: "DONE", partial: false, task_ids: ["PLAN-1.1"], model_requested: "inherit", model: "claude-opus-5-5", effort: "medium" }), agent_id: id, agent_type: agent },
+    ];
+    return [
+      at(t(1), "task.dispatched", "PLAN-1.1", { tier: "T1", isolation: "none" }),
+      ...run(`a${n}-tests`, "harness:evaluator", 2, 3), ...run(`a${n}-impl`, "harness:impl-t1", 4, 5), ...run(`a${n}-eval`, "harness:evaluator", 6, 7),
+      at(t(8), "eval.completed", "PLAN-1.1", { result: "pass", failed_acs: [], stages: [stage, stage, stage] }),
+      at(t(9), "task.completed", "PLAN-1.1", done),
+    ];
+  };
+  const events = [at("2026-10-27T09:00:00Z", "task.scored", "PLAN-1.1", scores), ...[1, 2, 3, 4, 5].flatMap(attempt)];
+  const config = { dir, includeJustifications: true, layout: { planPath: join(dir, "PLAN.md") } } as Config;
+
+  const record = buildRecord(config, "PLAN-1.1", events as never, []).record;
+  assert.ok(record, "the record was built");
+  const runs = record.runs as { agent_id: string }[];
+  assert.deepEqual(runs.map((r) => r.agent_id), ["a5-tests", "a5-impl", "a5-eval"], "only the fifth attempt's runs");
+  assert.equal((record.eval_rounds as unknown[]).length, 1);
+  assert.equal(record.wall_clock_s, 8 * 60, "from the fifth attempt's dispatch, not from scoring");
+  assert.ok(Buffer.byteLength(JSON.stringify(record)) < 4096, "one attempt fits a line");
+
+  // A long attempt (many runs, long stage logs) is trimmed, keeping every run's id for pricing.
+  const long = { ...record, runs: Array.from({ length: 14 }, (_, i) => ({ ...runs[0], agent_id: `a-long-${i}` })), eval_rounds: Array.from({ length: 4 }, (_, i) => ({ round: i + 1, result: "fail", failed_acs: [], stages: [stage, stage, stage] })) };
+  assert.ok(Buffer.byteLength(JSON.stringify(long)) >= 4096, "the test's long record really is too long");
+  const trimmed = fitted(long as never);
+  assert.ok(Buffer.byteLength(JSON.stringify(trimmed)) < 4096, `trimmed to ${Buffer.byteLength(JSON.stringify(trimmed))} bytes`);
+  assert.equal((trimmed.runs as unknown[]).length, 14);
+  assert.deepEqual(Object.keys((trimmed.runs as Record<string, unknown>[])[0] ?? {}).sort(), ["agent_id", "agent_type", "ended", "model", "partial", "report", "started"]);
+  assert.deepEqual(trimmed.trimmed, ["runs.model_requested", "runs.effort", "eval_rounds.stages"]);
+  assert.equal(fitted(record), record, "a record that fits is left alone");
 });
 
 test("a run whose meta.json names no model is recorded as having inherited it", () => {

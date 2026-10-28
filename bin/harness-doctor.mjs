@@ -7267,7 +7267,7 @@ var require_public_api = __commonJS({
       }
       return doc;
     }
-    function parse3(src, reviver, options) {
+    function parse4(src, reviver, options) {
       let _reviver = void 0;
       if (typeof reviver === "function") {
         _reviver = reviver;
@@ -7308,7 +7308,7 @@ var require_public_api = __commonJS({
         return value.toString(options);
       return new Document.Document(value, _replacer, options).toString(options);
     }
-    exports.parse = parse3;
+    exports.parse = parse4;
     exports.parseAllDocuments = parseAllDocuments;
     exports.parseDocument = parseDocument;
     exports.stringify = stringify3;
@@ -7752,10 +7752,17 @@ var GIT_DENY = [
   "Bash(git commit -n*)",
   "Bash(git commit-tree*)",
   "Bash(git * commit-tree*)",
-  // No history rewrites and no merges to main from an agent: those stay human actions.
+  // No history rewrites and no merges to main from an agent: those stay human actions. Patterns miss
+  // spellings (S21 c), so the PreToolUse push guard (lib/push.ts) is the fence and these a second layer.
   "Bash(git push --force*)",
   "Bash(git push * --force*)",
+  "Bash(git push -f*)",
+  "Bash(git push * -f*)",
+  "Bash(git push * +*)",
   "Bash(git push * main*)",
+  "Bash(git push *:main*)",
+  "Bash(git checkout main*)",
+  "Bash(git switch main*)",
   "Bash(git reset --hard*)",
   "Bash(gh pr merge*)",
   "Bash(gh release*)",
@@ -7791,8 +7798,55 @@ function homeDeny(home) {
     `Edit(${h}/repo.json)`,
     `Edit(${h}/githooks/**)`,
     "Edit(.github/workflows/**)",
-    ...GIT_DENY
+    ...GIT_DENY,
+    ...OUTWARD_DENY
   ];
+}
+var OUTWARD_DENY = ["Bash(gh *)", "Bash(az *)", "Bash(vercel *)"];
+var ALWAYS_ALLOW = [
+  "Bash(git status*)",
+  "Bash(git log*)",
+  "Bash(git diff*)",
+  "Bash(git show*)",
+  "Bash(git branch*)",
+  "Bash(git rev-parse*)",
+  "Bash(git add *)",
+  "Bash(git commit *)",
+  "Bash(git -C *)",
+  "Bash(cd *)",
+  "Bash(ls*)",
+  "Bash(cat *)",
+  "Bash(grep *)",
+  "Bash(head *)",
+  "Bash(tail *)",
+  "Bash(wc *)",
+  "Bash(sort*)",
+  "Bash(cut *)",
+  "Bash(echo*)",
+  "Bash(printf *)",
+  "Bash(pwd*)"
+];
+var PACKAGE_MANAGERS = /* @__PURE__ */ new Set(["npm", "pnpm", "yarn", "bun"]);
+var SCRIPT_RUNNERS = {
+  test: ["node --test", "npx vitest", "npx jest"],
+  lint: ["npx eslint"],
+  build: ["npx tsc"],
+  typecheck: ["npx tsc"]
+};
+function stageRules(stage) {
+  const run = stage.run.trim();
+  const env = Object.entries(stage.env ?? {}).map(([k, v]) => `${k}=${String(v)}`).join(" ");
+  const forms = [run];
+  const [tool = "", verb = "", script = ""] = run.split(/\s+/);
+  if (PACKAGE_MANAGERS.has(tool) && verb === "run" && script) {
+    forms.push(`${tool} run ${script}`, `${tool} ${script}`, `${tool} --prefix * run ${script}`, `${tool} --prefix * ${script}`, ...SCRIPT_RUNNERS[script] ?? []);
+  } else if (tool === "dotnet" && verb && !verb.startsWith("-")) {
+    forms.push(`dotnet ${verb}`, "dotnet restore");
+  }
+  return forms.flatMap((form) => [`Bash(${form}*)`, ...env ? [`Bash(${env} ${form}*)`] : []]);
+}
+function homeAllow(pluginRoot2, stages) {
+  return [.../* @__PURE__ */ new Set([`Bash(node "${forward(join3(pluginRoot2, "bin"))}/*)`, ...stages.flatMap(stageRules), ...ALWAYS_ALLOW])];
 }
 var ALIAS_MODELS = { haiku: "claude-haiku-5-5", sonnet: "claude-sonnet-5-5", opus: "claude-opus-5-5" };
 var aliasEnv = () => Object.fromEntries(Object.entries(ALIAS_MODELS).map(([alias, model]) => [`ANTHROPIC_DEFAULT_${alias.toUpperCase()}_MODEL`, model]));
@@ -7891,7 +7945,7 @@ function checks(dir2, { pluginRoot: pluginRoot2, claudeVersion = readClaudeVersi
       add("spool-writable", "fail", messageOf(error));
     }
   }
-  if (config2.layout?.kind === "home") homeChecks(dir2, config2.layout.root, add);
+  if (config2.layout?.kind === "home") homeChecks(dir2, config2.layout.root, add, pluginRoot2 ?? null, config2.stages ?? []);
   else if (config2.layout) repositoryChecks(dir2, add);
   const ciConfig = join4(dir2, CI_CONFIG);
   if (config2.layout && (existsSync5(ciConfig) || existsSync5(join4(dir2, CI_WORKFLOW)))) {
@@ -7922,7 +7976,7 @@ function checks(dir2, { pluginRoot: pluginRoot2, claudeVersion = readClaudeVersi
   );
   return results2;
 }
-function homeChecks(dir2, home, add) {
+function homeChecks(dir2, home, add, pluginRoot2, stages) {
   const hooks = hooksState(dir2, home);
   const folder = githooksDir(home);
   const own = ownHooks(dir2, hooks.previous);
@@ -7943,6 +7997,16 @@ function homeChecks(dir2, home, add) {
     missingDeny.length ? "warn" : "pass",
     missingDeny.length ? `${missingDeny.length} deny rule(s) missing from ${join4(home, "settings.json")} (/harness:init writes them)` : `${denied.size} deny rules for Harness sessions, in ${join4(home, "settings.json")}`
   );
+  if (!pluginRoot2) add("allow-list", "warn", "the plugin's folder is unknown here, so the allow rules can't be checked");
+  else {
+    const allowed = new Set(settings.permissions?.allow ?? []);
+    const missingAllow = homeAllow(pluginRoot2, stages).filter((rule) => !allowed.has(rule));
+    add(
+      "allow-list",
+      missingAllow.length ? "warn" : "pass",
+      missingAllow.length ? `${missingAllow.length} allow rule(s) missing from ${join4(home, "settings.json")}, e.g. ${missingAllow.slice(0, 2).join(", ")}: a headless run (pu harness run) is refused those calls (/harness:init writes them)` : `${allowed.size} allow rules: the Harness's scripts, ${stages.length} eval stage(s), git and read-only helpers`
+    );
+  }
   const unpinned = Object.entries(aliasEnv()).filter(([name, model]) => settings.env?.[name] !== model).map(([name]) => name);
   add(
     "alias-models",

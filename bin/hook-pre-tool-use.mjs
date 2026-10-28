@@ -7577,6 +7577,33 @@ function isTestPath(file, dir, globs) {
   return globs.some((glob) => globToRegExp(glob).test(rel));
 }
 var isMarkerPath = (path) => /(?:^|[\\/])state[\\/]+eval-pass\.json/i.test(String(path ?? ""));
+var READERS = /* @__PURE__ */ new Set(["cat", "head", "tail", "grep", "rg", "wc", "jq", "less", "more", "type", "get-content", "gc", "select-string"]);
+var HARMLESS_REDIRECT = /\b2>(?:&1|\s*\/dev\/null|\s*nul)\b/gi;
+function segments(command2) {
+  const out = [];
+  let quote = null;
+  let start = 0;
+  for (let i = 0; i < command2.length; i++) {
+    const c = command2[i];
+    if (quote) {
+      if (c === quote) quote = null;
+    } else if (c === '"' || c === "'") quote = c;
+    else if (c === "\n" || c === ";" || c === "&" || c === "|") {
+      out.push(command2.slice(start, i));
+      start = i + 1;
+    }
+  }
+  out.push(command2.slice(start));
+  return out;
+}
+function writesMarker(command2) {
+  if (!/eval-pass\.json/i.test(command2) || /harness-eval(\.mjs)?\b/.test(command2)) return false;
+  return segments(command2).some((segment) => {
+    if (!/eval-pass\.json/i.test(segment)) return false;
+    const [first = ""] = words(segment.trim().replace(/^(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*/, ""));
+    return !READERS.has(first.toLowerCase()) || segment.replace(HARMLESS_REDIRECT, "").includes(">");
+  });
+}
 var unstagedTracked = (dir) => execFileSync3("git", ["-C", dir, "diff", "--name-only"], { stdio: ["ignore", "pipe", "ignore"] }).toString().trim().length > 0;
 function checkMarker(dir, markerPath, ttlMinutes, now = /* @__PURE__ */ new Date()) {
   const marker = readMarker(markerPath);
@@ -7621,9 +7648,98 @@ var plansIn = (prompt) => {
   return planIdsIn(header);
 };
 
+// src/lib/push.ts
+import { execFileSync as execFileSync4 } from "node:child_process";
+import { resolve as resolve3 } from "node:path";
+var git3 = (dir, ...args2) => {
+  try {
+    return execFileSync4("git", ["-C", dir, ...args2], { stdio: ["ignore", "pipe", "ignore"] }).toString().trim() || null;
+  } catch {
+    return null;
+  }
+};
+var gitContext = {
+  current: (dir) => git3(dir, "symbolic-ref", "--short", "-q", "HEAD"),
+  protectedBranches: (dir, remote) => {
+    const named = git3(dir, "symbolic-ref", "--short", "-q", `refs/remotes/${remote}/HEAD`);
+    return [.../* @__PURE__ */ new Set(["main", ...named ? [named.slice(remote.length + 1)] : []])];
+  }
+};
+var PUSH_TAKES_VALUE = /* @__PURE__ */ new Set(["-o", "--push-option", "--repo", "--receive-pack", "--exec"]);
+function invocation(text) {
+  let quote = null;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quote) {
+      if (c === quote) quote = null;
+    } else if (c === '"' || c === "'") quote = c;
+    else if (c === "\n" || c === ";" || c === "&" || c === "|" || c === ")" || c === "`") return text.slice(0, i);
+  }
+  return text;
+}
+function pushRefusal(command2, cwd, context = gitContext) {
+  if (typeof command2 !== "string" || !command2.includes("push")) return null;
+  for (const match of command2.matchAll(COMMAND_GIT)) {
+    const rest = words(invocation(command2.slice(match.index + match[0].length)));
+    let dir = cwd;
+    let i = 0;
+    for (; i < rest.length; i++) {
+      const word = rest[i] ?? "";
+      if (TAKES_VALUE.has(word)) {
+        if (word === "-C") dir = resolve3(dir, rest[i + 1] ?? ".");
+        i++;
+        continue;
+      }
+      if (!word.startsWith("-")) break;
+    }
+    if (rest[i] !== "push") continue;
+    const refusal = judge(rest.slice(i + 1), dir, context);
+    if (refusal) return refusal;
+  }
+  return null;
+}
+function judge(args2, dir, context) {
+  const positionals = [];
+  let optionsEnded = false;
+  for (let i = 0; i < args2.length; i++) {
+    const word = args2[i] ?? "";
+    if (optionsEnded || !word.startsWith("-") || word === "-") {
+      positionals.push(word);
+      continue;
+    }
+    if (word === "--") optionsEnded = true;
+    else if (PUSH_TAKES_VALUE.has(word)) i++;
+    else if (word.startsWith("--force")) return `${word} rewrites the remote's history`;
+    else if (word === "--mirror" || word === "--all" || word === "--branches") return `${word} pushes every branch, the default one too`;
+    else if (/^-[A-Za-z]+$/.test(word) && word.includes("f")) return `${word} forces the push`;
+  }
+  const remote = positionals[0] ?? "origin";
+  const refspecs = positionals.slice(1);
+  const guarded = context.protectedBranches(dir, remote);
+  const current = context.current(dir);
+  const named = (branch) => `${branch} is ${branch === "main" ? "main" : "the default branch"}`;
+  if (refspecs.length === 0) {
+    if (current === null) return "a bare git push from a detached HEAD can't be told apart from a push to the default branch";
+    return guarded.includes(current) ? `a bare git push from ${current} pushes it, and ${named(current)}` : null;
+  }
+  for (const refspec of refspecs) {
+    if (/[$`(]/.test(refspec)) return `the refspec ${refspec} can't be read before it runs; name the branch`;
+    if (refspec.startsWith("+")) return `${refspec} forces the push`;
+    const colon = refspec.lastIndexOf(":");
+    let target = colon === -1 ? refspec : refspec.slice(colon + 1) || refspec.slice(0, colon);
+    if (target === "HEAD") {
+      if (current === null) return `${refspec} from a detached HEAD can't be told apart from a push to the default branch`;
+      target = current;
+    }
+    target = target.replace(/^refs\/heads\//, "");
+    if (guarded.includes(target)) return `${refspec} pushes to ${target}, and ${named(target)}`;
+  }
+  return null;
+}
+
 // src/lib/spool.ts
 import { appendFileSync, existsSync as existsSync3, mkdirSync as mkdirSync2, readdirSync, readFileSync as readFileSync3, renameSync as renameSync2, rmSync as rmSync2, writeFileSync as writeFileSync2 } from "node:fs";
-import { join as join2, resolve as resolve3 } from "node:path";
+import { join as join2, resolve as resolve4 } from "node:path";
 
 // src/lib/types.ts
 var EFFORTS = ["low", "medium", "high", "xhigh", "max"];
@@ -7641,11 +7757,11 @@ function writeRegistry(path, registry) {
 }
 function registerSpool(spool, now = /* @__PURE__ */ new Date()) {
   const path = registryPath();
-  const metadataDir = resolve3(spool.metadataDir);
+  const metadataDir = resolve4(spool.metadataDir);
   try {
     const registry = readRegistry(path);
     if (registry.spools.some((s) => s.metadata_dir.toLowerCase() === metadataDir.toLowerCase())) return;
-    registry.spools.push({ repo_dir: resolve3(spool.dir), metadata_dir: metadataDir, first_seen: utcNow(now) });
+    registry.spools.push({ repo_dir: resolve4(spool.dir), metadata_dir: metadataDir, first_seen: utcNow(now) });
     writeRegistry(path, registry);
   } catch (error) {
     recordFailure(spool, `spool registry: ${messageOf(error)}`);
@@ -7799,19 +7915,25 @@ var input = await readHookInput();
 var tool = input.tool_name ?? "";
 var args = input.tool_input ?? {};
 var command = tool === "Bash" ? String(args.command ?? "") : "";
-var touchesMarker = tool === "Bash" ? /eval-pass\.json/i.test(command) && !/harness-eval(\.mjs)?\b/.test(command) : isMarkerPath(args.file_path ?? args.notebook_path);
+var touchesMarker = tool === "Bash" ? writesMarker(command) : isMarkerPath(args.file_path ?? args.notebook_path);
 var commits = tool === "Bash" && isCommit(command);
+var pushes = tool === "Bash" && /\bpush\b/.test(command);
 var agent = String(input.agent_type ?? "");
 var role = agent.startsWith("harness:impl-t") ? "implementer" : agent === "harness:evaluator" ? "evaluator" : null;
 var edited = EDIT_TOOLS.has(tool) ? args.file_path ?? args.notebook_path : null;
 var policedEdit = Boolean(role && edited);
 var dispatched = AGENT_TOOLS.has(tool) ? String(args.subagent_type ?? "") : "";
 var harnessDispatch = dispatched.startsWith("harness:");
-if (!touchesMarker && !commits && !policedEdit && !harnessDispatch) process.exit(0);
+if (!touchesMarker && !commits && !pushes && !policedEdit && !harnessDispatch) process.exit(0);
 var config = loadConfig();
 if (config.mode === "off") process.exit(0);
 if (touchesMarker) {
-  deny("harness: the eval pass marker (eval-pass.json) is written only by harness-eval. Run harness-eval instead of touching the file.");
+  deny("harness: the eval pass marker (eval-pass.json) is written only by harness-eval. Reading it is fine; run harness-eval instead of writing it.");
+}
+if (pushes) {
+  const refusal = pushRefusal(command, input.cwd ?? config.dir);
+  if (refusal) deny(`harness: push refused: ${refusal}. A Harness session pushes its own feature branch only, never forced and never to main or the default branch.`);
+  if (!commits) process.exit(0);
 }
 if (harnessDispatch) {
   const plans = plansIn(args.prompt);

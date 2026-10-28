@@ -7,10 +7,11 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative } from "node:path";
-import { stringify } from "yaml";
+import { parse, stringify } from "yaml";
 import { harnessHome, normalisedPath, repoHome } from "./config.ts";
 import { utcNow } from "./ids.ts";
 import { packageManager, runScript } from "./packages.ts";
+import type { Stage } from "./types.ts";
 import { registerSpool, registryPath, unregisterSpool } from "./spool.ts";
 
 /** One change enrol or forget would make: what it is, in words, and the function that makes it. */
@@ -82,8 +83,11 @@ export const GIT_DENY: readonly string[] = [
   // Nothing skips the gate, or builds a commit around it (C2).
   "Bash(git commit --no-verify*)", "Bash(git commit * --no-verify*)", "Bash(git commit -n*)",
   "Bash(git commit-tree*)", "Bash(git * commit-tree*)",
-  // No history rewrites and no merges to main from an agent: those stay human actions.
-  "Bash(git push --force*)", "Bash(git push * --force*)", "Bash(git push * main*)",
+  // No history rewrites and no merges to main from an agent: those stay human actions. Patterns miss
+  // spellings (S21 c), so the PreToolUse push guard (lib/push.ts) is the fence and these a second layer.
+  "Bash(git push --force*)", "Bash(git push * --force*)", "Bash(git push -f*)", "Bash(git push * -f*)",
+  "Bash(git push * +*)", "Bash(git push * main*)", "Bash(git push *:main*)",
+  "Bash(git checkout main*)", "Bash(git switch main*)",
   "Bash(git reset --hard*)",
   "Bash(gh pr merge*)", "Bash(gh release*)", "Bash(gh repo delete*)", "Bash(gh secret*)",
 ];
@@ -137,7 +141,78 @@ export function homeDeny(home: string): string[] {
     `Edit(${h}/state/**)`, `Edit(${h}/routing.yaml)`, `Edit(${h}/settings.json)`, `Edit(${h}/repo.json)`, `Edit(${h}/githooks/**)`,
     "Edit(.github/workflows/**)",
     ...GIT_DENY,
+    ...OUTWARD_DENY,
   ];
+}
+
+/**
+ * What a session could reach beyond the repository with the person's own logins: a headless run is not
+ * sandboxed (U1, decision 1). pu pushes and opens pull requests itself, after a DONE.
+ */
+export const OUTWARD_DENY: readonly string[] = ["Bash(gh *)", "Bash(az *)", "Bash(vercel *)"];
+
+/** What the allow-list needs of an eval stage: its command, and the env it runs with. */
+export type StageCommand = Pick<Stage, "run" | "env">;
+
+/** The eval stages in a routing.yaml's text; none when it can't be read. */
+export function stagesIn(routingYaml: string): StageCommand[] {
+  try {
+    const stages = (parse(routingYaml) as { eval?: { stages?: unknown } } | null)?.eval?.stages;
+    return Array.isArray(stages) ? stages.filter((s): s is StageCommand => typeof s?.run === "string" && s.run.trim() !== "") : [];
+  } catch {
+    return [];
+  }
+}
+
+// What every session runs that is neither the Harness's own script nor an eval stage: git's reads and its
+// commit (the gate decides that one), and the read-only helpers S17's runs reached for.
+const ALWAYS_ALLOW: readonly string[] = [
+  "Bash(git status*)", "Bash(git log*)", "Bash(git diff*)", "Bash(git show*)", "Bash(git branch*)", "Bash(git rev-parse*)",
+  "Bash(git add *)", "Bash(git commit *)", "Bash(git -C *)",
+  "Bash(cd *)", "Bash(ls*)", "Bash(cat *)", "Bash(grep *)", "Bash(head *)", "Bash(tail *)", "Bash(wc *)", "Bash(sort*)", "Bash(cut *)",
+  "Bash(echo*)", "Bash(printf *)", "Bash(pwd*)",
+];
+
+const PACKAGE_MANAGERS = new Set(["npm", "pnpm", "yarn", "bun"]);
+
+// The runner a package script usually calls, which the agents also run on one file: the evaluator
+// confirms its new tests fail, an implementer checks one suite (U1's acceptance run, 2026-10-28).
+const SCRIPT_RUNNERS: Record<string, readonly string[]> = {
+  test: ["node --test", "npx vitest", "npx jest"],
+  lint: ["npx eslint"],
+  build: ["npx tsc"],
+  typecheck: ["npx tsc"],
+};
+
+/**
+ * The rules one eval stage needs: the stage as written, and the ways an agent runs the same check.
+ * A package script (`npm run test`) with or without `run`, from another folder (`--prefix`), and the
+ * runner it calls; `dotnet build|test` for any target, with `restore`, which both need. Anything else
+ * stays exactly as written: widening an unknown command to its first word could allow anything.
+ */
+function stageRules(stage: StageCommand): string[] {
+  const run = stage.run.trim();
+  const env = Object.entries(stage.env ?? {}).map(([k, v]) => `${k}=${String(v)}`).join(" ");
+  const forms = [run];
+  const [tool = "", verb = "", script = ""] = run.split(/\s+/);
+  if (PACKAGE_MANAGERS.has(tool) && verb === "run" && script) {
+    forms.push(`${tool} run ${script}`, `${tool} ${script}`, `${tool} --prefix * run ${script}`, `${tool} --prefix * ${script}`, ...(SCRIPT_RUNNERS[script] ?? []));
+  } else if (tool === "dotnet" && verb && !verb.startsWith("-")) {
+    forms.push(`dotnet ${verb}`, "dotnet restore");
+  }
+  return forms.flatMap((form) => [`Bash(${form}*)`, ...(env ? [`Bash(${env} ${form}*)`] : [])]);
+}
+
+/**
+ * The allow rules a home's sessions run under (U1, H2). A headless run (`claude -p`) is refused any call
+ * that would ask, so without these it can't record its own stop (S17). The plugin's scripts are allowed
+ * by their path, spelled as the session context hands it out, rather than `node *`, which would allow
+ * `node -e` and so anything. Each eval stage is allowed as the agents run it (stageRules).
+ * A test runner runs code the agents wrote, and `git -C *` lets a push through the allow-list, so the
+ * deny rules and the PreToolUse guards hold the fence, not this list.
+ */
+export function homeAllow(pluginRoot: string, stages: readonly StageCommand[]): string[] {
+  return [...new Set([`Bash(node "${forward(join(pluginRoot, "bin"))}/*)`, ...stages.flatMap(stageRules), ...ALWAYS_ALLOW])];
 }
 
 /**
@@ -159,8 +234,10 @@ export const aliasEnv = (): Record<string, string> =>
 export const FOREGROUND_ENV = { CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1" } as const;
 
 /** <home>/settings.json as it should be. */
-export const homeSettings = (home: string): { permissions: { deny: string[] }; env: Record<string, string>; worktree: { baseRef: string } } => ({
-  permissions: { deny: homeDeny(home) },
+export const homeSettings = (
+  home: string, pluginRoot: string, stages: readonly StageCommand[],
+): { permissions: { allow: string[]; deny: string[] }; env: Record<string, string>; worktree: { baseRef: string } } => ({
+  permissions: { allow: homeAllow(pluginRoot, stages), deny: homeDeny(home) },
   env: { ...aliasEnv(), ...FOREGROUND_ENV },
   // Worktree subagents start from the current branch, not the default one (S6).
   worktree: { baseRef: "head" },
@@ -263,14 +340,18 @@ export function enrolPlan(
   const home = repoHome(dir);
   const steps: Step[] = [];
 
+  // The routing.yaml the home will have once this plan is applied: its eval stages are the allow-list's.
+  let routing = readSafely(join(home, "routing.yaml"));
   if (!existsSync(join(home, "routing.yaml"))) {
     // A repository set up the old way keeps its config: it moves into the home and the copy in the
     // repository is left for the person to delete in a commit of their own.
     const old = join(dir, "routing.yaml");
     if (existsSync(old)) {
+      routing = readFileSync(old, "utf8");
       steps.push({ what: `copy routing.yaml into ${home} (the repository's copy is left as it is)`, apply: () => writeHome(home, "routing.yaml", readFileSync(old)) });
     } else {
       const { text, stages } = routingYamlFor(dir, pluginRoot);
+      routing = text;
       steps.push({ what: `write ${join(home, "routing.yaml")} (mode observe; stages: ${stages.join(", ") || "none detected"})`, apply: () => writeHome(home, "routing.yaml", text) });
     }
   }
@@ -280,9 +361,10 @@ export function enrolPlan(
     steps.push({ what: `write ${join(home, "repo.json")}`, apply: () => writeHome(home, "repo.json", JSON.stringify(record, null, 2) + "\n") });
   }
 
-  const settings = JSON.stringify(homeSettings(home), null, 2) + "\n";
+  const wanted = homeSettings(home, pluginRoot, stagesIn(routing));
+  const settings = JSON.stringify(wanted, null, 2) + "\n";
   if (readSafely(join(home, "settings.json")) !== settings) {
-    steps.push({ what: `write ${join(home, "settings.json")} (${homeDeny(home).length} deny rules for Harness sessions, haiku/sonnet/opus pinned to 5.5, subagents in the foreground, worktrees from HEAD)`, apply: () => writeHome(home, "settings.json", settings) });
+    steps.push({ what: `write ${join(home, "settings.json")} (${wanted.permissions.allow.length} allow and ${wanted.permissions.deny.length} deny rules for Harness sessions, haiku/sonnet/opus pinned to 5.5, subagents in the foreground, worktrees from HEAD)`, apply: () => writeHome(home, "settings.json", settings) });
   }
 
   const hooks = hooksState(dir, home);

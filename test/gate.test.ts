@@ -8,7 +8,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } fro
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_TEST_GLOBS } from "../src/lib/config.ts";
-import { isCommit, isMarkerPath, isTestPath } from "../src/lib/gate.ts";
+import { isCommit, isMarkerPath, isTestPath, writesMarker } from "../src/lib/gate.ts";
 import { describe, root, validatorFor, type Line } from "./validators.ts";
 import { cleanEnv, git } from "./git.ts";
 
@@ -224,6 +224,50 @@ test("the marker can't be written by a tool call, only by harness-eval", () => {
     assert.match(out.permissionDecisionReason, /only by harness-eval/);
   }
   assert.equal(preToolUse(repo.dir, "Bash", { command: "node /p/bin/harness-eval.mjs --task PLAN-1.1 # writes eval-pass.json" }), null);
+});
+
+test("reading the marker is let through; anything that could write it is not", () => {
+  const reads = [
+    // what S21's orchestrator was refused
+    'cd "C:/Users/x/.harness/repos/r-1" && grep "PLAN-6" events/2026-10-27.jsonl | cut -c1-400; echo ---; cat state/eval-pass.json | cut -c1-300; cat emit-failures',
+    "cat state/eval-pass.json",
+    "head -c 300 state/eval-pass.json 2>/dev/null",
+    "jq .diff_sha256 state/eval-pass.json",
+    "Get-Content state\\eval-pass.json",
+  ];
+  const writes = [
+    "echo {} > state/eval-pass.json",
+    "cat a.json > state/eval-pass.json",
+    "cat a.json | tee state/eval-pass.json",
+    "cp a.json state/eval-pass.json",
+    "rm state/eval-pass.json",
+    "sed -i s/a/b/ state/eval-pass.json",
+    'node -e "require(\'fs\').writeFileSync(\'state/eval-pass.json\', \'{}\')"',
+    "cat state/eval-pass.json >> copy.json; mv copy.json state/eval-pass.json",
+  ];
+  for (const command of reads) assert.equal(writesMarker(command), false, command);
+  for (const command of writes) assert.equal(writesMarker(command), true, command);
+
+  const repo = makeRepo();
+  assert.equal(preToolUse(repo.dir, "Bash", { command: "cat .claude/state/eval-pass.json" }), null);
+});
+
+test("the hook refuses a push to main and lets a feature branch's push through", () => {
+  const repo = makeRepo();
+  repo.g("checkout", "-q", "-b", "feat/x");
+  const push = (command: string): Line | null => preToolUse(repo.dir, "Bash", { command });
+
+  for (const command of ["git push origin HEAD:main", "git push -f origin HEAD", "git push origin +HEAD"]) {
+    const out = decided(push(command));
+    assert.equal(out.permissionDecision, "deny", command);
+    assert.match(out.permissionDecisionReason, /push refused/);
+  }
+  assert.equal(push("git push -u origin feat/x"), null);
+  assert.equal(push("git push"), null, "a bare push from a feature branch");
+
+  repo.g("checkout", "-q", "-b", "main");
+  assert.equal(decided(push("git push")).permissionDecision, "deny", "a bare push from main");
+  assert.equal(decisions(repo.dir).length, 0, "a push is not a commit, so no gate.decision");
 });
 
 test("what counts as a test: the default globs, relative to the repository", () => {

@@ -4,7 +4,9 @@
 //
 // - commit-gate: a Bash command that commits is denied unless harness-eval passed for exactly what is
 //   staged (lib/gate.ts). Every decision is recorded as gate.decision.
-// - marker-guard: nothing but harness-eval may write the pass marker, so no tool call may touch it.
+// - marker-guard: nothing but harness-eval may write the pass marker. A tool call may read it, nothing more.
+// - push-guard: a push of the session's own feature branch only, never forced and never to main or the
+//   default branch (lib/push.ts, U1).
 // - protect-tests: an implementer (harness:impl-t*) may not edit a test file.
 // - tests-only: the evaluator (harness:evaluator) may edit nothing but test files.
 //   Both read routing.yaml's eval.tests globs. They cover the edit tools; a test file rewritten
@@ -17,8 +19,9 @@
 // or a broken repository is not a reason to stop all work, and the git pre-commit hook still stands.
 import { join } from "node:path";
 import { loadConfig, pluginRoot } from "../lib/config.ts";
-import { checkMarker, isCommit, isMarkerPath, isTestPath } from "../lib/gate.ts";
+import { checkMarker, isCommit, isMarkerPath, isTestPath, writesMarker } from "../lib/gate.ts";
 import { intakeVerdict, plansIn } from "../lib/intake.ts";
+import { pushRefusal } from "../lib/push.ts";
 import { emitEvent, readEvents } from "../lib/spool.ts";
 import { messageOf } from "../lib/types.ts";
 import { readHookInput } from "./input.ts";
@@ -41,23 +44,28 @@ const command = tool === "Bash" ? String(args.command ?? "") : "";
 
 // The cheap questions first: most calls are neither a commit nor about the marker, and they leave
 // before routing.yaml is read.
-const touchesMarker = tool === "Bash"
-  ? /eval-pass\.json/i.test(command) && !/harness-eval(\.mjs)?\b/.test(command)
-  : isMarkerPath(args.file_path ?? args.notebook_path);
+const touchesMarker = tool === "Bash" ? writesMarker(command) : isMarkerPath(args.file_path ?? args.notebook_path);
 const commits = tool === "Bash" && isCommit(command);
+const pushes = tool === "Bash" && /\bpush\b/.test(command);
 const agent = String(input.agent_type ?? "");
 const role = agent.startsWith("harness:impl-t") ? "implementer" : agent === "harness:evaluator" ? "evaluator" : null;
 const edited = EDIT_TOOLS.has(tool) ? (args.file_path ?? args.notebook_path) : null;
 const policedEdit = Boolean(role && edited);
 const dispatched = AGENT_TOOLS.has(tool) ? String(args.subagent_type ?? "") : "";
 const harnessDispatch = dispatched.startsWith("harness:");
-if (!touchesMarker && !commits && !policedEdit && !harnessDispatch) process.exit(0);
+if (!touchesMarker && !commits && !pushes && !policedEdit && !harnessDispatch) process.exit(0);
 
 const config = loadConfig();
 if (config.mode === "off") process.exit(0);
 
 if (touchesMarker) {
-  deny("harness: the eval pass marker (eval-pass.json) is written only by harness-eval. Run harness-eval instead of touching the file.");
+  deny("harness: the eval pass marker (eval-pass.json) is written only by harness-eval. Reading it is fine; run harness-eval instead of writing it.");
+}
+
+if (pushes) {
+  const refusal = pushRefusal(command, input.cwd ?? config.dir);
+  if (refusal) deny(`harness: push refused: ${refusal}. A Harness session pushes its own feature branch only, never forced and never to main or the default branch.`);
+  if (!commits) process.exit(0);
 }
 
 if (harnessDispatch) {

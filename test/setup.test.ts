@@ -8,7 +8,7 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { repoHome } from "../src/lib/config.ts";
-import { detectStages, homeDeny } from "../src/lib/home.ts";
+import { detectStages, homeAllow, homeDeny, stagesIn } from "../src/lib/home.ts";
 import { checks, type CheckResult } from "../src/lib/setup.ts";
 import { root } from "./validators.ts";
 import { cleanEnv, spawnGit } from "./git.ts";
@@ -103,6 +103,14 @@ test("init --apply enrols with nothing in the repository, doctor passes, and aga
   const settings = JSON.parse(readFileSync(join(home, "settings.json"), "utf8"));
   assert.deepEqual(settings.permissions.deny, homeDeny(home));
   assert.ok(settings.permissions.deny.every((rule: string) => !rule.startsWith("Write(")), "Edit rules only (S9)");
+  // U1, H2: the allow-list a headless run needs, from this repository's stages and this plugin's folder.
+  const allow: string[] = settings.permissions.allow;
+  assert.ok(allow.includes(`Bash(node "${root.replace(/\\/g, "/")}/bin/*)`), "the plugin's own scripts, by path");
+  assert.ok(allow.includes("Bash(npm run test*)"), "the detected test stage");
+  assert.ok(allow.includes("Bash(git -C *)") && allow.includes("Bash(git commit *)"));
+  assert.ok(!allow.includes("Bash(node *)"), "never node *, which allows node -e");
+  assert.ok(!allow.some((rule) => /\b(push|gh|az|vercel)\b/.test(rule)), "nothing outward: pu pushes, after a DONE");
+  for (const rule of ["Bash(gh *)", "Bash(az *)", "Bash(vercel *)", "Bash(git push -f*)", "Bash(git push *:main*)"]) assert.ok(settings.permissions.deny.includes(rule), rule);
   assert.equal(settings.worktree.baseRef, "head");
   assert.deepEqual(settings.env, {
     ANTHROPIC_DEFAULT_HAIKU_MODEL: "claude-haiku-5-5",
@@ -315,4 +323,59 @@ test("an old Claude Code fails the doctor; a missing one only warns", () => {
   const { dir } = makeRepo();
   assert.equal(status(checks(dir, { pluginRoot: root, claudeVersion: "2.1.236 (Claude Code)" }), "claude-code"), "fail");
   assert.equal(status(checks(dir, { pluginRoot: root, claudeVersion: null }), "claude-code"), "warn");
+});
+
+test("each eval stage is allowed by its exact command, and again with its env in front", () => {
+  const allow = homeAllow(String.raw`C:\tools\harness`, [
+    { run: "dotnet test DocumentService.sln --no-build --nologo" },
+    { run: "npm run build", env: { ALLOW_LOCAL_UPSTREAM: 1 } },
+  ]);
+  assert.ok(allow.includes('Bash(node "C:/tools/harness/bin/*)'));
+  assert.ok(allow.includes("Bash(dotnet test DocumentService.sln --no-build --nologo*)"));
+  assert.ok(allow.includes("Bash(npm run build*)"));
+  assert.ok(allow.includes("Bash(ALLOW_LOCAL_UPSTREAM=1 npm run build*)"));
+  assert.equal(allow.length, new Set(allow).size, "no rule twice");
+});
+
+/** Whether Claude Code would allow a command under these rules: every part of it matches one, `*` matching anything. */
+function allowedBy(rules: readonly string[], command: string): boolean {
+  const patterns = rules.filter((r) => r.startsWith("Bash(")).map((r) =>
+    new RegExp(`^${r.slice(5, -1).replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*")}$`, "s"));
+  // Split at && || ; | outside quotes, as Claude Code splits a compound command before matching each part.
+  const parts = command.match(/(?:"[^"]*"|'[^']*'|[^"'&|;])+/g) ?? [];
+  return parts.map((part) => part.trim().replace(/\s*2>$/, "").replace(/\s*2>&1$/, "")).filter((p) => p && p !== "1")
+    .every((part) => patterns.some((p) => p.test(part)));
+}
+
+test("the checks U1's first acceptance run was refused are allowed; node -e and unknown commands still are not", () => {
+  // harness-scratch's one stage, and what its agents ran on 2026-10-28 (PLAN-8, six permission denials).
+  const allow = homeAllow(String.raw`C:\src\privateProjects\harness`, [{ run: "npm run test" }]);
+  for (const command of [
+    "cd C:/src/privateProjects/harness-scratch/test/fixtures; head -c 1500 notes.v1.json; echo; echo ----; head -c 1500 notes.v2.json",
+    "node --test C:/src/privateProjects/harness-scratch/test/tags.test.js 2>&1 | grep -E \"^not ok|^ok\" | head -40",
+    "node --test C:/src/privateProjects/harness-scratch/test/tags.test.js",
+    "npm --prefix C:/src/privateProjects/harness-scratch test",
+    "npm test",
+    "git log --oneline -2 && git show --stat HEAD | tail -5 && git status --short && npm test 2>&1 | tail -8 && printf -- '---\\n' && git diff HEAD~1 --stat -- test",
+    'node "C:/src/privateProjects/harness/bin/harness-emit.mjs" task.completed --task PLAN-8.1',
+  ]) assert.ok(allowedBy(allow, command), command);
+
+  for (const command of [
+    "node -e \"require('fs').writeFileSync('x', '')\"",
+    "npm run deploy",
+    "npx some-tool",
+    "curl https://example.com",
+    "bash scripts/anything.sh",
+  ]) assert.ok(!allowedBy(allow, command), command);
+
+  const dotnet = homeAllow("/p", [{ run: "dotnet test DocumentService.sln --no-build --nologo" }]);
+  assert.ok(allowedBy(dotnet, "dotnet test DocumentService.Tests --filter Name~Digest"));
+  assert.ok(allowedBy(dotnet, "dotnet restore"));
+  assert.ok(!allowedBy(homeAllow("/p", [{ run: "bash scripts/check.sh" }]), "bash -c anything"), "an unknown stage stays exact");
+});
+
+test("a routing.yaml's stages are read for the allow-list, and an unreadable one gives none", () => {
+  assert.deepEqual(stagesIn("eval:\n  stages:\n    - { name: test, run: npm test }\n    - { name: empty, run: '' }\n").map((s) => s.run), ["npm test"]);
+  assert.deepEqual(stagesIn("eval: [unclosed"), []);
+  assert.deepEqual(stagesIn(""), []);
 });
