@@ -160,6 +160,27 @@ The core idea working end to end: one real task is scored, dispatched and shown 
 - Each suggestion is a record with its evidence; accept or reject in PU; an accepted suggestion opens a PR against `routing.yaml` through `gh`.
 - It needs at least 20 tasks per rule over 4 weeks, so it can't usefully start earlier.
 
+### U1 — Unattended runs (0.12.0, with pu 1.29.0)
+
+From PU's M9: the brief is PreviouslyUpcoming's `U1-UNATTENDED-RUN.md`, and the evidence is spikes S17–S21 in its `SERIES-RUNS.md`. A planned plan runs headless with no one at the keyboard, and either finishes with commits or hands back. Planning stays interactive. Planned with Mikkel on 2026-10-28.
+
+| # | Task | Acceptance criteria |
+|---|---|---|
+| H1 | The orchestrator's `RUN: PLAN-n, unattended` mode (`agents/orchestrator.md`) | It never asks and dispatches the plan as planned. It fixes facts about the repository alone, as today. For anything that is the person's, it records `human.intervention`, writes `HANDBACK.md` in the repository root (what stopped, the evidence, the one question to decide) and exits. `HANDBACK.md` is the second file it may write, in this mode only. Folded in from BRIEF-5: a re-plan gives test edits to the evaluator's WRITE-TESTS, never to an implementer, and `plan.created` / `plan.intake` are recorded only after the `PLAN.md` edit has saved. |
+| H2 | The allow-list ships with the home (`homeSettings` in `src/lib/home.ts`) | `harness-init` writes allow rules for the plugin's own scripts (`Bash(node "<plugin>/bin/*)`, not `node *`), each eval stage's exact command, git `status`/`log`/`diff`/`show`/`branch`/`rev-parse`/`add`/`commit`, and `git -C`. It writes denies for `git push --force*` and `-f`, any push to `main`, `checkout main`, `az`, `gh` and `vercel`. `/harness:doctor` warns about each missing rule. **Proven by a headless run in `acceptEdits` with no permission denial in its stream**, which also settles how the `node` rule's quoting matches on Windows (S21 didn't test this; it ran in auto mode). |
+| H3 | A push guard in `src/hooks/pre-tool-use.ts` | It parses `git push` and `git -C <dir> push`. It refuses `-f`, `--force*`, a `+<ref>` refspec, `--mirror`, a destination of `main` or the default branch (`main`, `HEAD:main`, `refs/heads/main`, `:main`), and a bare `git push` while on the default branch. It allows a push of a feature branch. A test table covers the five S21 (c) probes and each of these forms. The deny patterns stay as a second layer. |
+| H4 | `git -C <repo>`, never `cd … && git …`, in every agent definition | Each definition says so, and a test checks that none contains `cd … && git`. No allow rule unlocks the second form (S17, PLAN-15). |
+| H5 | Two fixes from S21 | (a) The eval-pass guard lets a plain read of `eval-pass.json` through (`cat`, `head`, `tail`, `grep`, `Get-Content`, with no redirect) and denies everything else, as now. (b) A routing-log line stays under 4 KB. `runs` keeps only the task's latest attempt. If the line is still over, it records a summary per agent and model with `runs_truncated: true`, instead of dropping the line (PLAN-6.1 reached 6,627 bytes after five spike runs). |
+| P1 | `pu harness run PLAN-n` (PU, `HarnessStart.cs`) | It checks that the plan is in the home's `PLAN.md`, has passed intake and is scored. It also checks that the tree is clean and the branch isn't the default one, and that `git ls-remote` works with prompts off (if not, it names `credential.username`). With no allow-list in the home, it refuses and names the fix, or runs in `--permission-mode auto` only when given `--auto`. It launches `claude -p --agent harness:orchestrator` with the fixed `RUN` prompt, `acceptEdits`, the home's settings and AskUserQuestion disallowed, and logs the stream to the home in UTF-8. It stops the run after 90 minutes by process id. It reads the outcome from the events (S19, with S20's `subagent.started` rule) and prints DONE, hand-back or cut off. On DONE it pushes the branch. |
+
+**Decisions (Mikkel, 2026-10-28):**
+- pu pushes the branch after DONE, so the agent never has to push, and the push guard is a backstop. PRs stay with U2.
+- A run uses the current branch and refuses on the default one. U2 adds stacked branches for series.
+- A home with no allow-list is refused, and `--auto` is the fallback you choose explicitly. Auto mode is never used silently.
+- The scope is H1–H5 and P1. SERIES mode, the criteria `harness-eval` reports failing that pass, the double `gate.decision`, the evaluator's own `routing.yaml` line, the enrolment CI commit's author and clearing stale agent records each stay a thread or go to U2.
+
+**Done when:** `pu harness run PLAN-n` takes a planned plan in a freshly enrolled repository to commits or to a `HANDBACK.md`, with no hand-written prompt or settings file. Shown on harness-scratch (PLAN-6 to finish, PLAN-7 to stop) and on one real repository.
+
 ## Changes to the design
 
 Every fix from the review, plus three found while planning (C12, C13, C16).
