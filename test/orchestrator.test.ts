@@ -155,3 +155,11 @@ test("SERIES mode's plan.created names the series and the plan's place in it, an
   assert.equal(typeof data.series_position, "number");
   assert.match(series, /series number first/, "the series number must be chosen before the plans are recorded");
 });
+
+test("an unattended hand-back's human.intervention reason always starts with handback: (U3, H7)", () => {
+  // PU lists hand-backs by this prefix; every other human.intervention is a decision made at the keyboard.
+  const text = readFileSync(join(root, "agents/orchestrator.md"), "utf8").replace(/\r\n/g, "\n");
+  const handback = text.split("## Unattended runs")[1] ?? "";
+  assert.match(handback, /harness-emit human\.intervention --task PLAN-n\.m --data '\{"reason":"handback: /);
+  assert.match(handback, /\*\*always starts with `handback: `\*\*/);
+});
