@@ -191,6 +191,32 @@ test("PLAN-1.3/AC-2 task.dispatched accepts model_source policy or override, and
   }
 });
 
+test("U3, H7: plan.created and the routing log accept a series, and reject a malformed one", () => {
+  const created = firstOf("harness.events/v1", "plan.created");
+  accepts(created, "plan.created without a series (a plan on its own, as before 0.14.0)");
+  created.data.series = "SERIES-3";
+  created.data.series_position = 2;
+  accepts(created, "plan.created with series and series_position");
+  delete created.data.series;
+  rejects(created, "series_position without series");
+  for (const bad of ["SERIES-x", "series-3", "PLAN-3", "", 3]) {
+    created.data.series = bad;
+    rejects(created, `series ${JSON.stringify(bad)}`);
+  }
+  created.data.series = "SERIES-3";
+  for (const bad of [0, 5, 1.5]) {
+    created.data.series_position = bad;
+    rejects(created, `series_position ${bad}`);
+  }
+
+  const record = firstOf("harness.routing-log/v1");
+  accepts(record, "a routing-log line without a series");
+  record.series = "SERIES-3";
+  accepts(record, "a routing-log line with a series");
+  record.series = "SERIES";
+  rejects(record, "a routing-log series without its number");
+});
+
 test("PLAN-1.3/AC-3 events without the new fields still validate, and unknown values are rejected", () => {
   const scored = firstOf("harness.events/v1", "task.scored");
   delete scored.data.policy_fit;

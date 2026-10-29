@@ -196,6 +196,36 @@ test("a report handed back through SubagentHandback counts, and the agent is not
   assert.equal(stopped.data.model, "claude-opus-5-5");
 });
 
+test("a series plan's tasks carry its series, still after a re-plan without it, and a plan on its own's don't (U3, H7)", () => {
+  const dir = makeRepo();
+  const at = (ts: string, type: string, plan: string, task: string | null, data: Record<string, unknown> = {}): Line => ({
+    ts, type, session_id: SESSION, event_id: ts, plan_id: plan, ...(task ? { task_id: task } : {}), data,
+    repo: { name: "r", remote_sha256: "0".repeat(64) }, producer: { name: "harness", version: "0.14.0" }, mode: "observe", config_sha256: "0".repeat(64),
+  });
+  const scores = { scores: { ambiguity: 0, blast: 0, coupling: 0, novelty: 0, reversibility: 0, verification: 0 }, total: 0, score_band: "T1", overrides: [], tier_planned: "T1" };
+  const done = { outcome: "pass_first_try", final_tier: "T1", eval_rounds: 1, escalations: 0 };
+  const groups = (task: string) => [{ group: "G1", task_ids: [task] }];
+  const events = [
+    // SERIES mode plans PLAN-2 as the series' second plan; a hand-back's re-plan later says nothing of it.
+    at("2026-10-29T09:00:00Z", "plan.created", "PLAN-2", null, { task_count: 1, revision: 1, groups: groups("PLAN-2.1"), series: "SERIES-3", series_position: 2 }),
+    at("2026-10-29T09:00:01Z", "plan.created", "PLAN-3", null, { task_count: 1, revision: 1, groups: groups("PLAN-3.1") }),
+    at("2026-10-29T09:01:00Z", "task.scored", "PLAN-2", "PLAN-2.1", scores),
+    at("2026-10-29T09:01:01Z", "task.scored", "PLAN-3", "PLAN-3.1", scores),
+    at("2026-10-29T10:00:00Z", "plan.created", "PLAN-2", null, { task_count: 1, revision: 2, groups: groups("PLAN-2.1") }),
+    at("2026-10-29T10:01:00Z", "task.dispatched", "PLAN-2", "PLAN-2.1", { tier: "T1", isolation: "none" }),
+    at("2026-10-29T10:05:00Z", "task.completed", "PLAN-2", "PLAN-2.1", done),
+    at("2026-10-29T10:06:00Z", "task.dispatched", "PLAN-3", "PLAN-3.1", { tier: "T1", isolation: "none" }),
+    at("2026-10-29T10:09:00Z", "task.completed", "PLAN-3", "PLAN-3.1", done),
+  ];
+  const config = { dir, includeJustifications: true, layout: { planPath: join(dir, "PLAN.md") } } as Config;
+
+  const inSeries = buildRecord(config, "PLAN-2.1", events as never, []).record;
+  const alone = buildRecord(config, "PLAN-3.1", events as never, []).record;
+  assert.ok(inSeries && alone, "both records were built");
+  assert.equal(inSeries.series, "SERIES-3");
+  assert.equal("series" in alone, false, "a plan on its own has no series field, as before 0.14.0");
+});
+
 test("a task's gate decisions are the ones made while it was being worked, not since the plan was scored", () => {
   // As in PLAN-3: every task scored up front, then worked one after the other, each ending in a commit.
   const dir = makeRepo();

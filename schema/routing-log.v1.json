@@ -14,6 +14,7 @@
     "task_id": { "$ref": "harness.events.v1.json#/$defs/task_id" },
     "revision": { "type": "integer", "minimum": 1 },
     "plan_id": { "$ref": "harness.events.v1.json#/$defs/plan_id" },
+    "series": { "description": "0.14.0: the plan's series, from its plan.created events (a re-plan doesn't repeat it). Absent for a plan on its own.", "$ref": "harness.events.v1.json#/$defs/series_id" },
     "repo": { "$ref": "harness.events.v1.json#/$defs/repo" },
     "producer": { "$ref": "harness.events.v1.json#/$defs/producer" },
     "config_sha256": { "$ref": "harness.events.v1.json#/$defs/sha256" },

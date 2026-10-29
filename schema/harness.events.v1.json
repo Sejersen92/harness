@@ -47,6 +47,7 @@
     "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
     "git_sha": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" },
     "plan_id": { "type": "string", "pattern": "^PLAN-[0-9]+$" },
+    "series_id": { "type": "string", "pattern": "^SERIES-[0-9]+$" },
     "task_id": { "type": "string", "pattern": "^PLAN-[0-9]+(\\.[0-9]+)+$" },
     "ac_id": {
       "description": "C8: an acceptance criterion is always fully qualified with its task.",
@@ -178,8 +179,11 @@
               "required": ["group", "task_ids"],
               "properties": { "group": { "type": "string", "minLength": 1 }, "task_ids": { "$ref": "#/$defs/task_ids" } }
             }
-          }
-        }
+          },
+          "series": { "description": "0.14.0: the series the plan belongs to, when it was planned in SERIES mode. Absent for a plan on its own.", "$ref": "#/$defs/series_id" },
+          "series_position": { "description": "0.14.0: the plan's place in its series' run order, from 1. Present only with series.", "type": "integer", "minimum": 1, "maximum": 4 }
+        },
+        "dependentRequired": { "series_position": ["series"] }
       },
       "task.scored": {
         "type": "object",
