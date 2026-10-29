@@ -143,3 +143,15 @@ test("the SERIES-n.md template's Plans line is the contract pu harness series ru
   assert.match(template, /^- Plans: PLAN-[a-z0-9]+(?:, PLAN-[a-z0-9]+)*$/m, "the template has no Plans line pu can read");
   assert.match(text, /\*\*At most 4 plans\.\*\*/, "the series cap (decision 4) is not in the definition");
 });
+
+test("SERIES mode's plan.created names the series and the plan's place in it, and the example is valid (U3, H7)", () => {
+  // PU groups a series' runs and costs by the series that plan.created names; a plan.created without it is a plan on its own.
+  const text = readFileSync(join(root, "agents/orchestrator.md"), "utf8").replace(/\r\n/g, "\n");
+  const series = text.split("## Planning a series")[1]?.split("## SERIES-n.md template")[0] ?? "";
+  const example = series.match(/harness-emit plan\.created --plan PLAN-n --data '([^']+)'/)?.[1];
+  assert.ok(example, "the SERIES section shows no plan.created to emit");
+  const data = JSON.parse(example) as Record<string, unknown>;
+  assert.match(String(data.series), /^SERIES-\d+$/);
+  assert.equal(typeof data.series_position, "number");
+  assert.match(series, /series number first/, "the series number must be chosen before the plans are recorded");
+});

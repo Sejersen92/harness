@@ -118,11 +118,17 @@ export function buildRecord(
 
   const done = dataOf<CompletedData>(completed);
   const commitData = commit ? dataOf<CommitData>(commit) : null;
+  const planId = completed.plan_id ?? scored.plan_id ?? taskId.replace(/\..*$/, "");
+  // The plan's series (U3, H7): named by the plan.created that SERIES mode wrote. A re-plan after a
+  // hand-back is an ordinary plan.created without it, so any of the plan's events that names one counts.
+  const series = last(events.filter((e) => e.type === "plan.created" && e.plan_id === planId && typeof e.data?.series === "string"))
+    ?.data.series as string | undefined;
   const record: RoutingRecord = {
     schema: "harness.routing-log/v1",
     task_id: taskId,
     revision: previous.filter((r) => r.task_id === taskId).reduce((max, r) => Math.max(max, r.revision), 0) + 1,
-    plan_id: completed.plan_id ?? scored.plan_id ?? taskId.replace(/\..*$/, ""),
+    plan_id: planId,
+    ...(series ? { series } : {}),
     repo: completed.repo,
     producer: completed.producer,
     config_sha256: completed.config_sha256,

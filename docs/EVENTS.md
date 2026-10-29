@@ -46,7 +46,7 @@ Every event has the same envelope; type-specific fields live under `data`.
 | Type | Written by | When | `data` |
 |---|---|---|---|
 | `plan.intake` | orchestrator | One round of the intake gate (H4) | `round`, `ambiguity` (0-2), `max_ambiguity`, `questions`, `settled`, `review?` (only when the person overruled the gate: `verdict` `overruled`, `by` `human`, `reason`) |
-| `plan.created` | orchestrator | A plan is written or rewritten | `task_count`, `revision`, `groups[{group, task_ids}]` |
+| `plan.created` | orchestrator | A plan is written or rewritten | `task_count`, `revision`, `groups[{group, task_ids}]`; in SERIES mode also `series` (`SERIES-n`) and `series_position` (0.14.0) |
 | `task.scored` | orchestrator | A task gets rubric scores | `scores{ambiguity, blast, coupling, novelty, reversibility, verification}`, `total`, `score_band`, `overrides[]`, `tier_planned`, `review?` (H4: `agreed`, or `overruled` with `reason` and the orchestrator's `original` scores; absent when not reviewed), `policy_fit?` (`fits`, `recommended`), `recommendation?` (`{model, effort, reason}`; required when `policy_fit` is `recommended`, forbidden when it is `fits`) |
 | `task.dispatched` | orchestrator | A task is handed to an implementer | `tier`, `agent_type`, `model_requested`, `effort?`, `group?`, `isolation`, `model_source?` (`policy`, `override`) |
 | `task.redispatched` | orchestrator | A task is rerun | `reason` (`merge_conflict`, `replan`, `eval_fail`), `tier` |

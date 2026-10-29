@@ -7795,11 +7795,14 @@ function buildRecord(config2, taskId2, events = readEvents(config2), previous = 
   if (config2.includeJustifications && plan && Object.keys(plan.justifications).length) rubric.justifications = plan.justifications;
   const done = dataOf(completed);
   const commitData = commit ? dataOf(commit) : null;
+  const planId2 = completed.plan_id ?? scored.plan_id ?? taskId2.replace(/\..*$/, "");
+  const series = last(events.filter((e) => e.type === "plan.created" && e.plan_id === planId2 && typeof e.data?.series === "string"))?.data.series;
   const record = {
     schema: "harness.routing-log/v1",
     task_id: taskId2,
     revision: previous.filter((r) => r.task_id === taskId2).reduce((max, r) => Math.max(max, r.revision), 0) + 1,
-    plan_id: completed.plan_id ?? scored.plan_id ?? taskId2.replace(/\..*$/, ""),
+    plan_id: planId2,
+    ...series ? { series } : {},
     repo: completed.repo,
     producer: completed.producer,
     config_sha256: completed.config_sha256,
