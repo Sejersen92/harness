@@ -156,6 +156,30 @@ test("SERIES mode's plan.created names the series and the plan's place in it, an
   assert.match(series, /series number first/, "the series number must be chosen before the plans are recorded");
 });
 
+test("the PROGRAMME-n.md template carries the lines and tables pu harness programme new reads (G1, H8)", () => {
+  // pu reads the phase ids in run order from the Phases line, each phase's Repository, Brief and Plans lines,
+  // and the contracts' hashes, then refuses a programme whose phases break the caps or whose hashes don't match.
+  const text = readFileSync(join(root, "agents/orchestrator.md"), "utf8").replace(/\r\n/g, "\n");
+  const template = text.split("## PROGRAMME-n.md template")[1]?.split("## Unattended runs")[0] ?? "";
+  assert.match(template, /^- Phases: PHASE-\d+(?:, PHASE-\d+)*$/m, "the template has no Phases line pu can read");
+  for (const line of ["Repository", "Brief", "Plans", "Takes in", "Publishes", "Ready when"]) {
+    assert.match(template, new RegExp(`^- ${line}: `, "m"), `a phase has no ${line} line`);
+  }
+  assert.match(template, /^\| Contract \| Kind \| SHA-256 \| Published by \| Taken in by \|$/m);
+  assert.match(template, /^\| Id \| Outside input \| Provided by \| Needed by \|$/m);
+});
+
+test("PROGRAMME mode decides nothing vague, tags every criterion and records no events (G1, H8)", () => {
+  const text = readFileSync(join(root, "agents/orchestrator.md"), "utf8").replace(/\r\n/g, "\n");
+  const programme = text.split("## Planning a programme")[1]?.split("## PROGRAMME-n.md template")[0] ?? "";
+  assert.match(programme, /you record no events/);
+  assert.match(programme, /Never turn a vague, unmeasurable or missing item into a criterion/);
+  assert.match(programme, /\*\*Mark every criterion `\[built\]`\*\*/);
+  assert.match(programme, /\*\*at most 4 plans\*\*/);
+  assert.match(programme, /Plan no series and dispatch nothing/);
+  assert.doesNotMatch(programme, /harness-emit /, "a programme folder has no home, so the sitting can't record events");
+});
+
 test("an unattended hand-back's human.intervention reason always starts with handback: (U3, H7)", () => {
   // PU lists hand-backs by this prefix; every other human.intervention is a decision made at the keyboard.
   const text = readFileSync(join(root, "agents/orchestrator.md"), "utf8").replace(/\r\n/g, "\n");
