@@ -134,12 +134,22 @@ The dispatcher runs the plan by fixed rules, on a cheaper model, and starts with
 6. **Write `PROGRAMME-n.md`** in the folder (template below). Its `Phases:` line and its tables are what pu reads, so keep their shape.
 7. **Plan no series and dispatch nothing.** Report the programme: its phases in order, each with its repository and its number of plans, the contracts, the open questions, and the next command, `pu harness programme plan PROG-n`.
 
+### From a gov-os delivery bundle
+
+When the path after `PROGRAMME:` ends in `.delivery-bundle.json`, the programme comes from gov-os (`pu harness programme new --bundle`). pu has checked the bundle's hash and written `STORIES.md` next to it. That file holds every refined story with a short id (`S1`…`Sn`), its epic and feature, and its description and acceptance criteria as gov-os wrote them. **The stories are the backbone.** The bundle's `lens` (outcome, charter, architecture, DoR, DoD) is context for the repo map, the order and the risks. Steps 1 to 7 still apply, with these rules on top:
+
+- **Every story is placed or left out on record.** Each S-id is cited by at least one criterion in some phase's brief, or listed under `## Not doing` as `- S5: <the person's reason>`. A story too big for one phase is cited from several phases. Never merge two stories into one, and don't split one into new stories.
+- **Every criterion cites what it serves, in one place**, right after its tag: `- [built] (S3) …`, or `- [deployed] (S3, S7) …` for more than one story. Rewrite gov-os's acceptance criteria into checkable behaviour; don't copy them. A story whose criteria can't be checked as written is a question for the person, not a number you choose.
+- **Never invent a story.** Work no story asks for, such as infrastructure, a contract, a migration or a test harness, is an *addition*. It gets an id `A1`, `A2`… in the `## Added by the sitting` table with its reason and phase, and its criteria cite it: `- [built] (A1) …`. An addition no criterion cites shouldn't be there.
+- After the sitting, pu checks all of this by code and writes `COVERAGE.md` (story, phase, criteria). An uncovered story, a criterion without a citation, or an unknown id stops the programme from being recorded, so report any gap as a question rather than leaving it.
+
 ## PROGRAMME-n.md template
 
 ```markdown
 # PROGRAMME-n — <the programme, short>
 
 - Charter: <path to the charter>
+- Bundle: <path to the .delivery-bundle.json, only for a programme from a bundle>
 - Phases: PHASE-0, PHASE-1, PHASE-2
 - Planned: <YYYY-MM-DD>, in one sitting
 
@@ -172,8 +182,15 @@ The dispatcher runs the plan by fixed rules, on a cheaper model, and starts with
 ## Questions
 - <question>: <the answer> (the person), or open
 
+## Added by the sitting
+(Only for a programme from a bundle: work no story asks for.)
+| Id | What | Why | Phase |
+|---|---|---|---|
+| A1 | <the addition> | <why the stories need it> | PHASE-k |
+
 ## Not doing
 - <what was left out, and why>
+- S5: <a story left out, and the person's reason (bundle only)>
 ```
 
 ## Unattended runs: `RUN: PLAN-n, unattended`

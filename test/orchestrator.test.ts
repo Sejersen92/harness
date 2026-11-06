@@ -187,3 +187,35 @@ test("an unattended hand-back's human.intervention reason always starts with han
   assert.match(handback, /harness-emit human\.intervention --task PLAN-n\.m --data '\{"reason":"handback: /);
   assert.match(handback, /\*\*always starts with `handback: `\*\*/);
 });
+
+test("PROGRAMME mode reads a gov-os delivery bundle with the stories as the backbone (G1.5, H9)", () => {
+  // pu harness programme new --bundle (P7) starts the sitting on <file>.delivery-bundle.json with STORIES.md next to
+  // it, and after the sitting checks coverage: every S-id cited or under Not doing, every criterion citing a known id.
+  const text = readFileSync(join(root, "agents/orchestrator.md"), "utf8").replace(/\r\n/g, "\n");
+  const programme = text.split("## Planning a programme")[1]?.split("## PROGRAMME-n.md template")[0] ?? "";
+  const bundle = programme.split("### From a gov-os delivery bundle")[1] ?? "";
+  assert.ok(bundle.length > 0, "PROGRAMME mode has no section for a delivery bundle");
+  assert.match(bundle, /\.delivery-bundle\.json/);
+  assert.match(bundle, /STORIES\.md/);
+  assert.match(bundle, /`- \[built\] \(S3\) /, "the criterion citation form is not shown");
+  assert.match(bundle, /`- \[built\] \(A1\) /, "the citation form for an addition is not shown");
+  assert.match(bundle, /## Added by the sitting/);
+  assert.match(bundle, /Never invent a story/);
+  assert.doesNotMatch(bundle, /harness-emit /);
+});
+
+test("the PROGRAMME-n.md template carries what the coverage check reads for a bundle (G1.5, H9)", () => {
+  const text = readFileSync(join(root, "agents/orchestrator.md"), "utf8").replace(/\r\n/g, "\n");
+  const template = text.split("## PROGRAMME-n.md template")[1]?.split("## Unattended runs")[0] ?? "";
+  assert.match(template, /^- Bundle: /m, "the template has no Bundle line");
+  assert.match(template, /^## Added by the sitting$/m);
+  assert.match(template, /^\| Id \| What \| Why \| Phase \|$/m);
+  assert.match(template, /^- S\d+: /m, "Not doing shows no story line");
+});
+
+test("the plugin's version is the one that brings bundle mode (G1.5, H9)", () => {
+  const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+  const plugin = JSON.parse(readFileSync(join(root, ".claude-plugin/plugin.json"), "utf8"));
+  assert.equal(pkg.version, "0.16.0");
+  assert.equal(plugin.version, "0.16.0");
+});
