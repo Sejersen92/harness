@@ -10,6 +10,7 @@ const entries = {
   "harness-git-hook": "src/cli/harness-git-hook.ts",
   "harness-init": "src/cli/harness-init.ts",
   "harness-policy": "src/cli/policy.ts",
+  "harness-review-block": "src/cli/harness-review-block.ts",
   "hook-pre-tool-use": "src/hooks/pre-tool-use.ts",
   "hook-session-skills": "src/hooks/session-skills.ts",
   "hook-session-start": "src/hooks/session-start.ts",

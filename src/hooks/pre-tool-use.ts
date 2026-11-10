@@ -11,6 +11,8 @@
 // - tests-only: the evaluator (harness:evaluator) may edit nothing but test files.
 //   Both read routing.yaml's eval.tests globs. They cover the edit tools; a test file rewritten
 //   through Bash is outside what a hook can see reliably, and the evaluator's review is the backstop.
+// - read-only-review: the security reviewer (harness:security-reviewer, H10) writes its review file in the
+//   reviews folder and nothing else, and runs only the git subcommands that read.
 // - intake-gate: no Harness agent (harness:*) is dispatched for a plan until the plan's brief has passed
 //   intake (lib/intake.ts, H4).
 //
@@ -19,14 +21,17 @@
 // or a broken repository is not a reason to stop all work, and the git pre-commit hook still stands.
 import { join } from "node:path";
 import { loadConfig, pluginRoot } from "../lib/config.ts";
-import { checkMarker, isCommit, isMarkerPath, isTestPath, writesMarker } from "../lib/gate.ts";
+import { checkMarker, gitSubcommands, isCommit, isMarkerPath, isTestPath, writesMarker } from "../lib/gate.ts";
 import { intakeVerdict, plansIn } from "../lib/intake.ts";
 import { pushRefusal } from "../lib/push.ts";
+import { isReviewPath } from "../lib/review.ts";
 import { emitEvent, readEvents } from "../lib/spool.ts";
 import { messageOf } from "../lib/types.ts";
 import { readHookInput } from "./input.ts";
 
 const EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
+// The git subcommands the security reviewer may run: the ones that only read.
+const READING_GIT = new Set(["diff", "log", "show", "status", "blame", "grep", "ls-files", "rev-parse", "cat-file"]);
 // The subagent tool's name now, and the one it had before.
 const AGENT_TOOLS = new Set(["Agent", "Task"]);
 
@@ -48,18 +53,36 @@ const touchesMarker = tool === "Bash" ? writesMarker(command) : isMarkerPath(arg
 const commits = tool === "Bash" && isCommit(command);
 const pushes = tool === "Bash" && /\bpush\b/.test(command);
 const agent = String(input.agent_type ?? "");
-const role = agent.startsWith("harness:impl-t") ? "implementer" : agent === "harness:evaluator" ? "evaluator" : null;
+const role = agent.startsWith("harness:impl-t") ? "implementer"
+  : agent === "harness:evaluator" ? "evaluator"
+  : agent === "harness:security-reviewer" ? "reviewer"
+  : null;
 const edited = EDIT_TOOLS.has(tool) ? (args.file_path ?? args.notebook_path) : null;
 const policedEdit = Boolean(role && edited);
+const reviewerGit = role === "reviewer" && tool === "Bash" ? gitSubcommands(command) : [];
 const dispatched = AGENT_TOOLS.has(tool) ? String(args.subagent_type ?? "") : "";
 const harnessDispatch = dispatched.startsWith("harness:");
-if (!touchesMarker && !commits && !pushes && !policedEdit && !harnessDispatch) process.exit(0);
+if (!touchesMarker && !commits && !pushes && !policedEdit && !reviewerGit.length && !harnessDispatch) process.exit(0);
 
 const config = loadConfig();
 if (config.mode === "off") process.exit(0);
 
 if (touchesMarker) {
   deny("harness: the eval pass marker (eval-pass.json) is written only by harness-eval. Reading it is fine; run harness-eval instead of writing it.");
+}
+
+// The reviewer before the push guard: a push of the session's own branch is fine for others, never for it.
+const writingGit = reviewerGit.find((sub) => !READING_GIT.has(sub));
+if (writingGit !== undefined) {
+  deny(`harness: the security reviewer only reads, and git ${writingGit || "with no subcommand"} is not one of the reading commands (${[...READING_GIT].join(", ")}). Report what you found instead.`);
+}
+// Only reading git is left: nothing below (push, dispatch, commit gate) applies to it.
+if (reviewerGit.length) process.exit(0);
+if (role === "reviewer" && edited) {
+  if (!isReviewPath(edited, config.metadataDir)) {
+    deny(`harness: the security reviewer writes only its review file (PLAN-n.m.security.md in ${config.metadataDir.replace(/\\/g, "/")}/reviews), and ${edited} is not one. Report what the code needs instead.`);
+  }
+  process.exit(0);
 }
 
 if (pushes) {
@@ -70,7 +93,7 @@ if (pushes) {
 
 if (harnessDispatch) {
   const plans = plansIn(args.prompt);
-  if (!plans.length) deny(`harness: a ${dispatched} dispatch must start with its header line naming the task or the plan (WRITE-TESTS:, IMPLEMENT: or EVALUATE: PLAN-n.m, or DISPATCH: PLAN-n), so the intake gate can tell which plan it is for.`);
+  if (!plans.length) deny(`harness: a ${dispatched} dispatch must start with its header line naming the task or the plan (WRITE-TESTS:, IMPLEMENT:, EVALUATE: or SECURITY-REVIEW: PLAN-n.m, or DISPATCH: PLAN-n), so the intake gate can tell which plan it is for.`);
   const events = readEvents(config);
   for (const plan of plans) {
     const verdict = intakeVerdict(plan, config.intakeMaxAmbiguity, events);

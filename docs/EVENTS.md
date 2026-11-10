@@ -62,6 +62,7 @@ Every event has the same envelope; type-specific fields live under `data`.
 | `human.intervention` | orchestrator | The orchestrator stops and asks the human | `reason` (short, at most 200 characters) |
 | `release.failed` | CI step (optional) | The release gate fails | `commit_sha`, `environment`, `failed_checks[]` |
 | `harness.doctor` | `/harness:doctor` | A health check runs | `checks[{name, status}]`, `emit_failures` |
+| `security.reviewed` | `harness:dispatcher` | A T4 task's security review round ends, after the evaluator's PASS and before the commit (H10, 0.17.0) | `high`, `medium`, `low`, `round`; the findings stay in `reviews/PLAN-n.m.security*.md` |
 
 **Cost is deliberately absent.** Token usage lives in Claude Code's transcripts. A consumer prices each subagent run from `subagents/agent-<agent_id>.jsonl`; the day-1 spike S1 showed that `agent_id` matches it exactly. Duplicating cost here would create a second source of truth.
 

@@ -1,6 +1,6 @@
 # H10: A security review step for T4 tasks
 
-**Status:** brief, 2026-11-10. Shape agreed by Mikkel the same day. Builds on 0.16.0.
+**Status:** built in 0.17.0 (2026-11-10, by hand like H9). Shape agreed by Mikkel the same day. Open question settled by Claude for Mikkel to vet: a series with no T4 task prints "no task needed a security review".
 
 ## Why
 

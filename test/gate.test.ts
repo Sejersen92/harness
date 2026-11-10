@@ -302,6 +302,31 @@ test("the evaluator can edit tests and nothing else", () => {
   assert.match(denied.permissionDecisionReason, /writes tests only/);
 });
 
+test("H10 the security reviewer writes only its review file", () => {
+  const repo = makeRepo();
+  const reviews = join(repo.dir, ".harness", "reviews");
+  assert.equal(preToolUse(repo.dir, "Write", { file_path: join(reviews, "PLAN-1.1.security.md") }, "harness:security-reviewer"), null);
+  assert.equal(preToolUse(repo.dir, "Write", { file_path: join(reviews, "PLAN-1.1.security.round-2.md") }, "harness:security-reviewer"), null);
+  for (const file of [join(repo.dir, "src", "a.mjs"), join(repo.dir, "test", "a.test.mjs"), join(reviews, "notes.md")]) {
+    const denied = decided(preToolUse(repo.dir, "Edit", { file_path: file }, "harness:security-reviewer"));
+    assert.equal(denied.permissionDecision, "deny", file);
+    assert.match(denied.permissionDecisionReason, /writes only its review file/);
+  }
+});
+
+test("H10 the security reviewer runs only the git commands that read", () => {
+  const repo = makeRepo();
+  for (const command of [`git -C "${repo.dir}" diff --cached`, "git log -3", "git show HEAD", "git status --short"]) {
+    assert.equal(preToolUse(repo.dir, "Bash", { command }, "harness:security-reviewer"), null, command);
+  }
+  for (const command of ["git add -A", 'git commit -m "x"', "git push origin HEAD", "git stash", "git diff && git checkout -- ."]) {
+    const denied = decided(preToolUse(repo.dir, "Bash", { command }, "harness:security-reviewer"));
+    assert.equal(denied.permissionDecision, "deny", command);
+    assert.match(denied.permissionDecisionReason, /security reviewer only reads/);
+  }
+  assert.equal(preToolUse(repo.dir, "Bash", { command: "git add -A" }, "harness:evaluator"), null, "other agents are not held to it");
+});
+
 test("routing.yaml's eval.tests replaces the default globs", () => {
   const repo = makeRepo();
   writeFileSync(join(repo.dir, "routing.yaml"), readFileSync(join(repo.dir, "routing.yaml"), "utf8").replace("eval:\n", "eval:\n  tests: [\"checks/**\"]\n"));

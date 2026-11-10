@@ -39,7 +39,8 @@
     { "if": { "$ref": "#/$defs/is/task.completed" }, "then": { "required": ["task_id"], "properties": { "data": { "$ref": "#/$defs/data/task.completed" } } } },
     { "if": { "$ref": "#/$defs/is/human.intervention" }, "then": { "properties": { "data": { "$ref": "#/$defs/data/human.intervention" } } } },
     { "if": { "$ref": "#/$defs/is/release.failed" }, "then": { "properties": { "data": { "$ref": "#/$defs/data/release.failed" } } } },
-    { "if": { "$ref": "#/$defs/is/harness.doctor" }, "then": { "properties": { "data": { "$ref": "#/$defs/data/harness.doctor" } } } }
+    { "if": { "$ref": "#/$defs/is/harness.doctor" }, "then": { "properties": { "data": { "$ref": "#/$defs/data/harness.doctor" } } } },
+    { "if": { "$ref": "#/$defs/is/security.reviewed" }, "then": { "required": ["task_id"], "properties": { "data": { "$ref": "#/$defs/data/security.reviewed" } } } }
   ],
   "$defs": {
     "ulid": { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
@@ -163,7 +164,8 @@
       "task.completed": { "properties": { "type": { "const": "task.completed" } } },
       "human.intervention": { "properties": { "type": { "const": "human.intervention" } } },
       "release.failed": { "properties": { "type": { "const": "release.failed" } } },
-      "harness.doctor": { "properties": { "type": { "const": "harness.doctor" } } }
+      "harness.doctor": { "properties": { "type": { "const": "harness.doctor" } } },
+      "security.reviewed": { "properties": { "type": { "const": "security.reviewed" } } }
     },
     "data": {
       "plan.created": {
@@ -329,6 +331,17 @@
           "files_changed": { "$ref": "#/$defs/count" },
           "lines_added": { "$ref": "#/$defs/count" },
           "lines_removed": { "$ref": "#/$defs/count" }
+        }
+      },
+      "security.reviewed": {
+        "description": "H10: one read-only security review round of a T4 task, after the evaluator passed and before the commit. Counts only; the findings are in the review file.",
+        "type": "object",
+        "required": ["high", "medium", "low", "round"],
+        "properties": {
+          "high": { "$ref": "#/$defs/count" },
+          "medium": { "$ref": "#/$defs/count" },
+          "low": { "$ref": "#/$defs/count" },
+          "round": { "type": "integer", "minimum": 1 }
         }
       },
       "task.completed": {

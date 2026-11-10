@@ -42,7 +42,7 @@ The tier the total implies is the **score band**. The tier you choose after the 
 These apply after scoring and only ever raise the tier:
 
 - Any **2 on Reversibility** → at least T3, and the plan must include a rollback step.
-- Any **2 on Coupling** where security is involved (auth, secrets, permissions) → T4 and a human review flag on the PR.
+- Any **2 on Coupling** where security is involved (auth, secrets, permissions) → T4. Every T4 task gets the security review step before its commit (H10, `docs/H10-SECURITY-REVIEW.md`), and the PR carries `harness-review-block`'s section for a person to tick.
 - **Two or more 2s** anywhere → at least T3.
 - A task you cannot score confidently is **split**, not rounded up.
 
