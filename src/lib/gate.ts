@@ -50,6 +50,32 @@ export function isCommit(command: unknown): boolean {
   return false;
 }
 
+/**
+ * Every git subcommand a shell command runs (`git -C x diff` gives `diff`), found the way isCommit
+ * finds commits. A git with no subcommand gives "". Like isCommit it errs towards finding one:
+ * `echo "git add"` counts.
+ */
+export function gitSubcommands(command: unknown): string[] {
+  if (typeof command !== "string") return [];
+  const found: string[] = [];
+  for (const match of command.matchAll(COMMAND_GIT)) {
+    const rest = words(command.slice(match.index + match[0].length));
+    let sub = "";
+    for (let i = 0; i < rest.length; i++) {
+      const word = rest[i] ?? "";
+      if (TAKES_VALUE.has(word)) {
+        i++;
+        continue;
+      }
+      if (word.startsWith("-")) continue;
+      sub = word.replace(/[;&|)`]+$/, "");
+      break;
+    }
+    found.push(sub);
+  }
+  return found;
+}
+
 /** A glob as a regular expression: ** spans folders, * and ? stay inside one. Case-insensitive, as Windows paths are. */
 const globToRegExp = (glob: string): RegExp => new RegExp(`^${glob
   .replace(/[.+^${}()|[\]\\]/g, "\\$&")

@@ -7368,7 +7368,7 @@ var require_dist = __commonJS({
 });
 
 // src/hooks/pre-tool-use.ts
-import { join as join3 } from "node:path";
+import { join as join4 } from "node:path";
 
 // src/lib/config.ts
 var import_yaml = __toESM(require_dist(), 1);
@@ -7569,6 +7569,26 @@ function isCommit(command2) {
   }
   return false;
 }
+function gitSubcommands(command2) {
+  if (typeof command2 !== "string") return [];
+  const found = [];
+  for (const match of command2.matchAll(COMMAND_GIT)) {
+    const rest = words(command2.slice(match.index + match[0].length));
+    let sub = "";
+    for (let i = 0; i < rest.length; i++) {
+      const word = rest[i] ?? "";
+      if (TAKES_VALUE.has(word)) {
+        i++;
+        continue;
+      }
+      if (word.startsWith("-")) continue;
+      sub = word.replace(/[;&|)`]+$/, "");
+      break;
+    }
+    found.push(sub);
+  }
+  return found;
+}
 var globToRegExp = (glob) => new RegExp(`^${glob.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*\*\//g, "\0").replace(/\*\*/g, "").replace(/\*/g, "[^/]*").replace(/\?/g, "[^/]").replace(/\u0000/g, "(?:.*/)?").replace(/\u0001/g, ".*")}$`, "i");
 function isTestPath(file, dir, globs) {
   if (!file) return false;
@@ -7737,9 +7757,20 @@ function judge(args2, dir, context) {
   return null;
 }
 
+// src/lib/review.ts
+import { isAbsolute as isAbsolute2, join as join2, relative as relative2, resolve as resolve4 } from "node:path";
+var reviewsDir = (metadataDir) => join2(metadataDir, "reviews");
+var FILE = /^(PLAN-\d+(?:\.\d+)+)\.security(?:\.round-(\d+))?\.md$/;
+function isReviewPath(file, metadataDir) {
+  if (!file) return false;
+  const dir = reviewsDir(metadataDir);
+  const rel = relative2(dir, resolve4(dir, String(file))).replace(/\\/g, "/");
+  return Boolean(rel) && !rel.startsWith("../") && !rel.includes("/") && !isAbsolute2(rel) && FILE.test(rel);
+}
+
 // src/lib/spool.ts
 import { appendFileSync, existsSync as existsSync3, mkdirSync as mkdirSync2, readdirSync, readFileSync as readFileSync3, renameSync as renameSync2, rmSync as rmSync2, writeFileSync as writeFileSync2 } from "node:fs";
-import { join as join2, resolve as resolve4 } from "node:path";
+import { join as join3, resolve as resolve5 } from "node:path";
 
 // src/lib/types.ts
 var EFFORTS = ["low", "medium", "high", "xhigh", "max"];
@@ -7748,20 +7779,20 @@ var messageOf = (error) => error instanceof Error ? error.message : String(error
 
 // src/lib/spool.ts
 var MAX_LINE_BYTES = 4096;
-var registryPath = () => join2(harnessHome(), "spools.json");
+var registryPath = () => join3(harnessHome(), "spools.json");
 var readRegistry = (path) => existsSync3(path) ? JSON.parse(readFileSync3(path, "utf8")) : { version: 1, spools: [] };
 function writeRegistry(path, registry) {
-  mkdirSync2(join2(path, ".."), { recursive: true });
+  mkdirSync2(join3(path, ".."), { recursive: true });
   writeFileSync2(`${path}.tmp`, JSON.stringify(registry, null, 2) + "\n");
   renameSync2(`${path}.tmp`, path);
 }
 function registerSpool(spool, now = /* @__PURE__ */ new Date()) {
   const path = registryPath();
-  const metadataDir = resolve4(spool.metadataDir);
+  const metadataDir = resolve5(spool.metadataDir);
   try {
     const registry = readRegistry(path);
     if (registry.spools.some((s) => s.metadata_dir.toLowerCase() === metadataDir.toLowerCase())) return;
-    registry.spools.push({ repo_dir: resolve4(spool.dir), metadata_dir: metadataDir, first_seen: utcNow(now) });
+    registry.spools.push({ repo_dir: resolve5(spool.dir), metadata_dir: metadataDir, first_seen: utcNow(now) });
     writeRegistry(path, registry);
   } catch (error) {
     recordFailure(spool, `spool registry: ${messageOf(error)}`);
@@ -7772,7 +7803,7 @@ function recordFailure(config2, why) {
 `);
   try {
     mkdirSync2(config2.metadataDir, { recursive: true });
-    const file = join2(config2.metadataDir, "emit-failures");
+    const file = join3(config2.metadataDir, "emit-failures");
     const count = existsSync3(file) ? Number.parseInt(readFileSync3(file, "utf8"), 10) || 0 : 0;
     writeFileSync2(file, `${count + 1}
 `);
@@ -7787,7 +7818,7 @@ function appendLine(config2, file, record) {
   }
   try {
     const firstLineInFile = !existsSync3(file);
-    mkdirSync2(join2(file, ".."), { recursive: true });
+    mkdirSync2(join3(file, ".."), { recursive: true });
     appendFileSync(file, line + "\n", { flag: "a" });
     if (firstLineInFile) registerSpool(config2);
     return true;
@@ -7798,19 +7829,19 @@ function appendLine(config2, file, record) {
 }
 function sweep(config2, now) {
   const today = utcNow(now).slice(0, 10);
-  const marker = join2(config2.metadataDir, "state", "swept");
+  const marker = join3(config2.metadataDir, "state", "swept");
   try {
     if (existsSync3(marker) && readFileSync3(marker, "utf8").trim() === today) return;
     const cutoff = new Date(now.getTime() - config2.retentionDays * 864e5).toISOString().slice(0, 10);
     const folders = [["events", (n) => n.slice(0, 10)], ["routing-log", (n) => `${n.slice(0, 7)}-31`]];
     for (const [folder, toDate] of folders) {
-      const dir = join2(config2.metadataDir, folder);
+      const dir = join3(config2.metadataDir, folder);
       if (!existsSync3(dir)) continue;
       for (const name of readdirSync(dir).filter((n) => n.endsWith(".jsonl"))) {
-        if (toDate(name) < cutoff) rmSync2(join2(dir, name));
+        if (toDate(name) < cutoff) rmSync2(join3(dir, name));
       }
     }
-    mkdirSync2(join2(config2.metadataDir, "state"), { recursive: true });
+    mkdirSync2(join3(config2.metadataDir, "state"), { recursive: true });
     writeFileSync2(marker, today);
   } catch (error) {
     recordFailure(config2, `retention sweep: ${messageOf(error)}`);
@@ -7840,14 +7871,14 @@ function emitEvent(config2, type, fields = {}, data = {}, now = /* @__PURE__ */ 
     if (value) envelope[key] = value;
   }
   const event = { ...envelope, data };
-  const file = join2(config2.metadataDir, "events", `${event.ts.slice(0, 10)}.jsonl`);
+  const file = join3(config2.metadataDir, "events", `${event.ts.slice(0, 10)}.jsonl`);
   if (!appendLine(config2, file, event)) return null;
   snapshotConfig(config2, event.repo, now);
   return event;
 }
 var TIERS = ["T1", "T2", "T3", "T4"];
 function snapshotConfig(config2, repo, now = /* @__PURE__ */ new Date()) {
-  const path = join2(config2.metadataDir, "configs", `${config2.config_sha256}.json`);
+  const path = join3(config2.metadataDir, "configs", `${config2.config_sha256}.json`);
   if (existsSync3(path)) return;
   const tiers = {};
   for (const tier of TIERS) {
@@ -7867,7 +7898,7 @@ function snapshotConfig(config2, repo, now = /* @__PURE__ */ new Date()) {
     gate: { marker_ttl_minutes: config2.markerTtlMinutes }
   };
   try {
-    mkdirSync2(join2(path, ".."), { recursive: true });
+    mkdirSync2(join3(path, ".."), { recursive: true });
     writeFileSync2(`${path}.tmp`, JSON.stringify(snapshot, null, 2) + "\n");
     renameSync2(`${path}.tmp`, path);
   } catch (error) {
@@ -7875,11 +7906,11 @@ function snapshotConfig(config2, repo, now = /* @__PURE__ */ new Date()) {
   }
 }
 function readEvents(config2) {
-  const dir = join2(config2.metadataDir, "events");
+  const dir = join3(config2.metadataDir, "events");
   if (!existsSync3(dir)) return [];
   const events = [];
   for (const name of readdirSync(dir).filter((n) => n.endsWith(".jsonl")).sort()) {
-    for (const line of readFileSync3(join2(dir, name), "utf8").split("\n")) {
+    for (const line of readFileSync3(join3(dir, name), "utf8").split("\n")) {
       if (!line.trim()) continue;
       try {
         events.push(JSON.parse(line));
@@ -7904,6 +7935,7 @@ async function readHookInput() {
 
 // src/hooks/pre-tool-use.ts
 var EDIT_TOOLS = /* @__PURE__ */ new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
+var READING_GIT = /* @__PURE__ */ new Set(["diff", "log", "show", "status", "blame", "grep", "ls-files", "rev-parse", "cat-file"]);
 var AGENT_TOOLS = /* @__PURE__ */ new Set(["Agent", "Task"]);
 var deny = (reason) => {
   process.stdout.write(JSON.stringify({
@@ -7919,16 +7951,28 @@ var touchesMarker = tool === "Bash" ? writesMarker(command) : isMarkerPath(args.
 var commits = tool === "Bash" && isCommit(command);
 var pushes = tool === "Bash" && /\bpush\b/.test(command);
 var agent = String(input.agent_type ?? "");
-var role = agent.startsWith("harness:impl-t") ? "implementer" : agent === "harness:evaluator" ? "evaluator" : null;
+var role = agent.startsWith("harness:impl-t") ? "implementer" : agent === "harness:evaluator" ? "evaluator" : agent === "harness:security-reviewer" ? "reviewer" : null;
 var edited = EDIT_TOOLS.has(tool) ? args.file_path ?? args.notebook_path : null;
 var policedEdit = Boolean(role && edited);
+var reviewerGit = role === "reviewer" && tool === "Bash" ? gitSubcommands(command) : [];
 var dispatched = AGENT_TOOLS.has(tool) ? String(args.subagent_type ?? "") : "";
 var harnessDispatch = dispatched.startsWith("harness:");
-if (!touchesMarker && !commits && !pushes && !policedEdit && !harnessDispatch) process.exit(0);
+if (!touchesMarker && !commits && !pushes && !policedEdit && !reviewerGit.length && !harnessDispatch) process.exit(0);
 var config = loadConfig();
 if (config.mode === "off") process.exit(0);
 if (touchesMarker) {
   deny("harness: the eval pass marker (eval-pass.json) is written only by harness-eval. Reading it is fine; run harness-eval instead of writing it.");
+}
+var writingGit = reviewerGit.find((sub) => !READING_GIT.has(sub));
+if (writingGit !== void 0) {
+  deny(`harness: the security reviewer only reads, and git ${writingGit || "with no subcommand"} is not one of the reading commands (${[...READING_GIT].join(", ")}). Report what you found instead.`);
+}
+if (reviewerGit.length) process.exit(0);
+if (role === "reviewer" && edited) {
+  if (!isReviewPath(edited, config.metadataDir)) {
+    deny(`harness: the security reviewer writes only its review file (PLAN-n.m.security.md in ${config.metadataDir.replace(/\\/g, "/")}/reviews), and ${edited} is not one. Report what the code needs instead.`);
+  }
+  process.exit(0);
 }
 if (pushes) {
   const refusal = pushRefusal(command, input.cwd ?? config.dir);
@@ -7937,7 +7981,7 @@ if (pushes) {
 }
 if (harnessDispatch) {
   const plans = plansIn(args.prompt);
-  if (!plans.length) deny(`harness: a ${dispatched} dispatch must start with its header line naming the task or the plan (WRITE-TESTS:, IMPLEMENT: or EVALUATE: PLAN-n.m, or DISPATCH: PLAN-n), so the intake gate can tell which plan it is for.`);
+  if (!plans.length) deny(`harness: a ${dispatched} dispatch must start with its header line naming the task or the plan (WRITE-TESTS:, IMPLEMENT:, EVALUATE: or SECURITY-REVIEW: PLAN-n.m, or DISPATCH: PLAN-n), so the intake gate can tell which plan it is for.`);
   const events = readEvents(config);
   for (const plan of plans) {
     const verdict2 = intakeVerdict(plan, config.intakeMaxAmbiguity, events);
@@ -7970,7 +8014,7 @@ emitEvent(
   { decision: verdict.decision, reason: verdict.reason }
 );
 if (verdict.decision === "deny") {
-  const evalPath = join3(pluginRoot() ?? "", "bin", "harness-eval.mjs").replace(/\\/g, "/");
+  const evalPath = join4(pluginRoot() ?? "", "bin", "harness-eval.mjs").replace(/\\/g, "/");
   deny(`harness: commit denied (${verdict.reason}): ${verdict.detail}. Stage exactly what you mean to commit, run node "${evalPath}" --task PLAN-n.m, and commit once it passes.`);
 }
 process.exit(0);

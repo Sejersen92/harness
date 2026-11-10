@@ -213,9 +213,9 @@ test("the PROGRAMME-n.md template carries what the coverage check reads for a bu
   assert.match(template, /^- S\d+: /m, "Not doing shows no story line");
 });
 
-test("the plugin's version is the one that brings bundle mode (G1.5, H9)", () => {
+test("the plugin's version is the one that brings the security review step (H10)", () => {
   const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
   const plugin = JSON.parse(readFileSync(join(root, ".claude-plugin/plugin.json"), "utf8"));
-  assert.equal(pkg.version, "0.16.0");
-  assert.equal(plugin.version, "0.16.0");
+  assert.equal(pkg.version, "0.17.0");
+  assert.equal(plugin.version, "0.17.0");
 });
