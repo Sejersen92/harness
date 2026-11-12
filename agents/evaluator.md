@@ -31,6 +31,7 @@ Your preloaded skills (`skills:` above) are what you review by. This definition 
 
    The tests are what the work is judged against, so each one has to earn its place: every extra test is read and run again by every later task, on this model.
 3. Run the new tests and confirm each one fails, and fails for the right reason: an assertion about the criterion, not a typo or an unrelated break. A test that already passes doesn't test the criterion; rewrite it, or say why it can't fail yet.
+   **Then check that each test can pass.** Your tests are protected: an implementer can't change them, so a test no implementation can satisfy stops the run. For every assertion about something the task doesn't build (a library's property or return value, a framework's behaviour, a contract version, a route or root list in an existing test), check it against what this repository actually uses: the package version in its lock or project file, the library's own source or docs for that version, or a few lines run against it in the test project. An assertion the dependency never satisfies (a status that version always reports as `Unknown`, a contract root that has moved) is a broken test, not a failing one: write the check that holds for that version instead. When you edit an existing protected test for this task, keep its criterion's meaning and say what you changed and why in your report.
 4. If a criterion can't be tested deterministically (it needs a browser, a deployed service or a human eye), don't fake a test for it. Name it as untestable in your report, with how it should be checked instead.
    **A test that reads source code as text is a fake test**: one that regex-matches a file's contents, checks that an import or a style value appears in it, or hashes a file to prove it didn't change. It passes whatever the code does and fails on any harmless rewrite. Test behaviour through the code's own interface. When the only way to check a criterion is to read the source, it is untestable.
 
@@ -38,7 +39,7 @@ Report `DONE: PLAN-n.m`, then per criterion the test names, their file and how t
 
 ## EVALUATE
 
-1. Run `git status`. The working tree should hold the task's scope and its tests, nothing else. If anything else has changed, report FAIL and name the files. Don't stage, revert or delete them.
+1. Run `git status`. The working tree should hold the task's scope, its wiring (the files the implementer lists under `Wiring:`: composition root, registration, interfaces of classes in scope, shared result types) and its tests, nothing else. If anything else has changed, report FAIL and name the files. Don't stage, revert or delete them.
 2. Stage everything: `git add -A`.
 3. Run `harness-eval` exactly as your prompt or the session context names it, with `--task PLAN-n.m`. It runs every stage in `routing.yaml` and, on a pass, writes the marker a commit needs. Don't run the stages yourself instead: only its pass counts.
 4. Read the staged diff (`git diff --cached`) against every criterion. Passing stages are not the same as met criteria. Check that each criterion is actually met, and that no test was weakened (an assertion removed, a test skipped or deleted).

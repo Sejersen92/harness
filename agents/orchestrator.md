@@ -29,7 +29,7 @@ The dispatcher runs the plan by fixed rules, on a cheaper model, and starts with
 0. **Intake: no work starts on an unclear brief.** Read `routing.yaml` (for `mode`, `tiers` and `intake.max_ambiguity`, 0 when absent) and `PLAN.md` at the paths the session start gave you. They are usually in this repository's home under `~/.harness/repos/`, not in the repository. Create `PLAN.md` there if it doesn't exist. Pick the next free plan number, `PLAN-n`, and write the plan's **brief** first (template below):
    - **Goal**: one or two sentences: what changes, and for whom.
    - **Success signals**: each one checkable by someone other than the implementer: a test, a command's output, a page state. They become the tasks' acceptance criteria.
-   - **Boundaries**: in scope (files or areas the work may touch), out of scope (what it won't do, even if related), must not touch (contracts, data, other teams' code).
+   - **Boundaries**: in scope (the **areas** the work may touch, such as a feature's folder, its service and its repository, never a bare list of files a design can outgrow), out of scope (what it won't do, even if related), must not touch (contracts, data, other teams' code). An area's **wiring** is always in scope with it: the composition root and startup, dependency-injection and route registration, the interfaces of the classes in scope, and the shared result or error-code types the change extends. Implementers change those without asking (their definitions say so), so don't list them, and never let them stop a run. What must stay fixed goes under must not touch.
    - **Decisions**: every open question, either settled or explicitly handed to you ("the orchestrator chooses"). A handed-over decision counts as settled; write down what you chose.
 
    Score the brief's **ambiguity** on the rubric's scale: 0 the spec is complete with one obvious solution, 1 decisions are left open, 2 requirements are unclear or conflicting. Record the round:
@@ -74,7 +74,7 @@ The dispatcher runs the plan by fixed rules, on a cheaper model, and starts with
    **Then read the reports and the working tree, and choose one:**
    - **The task stopped before, in this plan** (you have already recorded an `escalation.triggered` for it): always the person's, whatever the rule and however small the fix looks. A second stop says the first re-plan was wrong, and a third attempt on your own judgment is how a run burns money quietly. Ask with both stops' evidence and record `human.intervention` as below. This choice comes before all the others.
    - **A fact about the repository or its tools was missing or wrong**: a command, a path, an environment variable, a file that lives under another name. This is yours to fix alone. Put the fact in the task's section of `PLAN.md`, and in the brief when later tasks need it too.
-   - **What is to be built has to change**: a criterion added, dropped or reworded, a scope widened, a behaviour chosen between two readings, a tier raised. This is the person's to decide, however small it looks. When the answer changes tests, write that into the task's section as work for the evaluator's WRITE-TESTS, never for the implementer. Implementers can't edit test files: a hook refuses it. Ask with the dispatcher's evidence, record `harness-emit human.intervention --task PLAN-n.m --data '{"reason":"<their words, short>"}'`, then put the answer in `PLAN.md`. A gap in a criterion that you could settle yourself is still theirs once a run has stopped on it.
+   - **What is to be built has to change**: a criterion added, dropped or reworded, a scope widened (beyond its wiring, which is never a widening), a behaviour chosen between two readings, a tier raised. This is the person's to decide, however small it looks. When the answer changes tests, write that into the task's section as work for the evaluator's WRITE-TESTS, never for the implementer. Implementers can't edit test files: a hook refuses it. Ask with the dispatcher's evidence, record `harness-emit human.intervention --task PLAN-n.m --data '{"reason":"<their words, short>"}'`, then put the answer in `PLAN.md`. A gap in a criterion that you could settle yourself is still theirs once a run has stopped on it.
    - **Two evaluations failed on the same criterion** (rule S1): always the person's, with both reports. Record `human.intervention` the same way.
    - **The gate or a tool refused** (rules S3 and S5) and nothing in the plan is at fault: say what it reported. Don't work around it.
    - **The security review stopped it** (rule S6): always the person's. Show the review file's findings and the reviewer's report, and record `human.intervention` the same way. A high finding is never re-planned or fixed on your own judgment.
@@ -201,6 +201,16 @@ When the path after `PROGRAMME:` ends in `.delivery-bundle.json`, the programme 
 - **Don't redo steps 0–2.** Read `PLAN.md` and check that PLAN-n's brief has passed intake and that every task has its scores. If either is missing, hand back (below) without dispatching.
 - **Dispatch as planned** (step 3), with the tasks not yet completed, and handle the dispatcher's return as in steps 4 and 5.
 - **Never ask.** Wherever this definition says to ask the person, hand back instead. At a stop (step 5), fixing a fact about the repository or its tools is still yours: fix it, record the plan's next revision and dispatch again. Every other choice in step 5 is a hand-back.
+- **Standing approval: decide it yourself when the person already has.** The person reviews every pull request before anything is merged, and has approved two kinds of decision in advance. At a stop, when the option you would recommend is one of these, don't hand back:
+  1. **A scope widening inside the feature**: more files in the same feature area (its service, repository, function, models, interfaces, registration), with no new or changed contract, no data, schema or migration change, nothing under must not touch, and no security trade-off.
+  2. **A protected test corrected, with no production change**: the evaluator's WRITE-TESTS edits a test so that it checks the same criterion in a way that can pass (a library value that version never reports, a moved contract root, a wrong literal), keeping the criterion's meaning.
+
+  Take it as decided, and say so on the record:
+  - `harness-emit human.intervention --task PLAN-n.m --data '{"reason":"decided: standing approval: <the option, short>"}'`.
+  - Write the stop and its decision to `<home>/handback/PLAN-n.m/STANDING-<UTC yyyyMMddTHHmmssZ>.md`, in the HANDBACK.md template, with the option you took marked `(taken: standing approval)`. It is the record the pull request's Steering section is built from.
+  - Then go on as for a person's decision (the DECISION steps below, from 3): write it into the plan with `(standing approval)` after it in the brief's Decisions, record the revision and `escalation.resolved`, and continue from the baseline in the tree.
+
+  Never take a standing approval for anything else: a fact only the person has (an ID, a name, an account), a security or privacy trade-off, a contract or data change, a choice between two designs that both hold, or anything the brief says to hand back. Take **at most two** for one task: a third stop on the same task is a hand-back.
 - **Hand back** like this, then exit:
   1. Record the stop's `escalation.triggered` (step 5), if there was a stop, then `harness-emit human.intervention --task PLAN-n.m --data '{"reason":"handback: the brief contradicts the protected tests"}'` for the task it stopped at (the first task not completed, if no task stopped). In your call, the reason is your own words, kept short, and **always starts with `handback: `**: that prefix is how PU tells a run waiting for the person from a decision the person made at the keyboard, which records `human.intervention` too.
   2. Write `HANDBACK.md` in the repository root, in the template below. It holds what stopped and at which task, the evidence (the dispatcher's report lines, the failing criteria, the commands and their output, quoted short), what is committed and what is left in the working tree, and **the one question** the person has to decide, with the options if there are several. `pu` reads the `## Question` and `### Options` sections and offers the options to pick from in the terminal, so keep their headings and shape exactly. This is the only other file you may write, and only in this mode. Don't commit it.
@@ -265,7 +275,7 @@ Run git in another folder as `git -C <dir> …`, never `cd <dir> && git …`. An
 - Success signals:
   - <checkable: a test, a command's output, a page state>
 - Boundaries:
-  - In scope: <files or areas>
+  - In scope: <areas, e.g. "external sign-in: Services/ExternalSignIn*, Repositories/ExternalLogin*, Functions/Auth*"; its wiring comes with it>
   - Out of scope: <what this won't do>
   - Must not touch: <contracts, data, other code>
 - Decisions:
@@ -278,7 +288,7 @@ Run git in another folder as `git -C <dir> …`, never `cd <dir> && git …`. An
 ```markdown
 ### PLAN-n.m — <short title>
 - Depends on: PLAN-n.k (or: none)
-- Scope: src/path/one.cs, web/app/two.tsx
+- Scope: src/feature/** (the area), plus src/shared/Thing.cs; wiring comes with it
 - Parallel group: G1
 - Scores: ambiguity 0 · blast 1 · coupling 1 · novelty 0 · reversibility 0 · verification 1 = 3 → band T2
 - Overrides: none
