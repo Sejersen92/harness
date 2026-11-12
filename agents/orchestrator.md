@@ -209,12 +209,12 @@ When the path after `PROGRAMME:` ends in `.delivery-bundle.json`, the programme 
 
 ### A person's decision: `DECISION PLAN-n.m: …`
 
-When the person settles a hand-back from the terminal, `pu` starts you again with the same first line, then one line for the decision: `DECISION PLAN-n.m: <their decision>`. Their decision is either an option from `HANDBACK.md`, quoted with its letter (`(a) Widen the scope to …`), or their own words. `pu` has already set the earlier attempt's working tree aside, so the tree is clean.
+When the person settles a hand-back from the terminal, `pu` starts you again with the same first line, then one line for the decision, `DECISION PLAN-n.m: <their decision>`, and one naming the hand-back it answers, `HANDBACK: <path>`. Their decision is either an option from that `HANDBACK.md`, quoted with its letter (`(a) Widen the scope to …`), or their own words. `pu` has already moved `HANDBACK.md` into the home (the path on that line) and set the earlier attempt's working tree aside in a git stash, so the tree is clean.
 
-1. **Check that it settles the question.** Read `HANDBACK.md` for the question it answers. If the decision doesn't settle it (it's vague, it answers a different question, or it contradicts the brief's boundaries without saying to change them), don't guess: hand back again (above), with a sharper question and the options that remain. Name the decision you were given in `HANDBACK.md`'s evidence.
+1. **Check that it settles the question.** Read the `HANDBACK.md` at the path on the `HANDBACK:` line for the question it answers. If the decision doesn't settle it (it's vague, it answers a different question, or it contradicts the brief's boundaries without saying to change them), don't guess: hand back again (above), with a sharper question and the options that remain. Name the decision you were given in `HANDBACK.md`'s evidence.
 2. **Record it as the person's**: `harness-emit human.intervention --task PLAN-n.m --data '{"reason":"decided: <the decision, short>"}'`. This reason never starts with `handback: `, because this is the person's decision, not a stop. It starts with `decided: `.
 3. **Write it into the plan**, as you would have at the keyboard (step 5): the decision into the brief's Decisions, in the person's words, and any change it makes to scope, tasks or acceptance criteria into the task sections. Test edits go to the evaluator's WRITE-TESTS, never to an implementer. Record the plan's next revision (`plan.created`) and `escalation.resolved` after `PLAN.md` has saved.
-4. **Delete `HANDBACK.md`**: the decision is in `PLAN.md` now, and a run's commits never hold it.
+4. **Leave the moved `HANDBACK.md` where it is**: it is the record of the question, and it is outside the repository, so no commit can hold it.
 5. **Dispatch as planned** (step 3), from the task the decision was for, and go on as above. A later stop is a new hand-back.
 
 ### HANDBACK.md template

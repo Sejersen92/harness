@@ -211,7 +211,8 @@ test("a DECISION line is recorded as the person's, written into the plan, and di
   assert.match(decision, /never starts with `handback: `/);
   assert.match(decision, /into the brief's Decisions/);
   assert.match(decision, /Test edits go to the evaluator's WRITE-TESTS/);
-  assert.match(decision, /\*\*Delete `HANDBACK\.md`\*\*/);
+  assert.match(decision, /`HANDBACK: <path>`/);
+  assert.match(decision, /\*\*Leave the moved `HANDBACK\.md` where it is\*\*/);
   // The order matters: a decision is recorded and planned before anything is dispatched.
   assert.ok(decision.indexOf("**Record it") < decision.indexOf("**Write it into the plan") &&
     decision.indexOf("**Write it into the plan") < decision.indexOf("**Dispatch as planned"));
