@@ -213,6 +213,11 @@ test("a DECISION line is recorded as the person's, written into the plan, and di
   assert.match(decision, /Test edits go to the evaluator's WRITE-TESTS/);
   assert.match(decision, /`HANDBACK: <path>`/);
   assert.match(decision, /\*\*Leave the moved `HANDBACK\.md` where it is\*\*/);
+  // The earlier attempt is the baseline the decision corrects: kept in the tree, never stashed or rebuilt (H11.1).
+  assert.match(decision, /\*\*The earlier attempt's work is still in the working tree\*\*/);
+  assert.match(decision, /\*\*Continue from the baseline, never over it\.\*\*/);
+  assert.match(decision, /Don't stash, revert or delete it, and never ask for the task to be redone from scratch/);
+  assert.doesNotMatch(decision, /so the tree is clean/);
   // The order matters: a decision is recorded and planned before anything is dispatched.
   assert.ok(decision.indexOf("**Record it") < decision.indexOf("**Write it into the plan") &&
     decision.indexOf("**Write it into the plan") < decision.indexOf("**Dispatch as planned"));
@@ -246,6 +251,6 @@ test("the PROGRAMME-n.md template carries what the coverage check reads for a bu
 test("the plugin's version is the one that brings the decision door (H11)", () => {
   const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
   const plugin = JSON.parse(readFileSync(join(root, ".claude-plugin/plugin.json"), "utf8"));
-  assert.equal(pkg.version, "0.18.0");
-  assert.equal(plugin.version, "0.18.0");
+  assert.equal(pkg.version, "0.18.1");
+  assert.equal(plugin.version, "0.18.1");
 });
