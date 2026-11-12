@@ -24,6 +24,15 @@ export interface RoutingRecord {
 export const MAX_LINE_BYTES = 4096;
 
 /**
+ * A routing-log line's ceiling. Event lines keep the 4 KB cap: several processes append them at once, and a
+ * line under it is written in one piece. A routing-log line is written once per task, after its completion,
+ * by the one session that completed it, so it may run longer. tasklog's fitted() still aims for 4 KB first.
+ * A routing-log line refused for its size cost a run a hand-back (AssessmentService PLAN-2.1, 2026-11-12):
+ * this ceiling is far above any record fitted() can leave.
+ */
+export const MAX_ROUTING_LINE_BYTES = 65536;
+
+/**
  * The machine's list of repositories with a spool, so a reader (PU's `pu sync`) finds every one
  * without guessing from session transcripts. ~/.harness/spools.json, or $HARNESS_HOME/spools.json.
  */
@@ -98,10 +107,10 @@ export function recordFailure(config: { metadataDir: string }, why: string): voi
 }
 
 /** Appends one line in a single write (O_APPEND), so parallel writers never interleave. */
-function appendLine(config: Config, file: string, record: { type?: string; schema?: string }): boolean {
+function appendLine(config: Config, file: string, record: { type?: string; schema?: string }, max = MAX_LINE_BYTES): boolean {
   const line = JSON.stringify(record);
-  if (Buffer.byteLength(line) >= MAX_LINE_BYTES) {
-    recordFailure(config, `${record.type ?? record.schema} line is ${Buffer.byteLength(line)} bytes, over the 4 KB limit`);
+  if (Buffer.byteLength(line) >= max) {
+    recordFailure(config, `${record.type ?? record.schema} line is ${Buffer.byteLength(line)} bytes, over the ${max / 1024} KB limit`);
     return false;
   }
   try {
@@ -214,7 +223,7 @@ export function snapshotConfig(config: Config, repo: RepoIdentity, now: Date = n
 
 export function writeRoutingLog(config: Config, record: RoutingRecord): boolean {
   const file = join(config.metadataDir, "routing-log", `${record.timestamps.completed.slice(0, 7)}.jsonl`);
-  return appendLine(config, file, record);
+  return appendLine(config, file, record, MAX_ROUTING_LINE_BYTES);
 }
 
 /** Every event line in the spool, oldest first. Unparseable lines are skipped and counted. */

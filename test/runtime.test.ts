@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseReport } from "../src/lib/ids.ts";
 import { buildRecord, fitted } from "../src/lib/tasklog.ts";
+import { readRoutingLog, writeRoutingLog } from "../src/lib/spool.ts";
 import type { Config } from "../src/lib/types.ts";
 import { describe, root, validatorFor, type Line } from "./validators.ts";
 import { cleanEnv, git } from "./git.ts";
@@ -423,4 +424,48 @@ test("PLAN-1.3/AC-4 a task whose events lack the fields gets a record without th
     assert.equal(key in record.rubric, false, `rubric.${key} should be omitted`);
     assert.equal(key in record, false, `${key} should be omitted`);
   }
+});
+
+test("a task that went through hand-backs is trimmed in steps, keeps every run, and is never refused by the routing log (H13)", () => {
+  // AssessmentService PLAN-2.1 (2026-11-12): two hand-backs left one attempt with many runs, the 4 KB
+  // refusal stopped the run (S3), and the person had to hand-wave a missing line.
+  const run = (i: number) => ({
+    agent_type: "harness:impl-t4", agent_id: `a${String(i).padStart(16, "0")}`, started: "2026-11-12T10:00:00Z",
+    ended: "2026-11-12T10:05:00Z", report: "DONE", partial: false, model_requested: "opus", model: "claude-opus-5-5", effort: "medium",
+  });
+  const stage = { name: "AssessmentService-test", status: "pass", duration_ms: 12345 };
+  const record = {
+    schema: "harness.routing-log/v1", task_id: "PLAN-2.1", revision: 1, plan_id: "PLAN-2",
+    timestamps: { scored: "2026-11-12T09:00:00Z", completed: "2026-11-12T11:00:00Z" },
+    rubric: { scores: {}, total: 9, justifications: { ambiguity: "x".repeat(600), blast: "y".repeat(600) } },
+    gate: { denials: 2, denial_reasons: ["z".repeat(300), "w".repeat(300)], allowed: 4 },
+    runs: Array.from({ length: 40 }, (_, i) => run(i)),
+    eval_rounds: Array.from({ length: 3 }, (_, i) => ({ round: i + 1, result: "fail", failed_acs: ["PLAN-2.1/AC-5"], stages: [stage, stage, stage] })),
+  };
+
+  const trimmed = fitted(record as never);
+
+  const runs = trimmed.runs as Record<string, unknown>[];
+  assert.equal(runs.length, 40, "a run is never dropped");
+  assert.deepEqual(Object.keys(runs[0] ?? {}).sort(), ["agent_id", "agent_type", "ended", "model", "report", "started"], "every run keeps what PU prices it by");
+  assert.deepEqual(trimmed.trimmed, [
+    "runs.model_requested", "runs.effort", "eval_rounds.stages", "rubric.justifications", "gate.denial_reasons",
+    "eval_rounds.failed_acs", "eval_rounds.attribution", "runs.partial",
+  ]);
+  const bytes = Buffer.byteLength(JSON.stringify(trimmed));
+  assert.ok(bytes >= 4096, `the test's record is still over 4 KB after every step (${bytes} bytes)`);
+
+  // The routing log takes it all the same: a size refusal is a hand-back no one should have to answer.
+  const dir = mkdtempSync(join(tmpdir(), "harness-routing-"));
+  const config = { dir, metadataDir: join(dir, ".harness") } as Config;
+  assert.equal(writeRoutingLog(config, trimmed), true);
+  assert.equal(existsSync(join(dir, ".harness", "emit-failures")), false, "nothing was recorded as not written");
+  assert.deepEqual(readRoutingLog(config).map((r) => r.task_id), ["PLAN-2.1"]);
+
+  // Steps stop at the first that fits: a record a little over keeps its justifications.
+  const small = { ...record, runs: record.runs.slice(0, 15), gate: { denials: 0, denial_reasons: [], allowed: 1 }, rubric: { scores: {}, total: 9, justifications: { a: "short" } } };
+  assert.ok(Buffer.byteLength(JSON.stringify(small)) >= 4096, "the small record really is over 4 KB");
+  const fittedSmall = fitted(small as never);
+  assert.ok(Buffer.byteLength(JSON.stringify(fittedSmall)) < 4096);
+  assert.ok(!(fittedSmall.trimmed as string[]).includes("rubric.justifications"), "stopped before the justifications");
 });

@@ -7532,6 +7532,7 @@ var messageOf = (error) => error instanceof Error ? error.message : String(error
 
 // src/lib/spool.ts
 var MAX_LINE_BYTES = 4096;
+var MAX_ROUTING_LINE_BYTES = 65536;
 var registryPath = () => join2(harnessHome(), "spools.json");
 var readRegistry = (path) => existsSync2(path) ? JSON.parse(readFileSync2(path, "utf8")) : { version: 1, spools: [] };
 function writeRegistry(path, registry) {
@@ -7563,10 +7564,10 @@ function recordFailure(config2, why) {
   } catch {
   }
 }
-function appendLine(config2, file, record) {
+function appendLine(config2, file, record, max = MAX_LINE_BYTES) {
   const line = JSON.stringify(record);
-  if (Buffer.byteLength(line) >= MAX_LINE_BYTES) {
-    recordFailure(config2, `${record.type ?? record.schema} line is ${Buffer.byteLength(line)} bytes, over the 4 KB limit`);
+  if (Buffer.byteLength(line) >= max) {
+    recordFailure(config2, `${record.type ?? record.schema} line is ${Buffer.byteLength(line)} bytes, over the ${max / 1024} KB limit`);
     return false;
   }
   try {
@@ -7660,7 +7661,7 @@ function snapshotConfig(config2, repo, now = /* @__PURE__ */ new Date()) {
 }
 function writeRoutingLog(config2, record) {
   const file = join2(config2.metadataDir, "routing-log", `${record.timestamps.completed.slice(0, 7)}.jsonl`);
-  return appendLine(config2, file, record);
+  return appendLine(config2, file, record, MAX_ROUTING_LINE_BYTES);
 }
 function readEvents(config2) {
   const dir = join2(config2.metadataDir, "events");
@@ -7848,10 +7849,38 @@ function writeTaskRecord(config2, taskId2) {
   return writeRoutingLog(config2, fitted(record)) ? record : null;
 }
 function fitted(record) {
-  if (Buffer.byteLength(JSON.stringify(record)) < MAX_LINE_BYTES) return record;
-  const runs = record.runs.map(({ model_requested: _requested, effort: _effort, ...kept }) => kept);
-  const evalRounds = record.eval_rounds.map((round) => ({ ...round, stages: [] }));
-  return { ...record, runs, eval_rounds: evalRounds, trimmed: ["runs.model_requested", "runs.effort", "eval_rounds.stages"] };
+  const fits = (r2) => Buffer.byteLength(JSON.stringify(r2)) < MAX_LINE_BYTES;
+  if (fits(record)) return record;
+  const steps = [
+    [["runs.model_requested", "runs.effort", "eval_rounds.stages"], (r2) => ({
+      ...r2,
+      runs: r2.runs.map(({ model_requested: _requested, effort: _effort, ...kept }) => kept),
+      eval_rounds: r2.eval_rounds.map((round) => ({ ...round, stages: [] }))
+    })],
+    [["rubric.justifications"], (r2) => {
+      const { justifications, ...rubric } = r2.rubric;
+      return justifications === void 0 ? null : { ...r2, rubric };
+    }],
+    [["gate.denial_reasons"], (r2) => {
+      const gate = r2.gate;
+      return gate.denial_reasons?.length ? { ...r2, gate: { ...gate, denial_reasons: [] } } : null;
+    }],
+    [["eval_rounds.failed_acs", "eval_rounds.attribution"], (r2) => ({
+      ...r2,
+      eval_rounds: r2.eval_rounds.map(({ round, result }) => ({ round, result, failed_acs: [], stages: [] }))
+    })],
+    [["runs.partial"], (r2) => ({ ...r2, runs: r2.runs.map(({ partial: _partial, ...kept }) => kept) })]
+  ];
+  const trimmed = [];
+  let r = record;
+  for (const [names, drop] of steps) {
+    const next = drop(r);
+    if (next === null) continue;
+    r = next;
+    trimmed.push(...names);
+    if (fits({ ...r, trimmed })) break;
+  }
+  return { ...r, trimmed };
 }
 
 // src/cli/harness-emit.ts
