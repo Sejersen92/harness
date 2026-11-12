@@ -188,6 +188,35 @@ test("an unattended hand-back's human.intervention reason always starts with han
   assert.match(handback, /\*\*always starts with `handback: `\*\*/);
 });
 
+test("HANDBACK.md has the fixed Question and Options shape pu reads (H11)", () => {
+  // pu harness offers the options to pick from in the terminal: it reads `## Question`, then `- (a) …` under `### Options`.
+  const text = readFileSync(join(root, "agents/orchestrator.md"), "utf8").replace(/\r\n/g, "\n");
+  const template = text.split("### HANDBACK.md template")[1] ?? "";
+  assert.ok(template.length > 0, "the unattended section has no HANDBACK.md template");
+  for (const heading of ["# HANDBACK: PLAN-n.m — ", "## What stopped", "## Evidence", "## Left behind", "## Question", "### Options"])
+    assert.ok(template.includes(heading), `the template has no ${heading}`);
+  assert.match(template, /^- \(a\) .+ \(recommended\)$/m);
+  assert.match(template, /^- \(b\) /m);
+  assert.match(template, /mark at most one `\(recommended\)`/);
+  assert.match(template, /leave the `### Options` section out/);
+});
+
+test("a DECISION line is recorded as the person's, written into the plan, and dispatched; a vague one is handed back (H11)", () => {
+  const text = readFileSync(join(root, "agents/orchestrator.md"), "utf8").replace(/\r\n/g, "\n");
+  const decision = text.split("### A person's decision: `DECISION PLAN-n.m: …`")[1]?.split("### HANDBACK.md template")[0] ?? "";
+  assert.ok(decision.length > 0, "the unattended section has no DECISION mode");
+  assert.match(decision, /`DECISION PLAN-n\.m: <their decision>`/);
+  assert.match(decision, /don't guess: hand back again/);
+  assert.match(decision, /harness-emit human\.intervention --task PLAN-n\.m --data '\{"reason":"decided: /);
+  assert.match(decision, /never starts with `handback: `/);
+  assert.match(decision, /into the brief's Decisions/);
+  assert.match(decision, /Test edits go to the evaluator's WRITE-TESTS/);
+  assert.match(decision, /\*\*Delete `HANDBACK\.md`\*\*/);
+  // The order matters: a decision is recorded and planned before anything is dispatched.
+  assert.ok(decision.indexOf("**Record it") < decision.indexOf("**Write it into the plan") &&
+    decision.indexOf("**Write it into the plan") < decision.indexOf("**Dispatch as planned"));
+});
+
 test("PROGRAMME mode reads a gov-os delivery bundle with the stories as the backbone (G1.5, H9)", () => {
   // pu harness programme new --bundle (P7) starts the sitting on <file>.delivery-bundle.json with STORIES.md next to
   // it, and after the sitting checks coverage: every S-id cited or under Not doing, every criterion citing a known id.
@@ -213,9 +242,9 @@ test("the PROGRAMME-n.md template carries what the coverage check reads for a bu
   assert.match(template, /^- S\d+: /m, "Not doing shows no story line");
 });
 
-test("the plugin's version is the one that brings the security review step (H10)", () => {
+test("the plugin's version is the one that brings the decision door (H11)", () => {
   const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
   const plugin = JSON.parse(readFileSync(join(root, ".claude-plugin/plugin.json"), "utf8"));
-  assert.equal(pkg.version, "0.17.0");
-  assert.equal(plugin.version, "0.17.0");
+  assert.equal(pkg.version, "0.18.0");
+  assert.equal(plugin.version, "0.18.0");
 });
