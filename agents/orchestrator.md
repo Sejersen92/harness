@@ -203,9 +203,43 @@ When the path after `PROGRAMME:` ends in `.delivery-bundle.json`, the programme 
 - **Never ask.** Wherever this definition says to ask the person, hand back instead. At a stop (step 5), fixing a fact about the repository or its tools is still yours: fix it, record the plan's next revision and dispatch again. Every other choice in step 5 is a hand-back.
 - **Hand back** like this, then exit:
   1. Record the stop's `escalation.triggered` (step 5), if there was a stop, then `harness-emit human.intervention --task PLAN-n.m --data '{"reason":"handback: the brief contradicts the protected tests"}'` for the task it stopped at (the first task not completed, if no task stopped). In your call, the reason is your own words, kept short, and **always starts with `handback: `**: that prefix is how PU tells a run waiting for the person from a decision the person made at the keyboard, which records `human.intervention` too.
-  2. Write `HANDBACK.md` in the repository root. It holds what stopped and at which task, the evidence (the dispatcher's report lines, the failing criteria, the commands and their output, quoted short), what is committed and what is left in the working tree, and **the one question** the person has to decide, with the options if there are several. This is the only other file you may write, and only in this mode. Don't commit it.
+  2. Write `HANDBACK.md` in the repository root, in the template below. It holds what stopped and at which task, the evidence (the dispatcher's report lines, the failing criteria, the commands and their output, quoted short), what is committed and what is left in the working tree, and **the one question** the person has to decide, with the options if there are several. `pu` reads the `## Question` and `### Options` sections and offers the options to pick from in the terminal, so keep their headings and shape exactly. This is the only other file you may write, and only in this mode. Don't commit it.
   3. Reply with the same, in short, and stop.
 - **Leave the working tree as it is**: don't tidy, stash or revert. Don't push and don't open a pull request: `pu` does both after a DONE.
+
+### A person's decision: `DECISION PLAN-n.m: …`
+
+When the person settles a hand-back from the terminal, `pu` starts you again with the same first line, then one line for the decision, `DECISION PLAN-n.m: <their decision>`, and one naming the hand-back it answers, `HANDBACK: <path>`. Their decision is either an option from that `HANDBACK.md`, quoted with its letter (`(a) Widen the scope to …`), or their own words. `pu` has already moved `HANDBACK.md` into the home (the path on that line) and set the earlier attempt's working tree aside in a git stash, so the tree is clean.
+
+1. **Check that it settles the question.** Read the `HANDBACK.md` at the path on the `HANDBACK:` line for the question it answers. If the decision doesn't settle it (it's vague, it answers a different question, or it contradicts the brief's boundaries without saying to change them), don't guess: hand back again (above), with a sharper question and the options that remain. Name the decision you were given in `HANDBACK.md`'s evidence.
+2. **Record it as the person's**: `harness-emit human.intervention --task PLAN-n.m --data '{"reason":"decided: <the decision, short>"}'`. This reason never starts with `handback: `, because this is the person's decision, not a stop. It starts with `decided: `.
+3. **Write it into the plan**, as you would have at the keyboard (step 5): the decision into the brief's Decisions, in the person's words, and any change it makes to scope, tasks or acceptance criteria into the task sections. Test edits go to the evaluator's WRITE-TESTS, never to an implementer. Record the plan's next revision (`plan.created`) and `escalation.resolved` after `PLAN.md` has saved.
+4. **Leave the moved `HANDBACK.md` where it is**: it is the record of the question, and it is outside the repository, so no commit can hold it.
+5. **Dispatch as planned** (step 3), from the task the decision was for, and go on as above. A later stop is a new hand-back.
+
+### HANDBACK.md template
+
+```markdown
+# HANDBACK: PLAN-n.m — <what stopped, in a few words>
+
+## What stopped
+<the task, the stop rule or report, and when>
+
+## Evidence
+- <the dispatcher's report line, a failing criterion as PLAN-n.m/AC-k, a command and its output, quoted short>
+
+## Left behind
+<what is committed (short sha and subject) and what is left in the working tree>
+
+## Question
+<the one question the person has to decide, in one or two sentences>
+
+### Options
+- (a) <a decision the dispatcher can act on as written> — <what it changes> (recommended)
+- (b) <…> — <…>
+```
+
+Give two to four options when the question has them, each one a complete decision that stands on its own, and mark at most one `(recommended)`. When the question is open, with no options to choose from, leave the `### Options` section out: the person answers in their own words.
 
 ## Shell commands
 
