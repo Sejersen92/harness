@@ -179,14 +179,44 @@ export function writeTaskRecord(config: Config, taskId: string): RoutingRecord |
 }
 
 /**
- * The record trimmed to fit one spool line, when it doesn't already: each run keeps the fields PU prices
- * and routes by (agent, id, times, report, model) and loses model_requested and effort, and each eval
- * round loses its stages. `trimmed` says so. A record still too long is refused by the spool and
- * recorded as a failure, as before: never dropped silently.
+ * The record trimmed to fit one 4 KB spool line, when it doesn't already, in steps of least value first, stopping
+ * at the first that fits. Every run always keeps what PU prices and routes by (agent_type, agent_id, started,
+ * ended, report, model): a run is never dropped. `trimmed` names everything dropped. A task that went through
+ * hand-backs carries every attempt's runs, so a record may still be over 4 KB after the last step; the routing
+ * log takes it up to its own, larger ceiling (spool.ts), so it is never refused for its size (H13).
  */
 export function fitted(record: RoutingRecord): RoutingRecord {
-  if (Buffer.byteLength(JSON.stringify(record)) < MAX_LINE_BYTES) return record;
-  const runs = (record.runs as Run[]).map(({ model_requested: _requested, effort: _effort, ...kept }) => kept);
-  const evalRounds = (record.eval_rounds as EvalRound[]).map((round) => ({ ...round, stages: [] }));
-  return { ...record, runs, eval_rounds: evalRounds, trimmed: ["runs.model_requested", "runs.effort", "eval_rounds.stages"] };
+  const fits = (r: RoutingRecord): boolean => Buffer.byteLength(JSON.stringify(r)) < MAX_LINE_BYTES;
+  if (fits(record)) return record;
+  // Each step drops what it names from the record as the previous steps left it; the first that fits ends it.
+  const steps: [string[], (r: RoutingRecord) => RoutingRecord | null][] = [
+    [["runs.model_requested", "runs.effort", "eval_rounds.stages"], (r) => ({
+      ...r,
+      runs: (r.runs as Run[]).map(({ model_requested: _requested, effort: _effort, ...kept }) => kept),
+      eval_rounds: (r.eval_rounds as EvalRound[]).map((round) => ({ ...round, stages: [] })),
+    })],
+    [["rubric.justifications"], (r) => {
+      const { justifications, ...rubric } = r.rubric as Record<string, unknown>;
+      return justifications === undefined ? null : { ...r, rubric };
+    }],
+    [["gate.denial_reasons"], (r) => {
+      const gate = r.gate as { denial_reasons?: string[] };
+      return gate.denial_reasons?.length ? { ...r, gate: { ...gate, denial_reasons: [] } } : null;
+    }],
+    [["eval_rounds.failed_acs", "eval_rounds.attribution"], (r) => ({
+      ...r,
+      eval_rounds: (r.eval_rounds as EvalRound[]).map(({ round, result }) => ({ round, result, failed_acs: [], stages: [] })),
+    })],
+    [["runs.partial"], (r) => ({ ...r, runs: (r.runs as Run[]).map(({ partial: _partial, ...kept }) => kept) as Run[] })],
+  ];
+  const trimmed: string[] = [];
+  let r: RoutingRecord = record;
+  for (const [names, drop] of steps) {
+    const next = drop(r);
+    if (next === null) continue;
+    r = next;
+    trimmed.push(...names);
+    if (fits({ ...r, trimmed })) break;
+  }
+  return { ...r, trimmed };
 }

@@ -7664,10 +7664,10 @@ function recordFailure(config2, why) {
   } catch {
   }
 }
-function appendLine(config2, file, record) {
+function appendLine(config2, file, record, max = MAX_LINE_BYTES) {
   const line = JSON.stringify(record);
-  if (Buffer.byteLength(line) >= MAX_LINE_BYTES) {
-    recordFailure(config2, `${record.type ?? record.schema} line is ${Buffer.byteLength(line)} bytes, over the 4 KB limit`);
+  if (Buffer.byteLength(line) >= max) {
+    recordFailure(config2, `${record.type ?? record.schema} line is ${Buffer.byteLength(line)} bytes, over the ${max / 1024} KB limit`);
     return false;
   }
   try {

@@ -251,8 +251,8 @@ test("the PROGRAMME-n.md template carries what the coverage check reads for a bu
 test("the plugin's version is the one that brings fewer stops (H12)", () => {
   const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
   const plugin = JSON.parse(readFileSync(join(root, ".claude-plugin/plugin.json"), "utf8"));
-  assert.equal(pkg.version, "0.19.0");
-  assert.equal(plugin.version, "0.19.0");
+  assert.equal(pkg.version, "0.19.1");
+  assert.equal(plugin.version, "0.19.1");
 });
 
 test("a task's scope includes its wiring: implementers change it without escalating, the evaluator accepts it (H12)", () => {
