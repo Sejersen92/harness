@@ -248,9 +248,50 @@ test("the PROGRAMME-n.md template carries what the coverage check reads for a bu
   assert.match(template, /^- S\d+: /m, "Not doing shows no story line");
 });
 
-test("the plugin's version is the one that brings the decision door (H11)", () => {
+test("the plugin's version is the one that brings fewer stops (H12)", () => {
   const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
   const plugin = JSON.parse(readFileSync(join(root, ".claude-plugin/plugin.json"), "utf8"));
-  assert.equal(pkg.version, "0.18.1");
-  assert.equal(plugin.version, "0.18.1");
+  assert.equal(pkg.version, "0.19.0");
+  assert.equal(plugin.version, "0.19.0");
+});
+
+test("a task's scope includes its wiring: implementers change it without escalating, the evaluator accepts it (H12)", () => {
+  // SERIES-1 stopped five times on Program.cs, registration, interfaces and Result.cs: files every feature touches.
+  for (const tier of ["impl-t1", "impl-t2", "impl-t3", "impl-t4"]) {
+    const text = readFileSync(join(root, `agents/${tier}.md`), "utf8").replace(/\r\n/g, "\n");
+    assert.match(text, /\*\*The scope includes its wiring\*\*/, `${tier} doesn't take its wiring`);
+    assert.match(text, /under `Wiring:`/, `${tier} doesn't report its wiring`);
+    assert.match(text, /"must not touch" always wins/, `${tier} lets wiring override must not touch`);
+    assert.match(text, /If the change needs other files outside the scope[^.]*stop and escalate/, `${tier} no longer escalates beyond the wiring`);
+  }
+  const evaluator = readFileSync(join(root, "agents/evaluator.md"), "utf8").replace(/\r\n/g, "\n");
+  assert.match(evaluator.split("## EVALUATE")[1] ?? "", /its wiring \(the files the implementer lists under `Wiring:`/);
+  const orchestrator = readFileSync(join(root, "agents/orchestrator.md"), "utf8").replace(/\r\n/g, "\n");
+  assert.match(orchestrator, /in scope \(the \*\*areas\*\* the work may touch/);
+  assert.match(orchestrator, /a scope widened \(beyond its wiring, which is never a widening\)/);
+});
+
+test("WRITE-TESTS checks that each protected test can pass against the dependency versions in use (H12)", () => {
+  // PLAN-2.1/AC-5 asserted a PrivateKeyStatus that ECDsaSecurityKey 8.23.0 never reports: a test no code could pass.
+  const text = readFileSync(join(root, "agents/evaluator.md"), "utf8").replace(/\r\n/g, "\n");
+  const write = text.split("## WRITE-TESTS")[1]?.split("## EVALUATE")[0] ?? "";
+  assert.match(write, /\*\*Then check that each test can pass\.\*\*/);
+  assert.match(write, /the package version in its lock or project file/);
+  assert.match(write, /is a broken test, not a failing one/);
+  assert.match(write, /keep its criterion's meaning/);
+});
+
+test("an unattended run takes a standing approval for two kinds of decision, records it, and never for the rest (H12)", () => {
+  const text = readFileSync(join(root, "agents/orchestrator.md"), "utf8").replace(/\r\n/g, "\n");
+  const unattended = text.split("## Unattended runs")[1]?.split("### A person's decision")[0] ?? "";
+  const standing = unattended.split("**Standing approval")[1]?.split("- **Hand back** like this")[0] ?? "";
+  assert.ok(standing.length > 0, "the unattended section has no standing approval");
+  assert.match(standing, /\*\*A scope widening inside the feature\*\*/);
+  assert.match(standing, /no new or changed contract, no data, schema or migration change, nothing under must not touch, and no security trade-off/);
+  assert.match(standing, /\*\*A protected test corrected, with no production change\*\*/);
+  assert.match(standing, /harness-emit human\.intervention --task PLAN-n\.m --data '\{"reason":"decided: standing approval: /);
+  assert.match(standing, /handback\/PLAN-n\.m\/STANDING-<UTC yyyyMMddTHHmmssZ>\.md/);
+  assert.match(standing, /Never take a standing approval for anything else: a fact only the person has/);
+  assert.match(standing, /\*\*at most two\*\* for one task: a third stop on the same task is a hand-back/);
+  assert.ok(unattended.indexOf("**Standing approval") < unattended.indexOf("- **Hand back** like this"), "the standing approval comes before the hand-back");
 });
