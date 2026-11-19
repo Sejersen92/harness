@@ -1,6 +1,41 @@
 import { existsSync, readFileSync } from "node:fs";
 import { taskIdsIn } from "./ids.ts";
 
+/**
+ * Whether a plan's acceptance criteria may start (LN1). A plan made from a programme phase says so in its brief,
+ * `- From: PROG-n/PHASE-k`, and then every acceptance criterion of its tasks cites the phase criterion it serves,
+ * `AC-1 (C3) …`, so the lineage view links story, criterion, test and code by id rather than by wording. A plan not
+ * from a programme isn't checked, and neither is a PLAN.md that isn't there (the intake gate speaks for that).
+ */
+export function citationVerdict(path: string, planId: string): { allowed: boolean; uncited: string[]; detail: string } {
+  const allowed = { allowed: true, uncited: [] as string[], detail: "" };
+  if (!existsSync(path)) return allowed;
+  const lines = readFileSync(path, "utf8").replace(/\r\n/g, "\n").split("\n");
+  const start = lines.findIndex((l) => new RegExp(`^##\\s+${planId}\\b(?!\\.)`).test(l));
+  if (start < 0) return allowed;
+  const end = lines.findIndex((l, i) => i > start && /^##\s/.test(l));
+  const body = lines.slice(start + 1, end < 0 ? undefined : end);
+
+  const from = body.find((l) => /^\s*-\s*From:\s*PROG-\d+\/PHASE-\d+/.test(l))?.match(/PROG-\d+\/PHASE-\d+/)?.[0];
+  if (!from) return allowed;
+
+  const uncited: string[] = [];
+  let task: string | null = null;
+  for (const line of body) {
+    const heading = line.match(/^###\s+(PLAN-\d+(?:\.\d+)+)\b/);
+    if (heading) { task = heading[1] ?? null; continue; }
+    const ac = line.match(/^\s+-\s+(AC-\d+)\b\s*(.*)$/);
+    if (!ac || !task) continue;
+    if (!/^\(\s*C[1-9]\d*(?:\s*,\s*C[1-9]\d*)*\s*\)/.test(ac[2] ?? "")) uncited.push(`${task}/${ac[1]}`);
+  }
+  if (uncited.length === 0) return allowed;
+  return {
+    allowed: false,
+    uncited,
+    detail: `${planId} comes from ${from}, so each acceptance criterion cites the phase criterion it serves, as AC-k (C<n>). These don't: ${uncited.join(", ")}`,
+  };
+}
+
 /** What the routing log takes from a task's PLAN.md section. */
 export interface PlanSection {
   declaredFiles: number;

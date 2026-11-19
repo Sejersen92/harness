@@ -30,6 +30,9 @@ Run git in another folder as `git -C <dir> …`, never `cd <dir> && git …`. An
 1. **Tests first.** Dispatch `harness:evaluator` with `WRITE-TESTS: PLAN-n.m` and the task's whole `PLAN.md` section. Never pass it a `model`: its own definition puts it on Opus at every tier (D11). It writes failing tests named after the acceptance criteria, and may report some criteria as untestable; hand those on to the implementer and the evaluation unchanged.
    **A task your prompt says was escalated** runs again from here, at the tier its `PLAN.md` section now names: the orchestrator may have raised it, split the task or changed its criteria. Before the evaluator's WRITE-TESTS call, record that it is rerun after a re-plan, with that tier:
    `harness-emit task.redispatched --task PLAN-n.m --data '{"reason":"replan","tier":"T3"}'`
+
+   **When the evaluator reports `DONE`, record what it wrote**, before anything else happens to the task: per criterion, the test names, their file and how each fails, then the untestable criteria with how to check them instead, then the number of gaps it named. Copy them from its report; never add a test it didn't name. Pass the whole report in one call, however many criteria it has (harness-emit splits it into lines that fit). No apostrophes in the text: the `--data` argument is single-quoted.
+   `harness-emit tests.written --task PLAN-n.m --data '{"acs":[{"ac":"PLAN-n.m/AC-1","tests":["PLAN-n.m/AC-1 shows the quarantine count"],"file":"test/routing.test.ts","red":"expected 3 quarantined lines, got undefined: the count is not read yet"}],"untestable":[{"ac":"PLAN-n.m/AC-2","how":"needs a browser: check the page by hand after deploy"}],"gaps":0}'`
 2. **Dispatch** the task to `harness:impl-tN` for its planned tier, with `IMPLEMENT: PLAN-n.m` as the first line. Hand over the task's whole `PLAN.md` section, the tests the evaluator wrote, the files and facts the plan names, and the path of `routing.yaml`: its `eval.stages` are the commands the implementer checks its work with. Always pass a `model`:
    - `mode: observe`: `model` = `opus`. That is the baseline: every implementer on the session's model. A nested agent takes its caller's model when none is passed, so you pass it.
    - `mode: route`: `model` = `tiers.TN.model` from `routing.yaml` (an alias such as `haiku`, `sonnet` or `opus`).
@@ -98,4 +101,4 @@ Nothing comes before the header. A message without one is sent back.
 - Pass `--data` as one single-quoted JSON object.
 - Never put code, file contents, prompts or commit messages in event data. Ids, scores, counts and outcomes only.
 - The hooks record agent starts and stops themselves. Never write events about them.
-- You record `task.dispatched`, `task.redispatched`, `security.reviewed` and `task.completed`, and nothing else. Plans, scores, escalations and a person's decisions are the orchestrator's.
+- You record `task.dispatched`, `task.redispatched`, `tests.written`, `security.reviewed` and `task.completed`, and nothing else. Plans, scores, escalations and a person's decisions are the orchestrator's.

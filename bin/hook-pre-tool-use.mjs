@@ -7668,6 +7668,38 @@ var plansIn = (prompt) => {
   return planIdsIn(header);
 };
 
+// src/lib/plan.ts
+import { existsSync as existsSync3, readFileSync as readFileSync3 } from "node:fs";
+function citationVerdict(path, planId) {
+  const allowed = { allowed: true, uncited: [], detail: "" };
+  if (!existsSync3(path)) return allowed;
+  const lines = readFileSync3(path, "utf8").replace(/\r\n/g, "\n").split("\n");
+  const start = lines.findIndex((l) => new RegExp(`^##\\s+${planId}\\b(?!\\.)`).test(l));
+  if (start < 0) return allowed;
+  const end = lines.findIndex((l, i) => i > start && /^##\s/.test(l));
+  const body = lines.slice(start + 1, end < 0 ? void 0 : end);
+  const from = body.find((l) => /^\s*-\s*From:\s*PROG-\d+\/PHASE-\d+/.test(l))?.match(/PROG-\d+\/PHASE-\d+/)?.[0];
+  if (!from) return allowed;
+  const uncited = [];
+  let task = null;
+  for (const line of body) {
+    const heading = line.match(/^###\s+(PLAN-\d+(?:\.\d+)+)\b/);
+    if (heading) {
+      task = heading[1] ?? null;
+      continue;
+    }
+    const ac = line.match(/^\s+-\s+(AC-\d+)\b\s*(.*)$/);
+    if (!ac || !task) continue;
+    if (!/^\(\s*C[1-9]\d*(?:\s*,\s*C[1-9]\d*)*\s*\)/.test(ac[2] ?? "")) uncited.push(`${task}/${ac[1]}`);
+  }
+  if (uncited.length === 0) return allowed;
+  return {
+    allowed: false,
+    uncited,
+    detail: `${planId} comes from ${from}, so each acceptance criterion cites the phase criterion it serves, as AC-k (C<n>). These don't: ${uncited.join(", ")}`
+  };
+}
+
 // src/lib/push.ts
 import { execFileSync as execFileSync4 } from "node:child_process";
 import { resolve as resolve3 } from "node:path";
@@ -7769,7 +7801,7 @@ function isReviewPath(file, metadataDir) {
 }
 
 // src/lib/spool.ts
-import { appendFileSync, existsSync as existsSync3, mkdirSync as mkdirSync2, readdirSync, readFileSync as readFileSync3, renameSync as renameSync2, rmSync as rmSync2, writeFileSync as writeFileSync2 } from "node:fs";
+import { appendFileSync, existsSync as existsSync4, mkdirSync as mkdirSync2, readdirSync, readFileSync as readFileSync4, renameSync as renameSync2, rmSync as rmSync2, writeFileSync as writeFileSync2 } from "node:fs";
 import { join as join3, resolve as resolve5 } from "node:path";
 
 // src/lib/types.ts
@@ -7780,7 +7812,7 @@ var messageOf = (error) => error instanceof Error ? error.message : String(error
 // src/lib/spool.ts
 var MAX_LINE_BYTES = 4096;
 var registryPath = () => join3(harnessHome(), "spools.json");
-var readRegistry = (path) => existsSync3(path) ? JSON.parse(readFileSync3(path, "utf8")) : { version: 1, spools: [] };
+var readRegistry = (path) => existsSync4(path) ? JSON.parse(readFileSync4(path, "utf8")) : { version: 1, spools: [] };
 function writeRegistry(path, registry) {
   mkdirSync2(join3(path, ".."), { recursive: true });
   writeFileSync2(`${path}.tmp`, JSON.stringify(registry, null, 2) + "\n");
@@ -7804,7 +7836,7 @@ function recordFailure(config2, why) {
   try {
     mkdirSync2(config2.metadataDir, { recursive: true });
     const file = join3(config2.metadataDir, "emit-failures");
-    const count = existsSync3(file) ? Number.parseInt(readFileSync3(file, "utf8"), 10) || 0 : 0;
+    const count = existsSync4(file) ? Number.parseInt(readFileSync4(file, "utf8"), 10) || 0 : 0;
     writeFileSync2(file, `${count + 1}
 `);
   } catch {
@@ -7817,7 +7849,7 @@ function appendLine(config2, file, record, max = MAX_LINE_BYTES) {
     return false;
   }
   try {
-    const firstLineInFile = !existsSync3(file);
+    const firstLineInFile = !existsSync4(file);
     mkdirSync2(join3(file, ".."), { recursive: true });
     appendFileSync(file, line + "\n", { flag: "a" });
     if (firstLineInFile) registerSpool(config2);
@@ -7831,12 +7863,12 @@ function sweep(config2, now) {
   const today = utcNow(now).slice(0, 10);
   const marker = join3(config2.metadataDir, "state", "swept");
   try {
-    if (existsSync3(marker) && readFileSync3(marker, "utf8").trim() === today) return;
+    if (existsSync4(marker) && readFileSync4(marker, "utf8").trim() === today) return;
     const cutoff = new Date(now.getTime() - config2.retentionDays * 864e5).toISOString().slice(0, 10);
     const folders = [["events", (n) => n.slice(0, 10)], ["routing-log", (n) => `${n.slice(0, 7)}-31`]];
     for (const [folder, toDate] of folders) {
       const dir = join3(config2.metadataDir, folder);
-      if (!existsSync3(dir)) continue;
+      if (!existsSync4(dir)) continue;
       for (const name of readdirSync(dir).filter((n) => n.endsWith(".jsonl"))) {
         if (toDate(name) < cutoff) rmSync2(join3(dir, name));
       }
@@ -7879,7 +7911,7 @@ function emitEvent(config2, type, fields = {}, data = {}, now = /* @__PURE__ */ 
 var TIERS = ["T1", "T2", "T3", "T4"];
 function snapshotConfig(config2, repo, now = /* @__PURE__ */ new Date()) {
   const path = join3(config2.metadataDir, "configs", `${config2.config_sha256}.json`);
-  if (existsSync3(path)) return;
+  if (existsSync4(path)) return;
   const tiers = {};
   for (const tier of TIERS) {
     const t = config2.tiers[tier];
@@ -7907,10 +7939,10 @@ function snapshotConfig(config2, repo, now = /* @__PURE__ */ new Date()) {
 }
 function readEvents(config2) {
   const dir = join3(config2.metadataDir, "events");
-  if (!existsSync3(dir)) return [];
+  if (!existsSync4(dir)) return [];
   const events = [];
   for (const name of readdirSync(dir).filter((n) => n.endsWith(".jsonl")).sort()) {
-    for (const line of readFileSync3(join3(dir, name), "utf8").split("\n")) {
+    for (const line of readFileSync4(join3(dir, name), "utf8").split("\n")) {
       if (!line.trim()) continue;
       try {
         events.push(JSON.parse(line));
@@ -7986,6 +8018,8 @@ if (harnessDispatch) {
   for (const plan of plans) {
     const verdict2 = intakeVerdict(plan, config.intakeMaxAmbiguity, events);
     if (!verdict2.allowed) deny(`harness: intake gate: ${verdict2.detail}.`);
+    const cited = citationVerdict(config.layout.planPath, plan);
+    if (!cited.allowed) deny(`harness: intake gate: ${cited.detail}. Add the citations in PLAN.md, or ask the person if an acceptance criterion serves no criterion of the phase.`);
   }
   process.exit(0);
 }

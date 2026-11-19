@@ -23,6 +23,7 @@ import { join } from "node:path";
 import { loadConfig, pluginRoot } from "../lib/config.ts";
 import { checkMarker, gitSubcommands, isCommit, isMarkerPath, isTestPath, writesMarker } from "../lib/gate.ts";
 import { intakeVerdict, plansIn } from "../lib/intake.ts";
+import { citationVerdict } from "../lib/plan.ts";
 import { pushRefusal } from "../lib/push.ts";
 import { isReviewPath } from "../lib/review.ts";
 import { emitEvent, readEvents } from "../lib/spool.ts";
@@ -98,6 +99,8 @@ if (harnessDispatch) {
   for (const plan of plans) {
     const verdict = intakeVerdict(plan, config.intakeMaxAmbiguity, events);
     if (!verdict.allowed) deny(`harness: intake gate: ${verdict.detail}.`);
+    const cited = citationVerdict(config.layout.planPath, plan);
+    if (!cited.allowed) deny(`harness: intake gate: ${cited.detail}. Add the citations in PLAN.md, or ask the person if an acceptance criterion serves no criterion of the phase.`);
   }
   process.exit(0);
 }
