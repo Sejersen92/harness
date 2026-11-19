@@ -62,13 +62,26 @@
       }
     },
     "acceptance": {
-      "description": "tests_added and tests_failed_before come from the evaluator's WRITE-TESTS run (M2): absent until then, never guessed.",
+      "description": "tests_added, tests_failed_before and tests come from the evaluator's WRITE-TESTS run, as its tests.written events report it (0.20.0, LN1): absent when none was recorded, never guessed. tests_failed_before counts the criteria the evaluator gave a reason for failing first. When a record is trimmed to fit a line, each test's red goes first, then its file; ac and count are never dropped.",
       "type": "object",
       "required": ["criteria"],
       "properties": {
         "criteria": { "$ref": "harness.events.v1.json#/$defs/count" },
         "tests_added": { "$ref": "harness.events.v1.json#/$defs/count" },
-        "tests_failed_before": { "$ref": "harness.events.v1.json#/$defs/count" }
+        "tests_failed_before": { "$ref": "harness.events.v1.json#/$defs/count" },
+        "tests": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["ac", "count"],
+            "properties": {
+              "ac": { "$ref": "harness.events.v1.json#/$defs/ac_id" },
+              "count": { "type": "integer", "minimum": 1 },
+              "file": { "type": "string", "minLength": 1, "maxLength": 200 },
+              "red": { "type": "string", "minLength": 1, "maxLength": 160 }
+            }
+          }
+        }
       }
     },
     "runs": {

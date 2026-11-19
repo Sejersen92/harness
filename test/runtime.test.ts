@@ -84,6 +84,8 @@ test("one task end to end: every event and the routing-log record match the sche
 
   assert.equal(emit(dir, "plan.created", "--plan", "PLAN-1", "--data", '{"task_count":1,"revision":1,"groups":[{"group":"G1","task_ids":["PLAN-1.1"]}]}').status, 0);
   emit(dir, "task.scored", "--task", "PLAN-1.1", "--data", '{"scores":{"ambiguity":0,"blast":1,"coupling":1,"novelty":0,"reversibility":0,"verification":1},"total":3,"score_band":"T2","overrides":[],"tier_planned":"T2"}');
+  // LN1 (0.20.0): the evaluator's tests come first, and the dispatcher records what it wrote.
+  emit(dir, "tests.written", "--task", "PLAN-1.1", "--data", '{"acs":[{"ac":"PLAN-1.1/AC-1","tests":["PLAN-1.1/AC-1 the page lists tasks"],"file":"web/app/routing/page.test.tsx","red":"no list rendered yet"},{"ac":"PLAN-1.1/AC-2","tests":["PLAN-1.1/AC-2 shows the quarantine count"],"file":"web/app/routing/page.test.tsx"}],"untestable":[],"gaps":0}');
   emit(dir, "task.dispatched", "--task", "PLAN-1.1", "--data", '{"tier":"T2","agent_type":"harness:impl-t2","model_requested":"sonnet","effort":"medium","group":"G1","isolation":"none"}');
   assert.equal(hook(dir, "subagent-start", agent).status, 0);
 
@@ -97,7 +99,7 @@ test("one task end to end: every event and the routing-log record match the sche
   assert.match(completed.stdout, /routing log PLAN-1\.1 revision 1 written/);
 
   const events = lines(dir, "events");
-  assert.deepEqual(events.map((e) => e.type), ["plan.created", "task.scored", "task.dispatched", "subagent.started", "subagent.stopped", "task.completed"]);
+  assert.deepEqual(events.map((e) => e.type), ["plan.created", "task.scored", "tests.written", "task.dispatched", "subagent.started", "subagent.stopped", "task.completed"]);
   events.forEach(assertValid);
   assert.equal(events[0].repo.name, "sample-repo");
   assert.equal(events[0].session_id, SESSION);
@@ -110,6 +112,8 @@ test("one task end to end: every event and the routing-log record match the sche
   const [record] = lines(dir, "routing-log");
   assertValid(record);
   assert.equal(record.complete, true, `missing: ${record.missing_events}`);
+  assert.equal(record.acceptance.tests_added, 2);
+  assert.equal(record.acceptance.tests_failed_before, 1);
   assert.equal(record.runs[0].model, "claude-sonnet-5-5");
   assert.equal(record.scope.declared_files, 2);
   assert.equal(record.acceptance.criteria, 2);

@@ -13,6 +13,9 @@ interface EvalCompletedData { result: string; failed_acs: string[]; stages: unkn
 interface DispatchedData { group?: string; isolation?: string; model_source?: string }
 interface CompletedData { outcome: string; final_tier: string }
 interface CommitData { commit_sha: string; files_changed: number; lines_added: number; lines_removed: number }
+interface TestsWrittenData { part: number; parts: number; acs: { ac: string; tests: string[]; file?: string; red?: string }[] }
+/** One criterion's tests in the record (LN1): how many, where, and why they failed first, as the evaluator reported. */
+interface AcTests { ac: string; count: number; file?: string; red?: string }
 const dataOf = <T>(event: HarnessEvent): T => event.data as T;
 
 interface Run {
@@ -84,6 +87,20 @@ export function buildRecord(
     return round;
   });
 
+  // The tests the evaluator reported writing (LN1, tests.written): the latest WRITE-TESTS of this attempt, its parts
+  // merged, this task's criteria only. A re-plan writes the tests again, so an earlier report in the attempt is stale.
+  const written = ofType("tests.written");
+  const lastReport = written.map((e) => dataOf<TestsWrittenData>(e).part).lastIndexOf(1);
+  const tests = new Map<string, AcTests>();
+  for (const e of lastReport < 0 ? [] : written.slice(lastReport)) {
+    for (const a of dataOf<TestsWrittenData>(e).acs ?? []) {
+      if (!a.ac.startsWith(`${taskId}/`)) continue;
+      tests.set(a.ac, { ac: a.ac, count: a.tests.length, ...(a.file ? { file: a.file } : {}), ...(a.red ? { red: a.red } : {}) });
+    }
+  }
+  // A dispatched task's tests come first (dispatcher step 1). A task a person completed was never dispatched.
+  if (written.length === 0 && dispatched.length > 0) missing.push("tests.written");
+
   // When work on the task began: its first subagent (the evaluator writing its tests runs before the
   // dispatch) or its first dispatch, whichever came first. Not when it was scored: the orchestrator scores
   // every task of a plan up front, so a clock from scoring counted the time a task spent waiting behind the
@@ -142,7 +159,16 @@ export function buildRecord(
       isolation: dispatch?.isolation ?? "none",
       depends_on: plan?.dependsOn ?? [],
     },
-    acceptance: { criteria: plan?.criteria ?? 0 },
+    acceptance: {
+      criteria: plan?.criteria ?? 0,
+      ...(written.length
+        ? {
+          tests_added: [...tests.values()].reduce((n, t) => n + t.count, 0),
+          tests_failed_before: [...tests.values()].filter((t) => t.red).length,
+          tests: [...tests.values()],
+        }
+        : {}),
+    },
     runs,
     eval_rounds: evalRounds,
     escalations: ofType("escalation.triggered").map((e) => ({ trigger: dataOf<{ trigger: string }>(e).trigger, at: e.ts })),
@@ -189,7 +215,16 @@ export function fitted(record: RoutingRecord): RoutingRecord {
   const fits = (r: RoutingRecord): boolean => Buffer.byteLength(JSON.stringify(r)) < MAX_LINE_BYTES;
   if (fits(record)) return record;
   // Each step drops what it names from the record as the previous steps left it; the first that fits ends it.
+  // The tests' wording goes before anything else (LN1): the lineage view needs each criterion's id and count, and the
+  // failure reason and file are also in the tests.written events, while they are kept.
+  const acceptanceWithout = (key: "red" | "file") => (r: RoutingRecord): RoutingRecord | null => {
+    const acceptance = r.acceptance as { tests?: AcTests[] } | undefined;
+    if (!acceptance?.tests?.some((t) => t[key] !== undefined)) return null;
+    return { ...r, acceptance: { ...acceptance, tests: acceptance.tests.map(({ [key]: _dropped, ...kept }) => kept) } };
+  };
   const steps: [string[], (r: RoutingRecord) => RoutingRecord | null][] = [
+    [["acceptance.tests.red"], acceptanceWithout("red")],
+    [["acceptance.tests.file"], acceptanceWithout("file")],
     [["runs.model_requested", "runs.effort", "eval_rounds.stages"], (r) => ({
       ...r,
       runs: (r.runs as Run[]).map(({ model_requested: _requested, effort: _effort, ...kept }) => kept),

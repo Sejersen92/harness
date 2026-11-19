@@ -6,6 +6,7 @@
 import { loadConfig } from "../lib/config.ts";
 import { emitEvent, recordFailure } from "../lib/spool.ts";
 import { writeTaskRecord } from "../lib/tasklog.ts";
+import { splitTestsWritten } from "../lib/tests-written.ts";
 import { messageOf } from "../lib/types.ts";
 
 const [type, ...rest] = process.argv.slice(2);
@@ -36,6 +37,17 @@ if (flags.data !== undefined) {
 
 const taskId = flags.task;
 const planId = flags.plan ?? (taskId ? taskId.replace(/\..*$/, "") : undefined);
+
+// tests.written (LN1): the dispatcher passes the evaluator's whole report once; it is written as as many lines as
+// it takes to fit, each one the schema accepts. See tests-written.ts.
+if (type === "tests.written") {
+  for (const part of splitTestsWritten(data)) {
+    const written = emitEvent(config, type, { plan_id: planId, task_id: taskId }, { ...part });
+    if (written) process.stdout.write(`harness: ${type} part ${part.part} of ${part.parts} recorded (${written.event_id})\n`);
+  }
+  process.exit(0);
+}
+
 const event = emitEvent(config, type, { plan_id: planId, task_id: taskId }, data);
 if (event) {
   process.stdout.write(`harness: ${type} recorded (${event.event_id})\n`);

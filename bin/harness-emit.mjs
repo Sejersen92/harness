@@ -7772,6 +7772,16 @@ function buildRecord(config2, taskId2, events = readEvents(config2), previous = 
     if (data2.attribution) round.attribution = data2.attribution;
     return round;
   });
+  const written = ofType("tests.written");
+  const lastReport = written.map((e) => dataOf(e).part).lastIndexOf(1);
+  const tests = /* @__PURE__ */ new Map();
+  for (const e of lastReport < 0 ? [] : written.slice(lastReport)) {
+    for (const a of dataOf(e).acs ?? []) {
+      if (!a.ac.startsWith(`${taskId2}/`)) continue;
+      tests.set(a.ac, { ac: a.ac, count: a.tests.length, ...a.file ? { file: a.file } : {}, ...a.red ? { red: a.red } : {} });
+    }
+  }
+  if (written.length === 0 && dispatched.length > 0) missing.push("tests.written");
   const opened = [dispatched[0]?.ts, ...runs.map((r) => r.started)].filter((ts) => ts !== void 0 && ts >= scored.ts).sort()[0] ?? scored.ts;
   const window = (e) => e.session_id === completed.session_id && e.ts >= opened && e.ts <= completed.ts;
   const gates = events.filter((e) => e.type === "gate.decision" && window(e));
@@ -7817,7 +7827,14 @@ function buildRecord(config2, taskId2, events = readEvents(config2), previous = 
       isolation: dispatch?.isolation ?? "none",
       depends_on: plan?.dependsOn ?? []
     },
-    acceptance: { criteria: plan?.criteria ?? 0 },
+    acceptance: {
+      criteria: plan?.criteria ?? 0,
+      ...written.length ? {
+        tests_added: [...tests.values()].reduce((n, t) => n + t.count, 0),
+        tests_failed_before: [...tests.values()].filter((t) => t.red).length,
+        tests: [...tests.values()]
+      } : {}
+    },
     runs,
     eval_rounds: evalRounds,
     escalations: ofType("escalation.triggered").map((e) => ({ trigger: dataOf(e).trigger, at: e.ts })),
@@ -7851,7 +7868,14 @@ function writeTaskRecord(config2, taskId2) {
 function fitted(record) {
   const fits = (r2) => Buffer.byteLength(JSON.stringify(r2)) < MAX_LINE_BYTES;
   if (fits(record)) return record;
+  const acceptanceWithout = (key) => (r2) => {
+    const acceptance = r2.acceptance;
+    if (!acceptance?.tests?.some((t) => t[key] !== void 0)) return null;
+    return { ...r2, acceptance: { ...acceptance, tests: acceptance.tests.map(({ [key]: _dropped, ...kept }) => kept) } };
+  };
   const steps = [
+    [["acceptance.tests.red"], acceptanceWithout("red")],
+    [["acceptance.tests.file"], acceptanceWithout("file")],
     [["runs.model_requested", "runs.effort", "eval_rounds.stages"], (r2) => ({
       ...r2,
       runs: r2.runs.map(({ model_requested: _requested, effort: _effort, ...kept }) => kept),
@@ -7883,6 +7907,49 @@ function fitted(record) {
   return { ...r, trimmed };
 }
 
+// src/lib/tests-written.ts
+var MAX_RED = 160;
+var MAX_TESTS = 10;
+var MAX_TEST_NAME = 200;
+var MAX_FILE = 200;
+var MAX_DATA_BYTES = 3200;
+var cut = (value, max) => {
+  const s = String(value ?? "").replace(/\s+/g, " ").trim();
+  return s.length <= max ? s : `${s.slice(0, max - 1)}\u2026`;
+};
+function normalizeTestsWritten(data2) {
+  const list = (v) => Array.isArray(v) ? v.filter((x) => !!x && typeof x === "object") : [];
+  const acs = list(data2.acs).map((a) => {
+    const item = {
+      ac: String(a.ac ?? ""),
+      tests: (Array.isArray(a.tests) ? a.tests : []).map((t) => cut(t, MAX_TEST_NAME)).filter(Boolean).slice(0, MAX_TESTS)
+    };
+    if (a.file) item.file = cut(a.file, MAX_FILE);
+    if (a.red) item.red = cut(a.red, MAX_RED);
+    return item;
+  });
+  const untestable = list(data2.untestable).map((u) => ({ ac: String(u.ac ?? ""), how: cut(u.how, MAX_RED) }));
+  const gaps = Number.isInteger(data2.gaps) && data2.gaps >= 0 ? data2.gaps : 0;
+  return { acs, untestable, gaps };
+}
+function splitTestsWritten(data2, maxDataBytes = MAX_DATA_BYTES) {
+  const report = normalizeTestsWritten(data2);
+  const size = (p) => Buffer.byteLength(JSON.stringify({ part: 99, parts: 99, ...p }));
+  const groups = [];
+  let current = { acs: [], untestable: report.untestable, gaps: report.gaps };
+  for (const ac of report.acs) {
+    const next = { ...current, acs: [...current.acs, ac] };
+    if (current.acs.length > 0 && size(next) > maxDataBytes) {
+      groups.push(current);
+      current = { acs: [ac], untestable: [], gaps: 0 };
+    } else {
+      current = next;
+    }
+  }
+  groups.push(current);
+  return groups.map((g, i) => ({ part: i + 1, parts: groups.length, ...g }));
+}
+
 // src/cli/harness-emit.ts
 var [type, ...rest] = process.argv.slice(2);
 var flags = {};
@@ -7910,6 +7977,14 @@ if (flags.data !== void 0) {
 }
 var taskId = flags.task;
 var planId = flags.plan ?? (taskId ? taskId.replace(/\..*$/, "") : void 0);
+if (type === "tests.written") {
+  for (const part of splitTestsWritten(data)) {
+    const written = emitEvent(config, type, { plan_id: planId, task_id: taskId }, { ...part });
+    if (written) process.stdout.write(`harness: ${type} part ${part.part} of ${part.parts} recorded (${written.event_id})
+`);
+  }
+  process.exit(0);
+}
 var event = emitEvent(config, type, { plan_id: planId, task_id: taskId }, data);
 if (event) {
   process.stdout.write(`harness: ${type} recorded (${event.event_id})

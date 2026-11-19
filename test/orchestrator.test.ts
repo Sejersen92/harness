@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, root, validators, type Line } from "./validators.ts";
+import { splitTestsWritten } from "../src/lib/tests-written.ts";
 
 // The orchestrator records the plan, the scores and a person's decisions; the dispatcher records the dispatches.
 const files = ["agents/orchestrator.md", "agents/dispatcher.md"];
@@ -25,6 +26,8 @@ function emitExamples(): Example[] {
     const [, type, flag, id, json = ""] = m;
     let data: unknown;
     try { data = JSON.parse(placeholders(json)); } catch { continue; }
+    // tests.written is passed whole and written in parts by harness-emit (LN1): check what it writes.
+    if (type === "tests.written") data = splitTestsWritten(data as Record<string, unknown>)[0];
     const line = text.slice(0, m.index).split("\n").length;
     const event: Line = {
       schema: "harness.events/v1",
@@ -232,8 +235,9 @@ test("PROGRAMME mode reads a gov-os delivery bundle with the stories as the back
   assert.ok(bundle.length > 0, "PROGRAMME mode has no section for a delivery bundle");
   assert.match(bundle, /\.delivery-bundle\.json/);
   assert.match(bundle, /STORIES\.md/);
-  assert.match(bundle, /`- \[built\] \(S3\) /, "the criterion citation form is not shown");
-  assert.match(bundle, /`- \[built\] \(A1\) /, "the citation form for an addition is not shown");
+  // LN1 (0.20.0): the citation follows the criterion's id, which pu 1.42.0 reads.
+  assert.match(bundle, /`- \[built\] C\d+ \(S3\) /, "the criterion citation form is not shown");
+  assert.match(bundle, /`- \[built\] C\d+ \(A1\) /, "the citation form for an addition is not shown");
   assert.match(bundle, /## Added by the sitting/);
   assert.match(bundle, /Never invent a story/);
   assert.doesNotMatch(bundle, /harness-emit /);
@@ -248,11 +252,11 @@ test("the PROGRAMME-n.md template carries what the coverage check reads for a bu
   assert.match(template, /^- S\d+: /m, "Not doing shows no story line");
 });
 
-test("the plugin's version is the one that brings fewer stops (H12)", () => {
+test("the plugin's version is the one that records the lineage (LN1)", () => {
   const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
   const plugin = JSON.parse(readFileSync(join(root, ".claude-plugin/plugin.json"), "utf8"));
-  assert.equal(pkg.version, "0.19.1");
-  assert.equal(plugin.version, "0.19.1");
+  assert.equal(pkg.version, "0.20.0");
+  assert.equal(plugin.version, "0.20.0");
 });
 
 test("a task's scope includes its wiring: implementers change it without escalating, the evaluator accepts it (H12)", () => {
