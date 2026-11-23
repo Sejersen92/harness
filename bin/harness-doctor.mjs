@@ -7824,7 +7824,9 @@ var ALWAYS_ALLOW = [
   "Bash(cut *)",
   "Bash(echo*)",
   "Bash(printf *)",
-  "Bash(pwd*)"
+  "Bash(pwd*)",
+  "Bash(mkdir -p *)",
+  "Bash(sed -n *)"
 ];
 var PACKAGE_MANAGERS = /* @__PURE__ */ new Set(["npm", "pnpm", "yarn", "bun"]);
 var SCRIPT_RUNNERS = {

@@ -368,6 +368,10 @@ test("the checks U1's first acceptance run was refused are allowed; node -e and 
     "bash scripts/anything.sh",
   ]) assert.ok(!allowedBy(allow, command), command);
 
+  // pu harness denials on SERIES-13 (2026-11-23): mkdir -p and sed -n are allowed; sed -i (edits in place) is not.
+  for (const command of ["mkdir -p /tmp/rd491/t/Fixtures/runs", "sed -n 3548,3576p cli/Program.cs"]) assert.ok(allowedBy(allow, command), command);
+  for (const command of ["sed -i 's/a/b/' f.cs", "mkdir x"]) assert.ok(!allowedBy(allow, command), command);
+
   const dotnet = homeAllow("/p", [{ run: "dotnet test DocumentService.sln --no-build --nologo" }]);
   assert.ok(allowedBy(dotnet, "dotnet test DocumentService.Tests --filter Name~Digest"));
   assert.ok(allowedBy(dotnet, "dotnet restore"));
