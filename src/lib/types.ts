@@ -23,6 +23,8 @@ export interface Stage {
   cwd?: string;
   env?: Record<string, unknown>;
   timeout_minutes?: number;
+  /** Globs over repository paths. On a commit (not --ci) the stage runs only when a staged file matches one; omitted = always. */
+  paths?: string[];
 }
 
 /**

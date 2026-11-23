@@ -7546,6 +7546,7 @@ import { join as join2, resolve as resolve2 } from "node:path";
 var git2 = (dir, ...args2) => execFileSync2("git", ["-C", dir, ...args2], { maxBuffer: 1 << 30, stdio: ["ignore", "pipe", "ignore"] });
 var stagedDiffSha256 = (dir) => sha256(git2(dir, "diff", "--cached", "--binary"));
 var hasStagedChanges = (dir) => git2(dir, "diff", "--cached", "--name-only").length > 0;
+var stagedFiles = (dir) => git2(dir, "diff", "--cached", "--name-only").toString().split("\n").map((l) => l.trim()).filter(Boolean);
 function head(dir) {
   try {
     return git2(dir, "rev-parse", "HEAD").toString().trim();
@@ -7564,6 +7565,23 @@ function writeMarker(path, marker) {
   renameSync(`${path}.tmp`, path);
 }
 var clearMarker = (path) => rmSync(path, { force: true });
+function globMatch(glob, path) {
+  let pattern = "";
+  for (let i = 0; i < glob.length; i++) {
+    const c = glob[i];
+    if (c === "*" && glob[i + 1] === "*") {
+      i++;
+      if (glob[i + 1] === "/") {
+        i++;
+        pattern += "(?:.*/)?";
+      } else pattern += ".*";
+    } else if (c === "*") pattern += "[^/]*";
+    else if (c === "?") pattern += "[^/]";
+    else pattern += /[.+^${}()|[\]\\]/.test(c) ? "\\" + c : c;
+  }
+  return new RegExp("^" + pattern + "$").test(path.replace(/\\/g, "/"));
+}
+var stageApplies = (stage, files2) => !stage.paths || files2.some((file) => stage.paths.some((glob) => globMatch(glob, file)));
 function stageProblems(stages) {
   if (!stages.length) return "routing.yaml has no eval.stages, so there is nothing to evaluate";
   const names = /* @__PURE__ */ new Set();
@@ -7571,6 +7589,9 @@ function stageProblems(stages) {
     if (!stage || typeof stage.name !== "string" || !stage.name) return `eval.stages[${i}] has no name`;
     if (typeof stage.run !== "string" || !stage.run.trim()) return `eval.stages[${i}] (${stage.name}) has no run command`;
     if (names.has(stage.name)) return `eval.stages has "${stage.name}" twice`;
+    const paths = stage.paths;
+    if (paths !== void 0 && (!Array.isArray(paths) || !paths.length || paths.some((p) => typeof p !== "string" || !p.trim())))
+      return `eval.stages[${i}] (${stage.name}) has paths that aren't a list of globs`;
     names.add(stage.name);
   }
   return null;
@@ -7580,12 +7601,12 @@ function withoutGitEnv(env = process.env) {
 }
 var AC_ID = /PLAN-\d+(?:\.\d+)+\/AC-\d+/g;
 function runStages(dir, stages, logDir2, { onStage = () => {
-} } = {}) {
+}, applies = () => true } = {}) {
   mkdirSync2(logDir2, { recursive: true });
   const results = [];
   let failed = null;
   for (const stage of stages) {
-    if (failed) {
+    if (failed || !applies(stage)) {
       results.push({ name: stage.name, status: "skipped", duration_ms: 0 });
       continue;
     }
@@ -7765,6 +7786,7 @@ var args = process.argv.slice(2);
 var ci = args.includes("--ci");
 var taskIds = [...new Set(args.flatMap((a, i) => args[i - 1] === "--task" ? a.split(",") : []).map((t) => t.trim()).filter(Boolean))];
 var say = (line = "") => process.stdout.write(line + "\n");
+var outOfScope = /* @__PURE__ */ new Set();
 var refuse = (why, details = []) => {
   say(`harness-eval: refused - ${why}`);
   for (const d of details.slice(0, 20)) say(`  ${d}`);
@@ -7815,8 +7837,15 @@ var emit = (type, data) => {
 };
 say(`harness-eval: ${config.stages.length} stage(s) for ${ci ? "the checkout (ci)" : `staged diff ${diffSha256.slice(0, 12)}`}${taskIds.length ? ` (${taskIds.join(", ")})` : ""}`);
 emit("eval.started", { task_ids: taskIds, diff_sha256: diffSha256, ci });
+var files = ci ? null : stagedFiles(config.dir);
+if (files) {
+  for (const s of config.stages) if (!stageApplies(s, files)) outOfScope.add(s.name);
+}
+if (files && outOfScope.size === config.stages.length) {
+  say(`harness-eval: no stage's paths match the ${files.length} staged file(s), so there is nothing to build or test for this commit`);
+}
 var logDir = join4(config.metadataDir, "state", "eval");
-var outcome = runStages(config.dir, config.stages, logDir, { onStage: progress });
+var outcome = runStages(config.dir, config.stages, logDir, { onStage: progress, applies: (s) => !outOfScope.has(s.name) });
 emit("eval.completed", {
   result: outcome.result,
   stages: outcome.stages,
@@ -7842,7 +7871,8 @@ function progress(stage) {
 }
 function report(outcome2, logDir2, shown2) {
   for (const stage of outcome2.stages) {
-    say(`  ${stage.status.padEnd(7)} ${stage.name.padEnd(24)} ${stage.status === "skipped" ? "" : `${(stage.duration_ms / 1e3).toFixed(1)}s`}`);
+    const note = stage.status !== "skipped" ? `${(stage.duration_ms / 1e3).toFixed(1)}s` : outOfScope.has(stage.name) ? "no staged file under its paths" : "";
+    say(`  ${stage.status.padEnd(7)} ${stage.name.padEnd(24)} ${note}`);
   }
   if (!outcome2.failed) return false;
   const tail = outcome2.failed.output.trimEnd().split(/\r?\n/).slice(-60);

@@ -255,8 +255,8 @@ test("the PROGRAMME-n.md template carries what the coverage check reads for a bu
 test("the plugin's version is the one that records the lineage (LN1)", () => {
   const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
   const plugin = JSON.parse(readFileSync(join(root, ".claude-plugin/plugin.json"), "utf8"));
-  assert.equal(pkg.version, "0.20.1");
-  assert.equal(plugin.version, "0.20.1");
+  assert.equal(pkg.version, "0.21.0");
+  assert.equal(plugin.version, "0.21.0");
 });
 
 test("a task's scope includes its wiring: implementers change it without escalating, the evaluator accepts it (H12)", () => {

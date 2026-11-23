@@ -10,7 +10,8 @@ tiers:                   # thresholds and overrides come from the complexity-rub
   T4: { max_score: 12, agent: impl-t4, model: opus,   effort: medium }
 
 eval:                    # harness-eval runs these in order against what is staged; the first failure stops it
-  stages: []             # e.g. - { name: build, run: "npm run build", cwd: web, env: { CI: "1" }, timeout_minutes: 15 }
+  stages: []             # e.g. - { name: build, run: "npm run build", cwd: web, env: { CI: "1" }, timeout_minutes: 15, paths: ["web/**"] }
+  # paths: a commit runs the stage only when a staged file matches one glob (** any folders, * within one); omitted = always; --ci runs all
   # tests: ["src/**/*.test.ts"]   # which files are tests (protect-tests, tests-only); omitted = the usual names
 
 gate:

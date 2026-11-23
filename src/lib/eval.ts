@@ -29,6 +29,10 @@ export const stagedDiffSha256 = (dir: string): string => sha256(git(dir, "diff",
 
 export const hasStagedChanges = (dir: string): boolean => git(dir, "diff", "--cached", "--name-only").length > 0;
 
+/** The staged files, repository-relative, with forward slashes. */
+export const stagedFiles = (dir: string): string[] =>
+  git(dir, "diff", "--cached", "--name-only").toString().split("\n").map((l) => l.trim()).filter(Boolean);
+
 export function head(dir: string): string | null {
   try {
     return git(dir, "rev-parse", "HEAD").toString().trim();
@@ -71,7 +75,35 @@ export const clearMarker = (path: string): void => rmSync(path, { force: true })
 
 // ---- stages ------------------------------------------------------------------------------------
 
-/** Why a stage list can't be run, or null. A stage is { name, run, cwd?, env?, timeout_minutes? }. */
+/**
+ * Whether a repository-relative path matches a glob: `**` is any run of folders (or none), `*` anything
+ * within one folder, `?` one character. The whole path must match; backslashes count as slashes.
+ */
+export function globMatch(glob: string, path: string): boolean {
+  let pattern = "";
+  for (let i = 0; i < glob.length; i++) {
+    const c = glob[i];
+    if (c === "*" && glob[i + 1] === "*") {
+      i++;
+      if (glob[i + 1] === "/") {
+        i++;
+        pattern += "(?:.*/)?";
+      } else pattern += ".*";
+    } else if (c === "*") pattern += "[^/]*";
+    else if (c === "?") pattern += "[^/]";
+    else pattern += /[.+^${}()|[\]\\]/.test(c) ? "\\" + c : c;
+  }
+  return new RegExp("^" + pattern + "$").test(path.replace(/\\/g, "/"));
+}
+
+/**
+ * Whether a stage applies to a commit of these staged files: always when it has no `paths`, otherwise when
+ * a staged file matches one of its globs. Only a commit's eval asks; --ci runs every stage.
+ */
+export const stageApplies = (stage: Stage, files: readonly string[]): boolean =>
+  !stage.paths || files.some((file) => stage.paths!.some((glob) => globMatch(glob, file)));
+
+/** Why a stage list can't be run, or null. A stage is { name, run, cwd?, env?, timeout_minutes?, paths? }. */
 export function stageProblems(stages: readonly Stage[]): string | null {
   if (!stages.length) return "routing.yaml has no eval.stages, so there is nothing to evaluate";
   const names = new Set<string>();
@@ -79,6 +111,9 @@ export function stageProblems(stages: readonly Stage[]): string | null {
     if (!stage || typeof stage.name !== "string" || !stage.name) return `eval.stages[${i}] has no name`;
     if (typeof stage.run !== "string" || !stage.run.trim()) return `eval.stages[${i}] (${stage.name}) has no run command`;
     if (names.has(stage.name)) return `eval.stages has "${stage.name}" twice`;
+    const paths: unknown = stage.paths;
+    if (paths !== undefined && (!Array.isArray(paths) || !paths.length || paths.some((p) => typeof p !== "string" || !p.trim())))
+      return `eval.stages[${i}] (${stage.name}) has paths that aren't a list of globs`;
     names.add(stage.name);
   }
   return null;
@@ -101,14 +136,16 @@ const AC_ID = /PLAN-\d+(?:\.\d+)+\/AC-\d+/g;
  * <logDir>/<name>.log. Returns the stage results, the failing stage's output, and the AC ids it names.
  */
 export function runStages(
-  dir: string, stages: readonly Stage[], logDir: string, { onStage = () => {} }: { onStage?: (stage: Stage) => void } = {},
+  dir: string, stages: readonly Stage[], logDir: string,
+  { onStage = () => {}, applies = () => true }: { onStage?: (stage: Stage) => void; applies?: (stage: Stage) => boolean } = {},
 ): StagesOutcome {
   mkdirSync(logDir, { recursive: true });
   const results: StageResult[] = [];
   let failed: StagesOutcome["failed"] = null;
 
   for (const stage of stages) {
-    if (failed) {
+    // A stage whose paths no staged file matches is skipped, as a stage after a failure is (stageApplies).
+    if (failed || !applies(stage)) {
       results.push({ name: stage.name, status: "skipped", duration_ms: 0 });
       continue;
     }

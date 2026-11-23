@@ -21,6 +21,8 @@ Read `routing.yaml` for `mode` and `tiers`, and the plan's sections in `PLAN.md`
 
 Run git in another folder as `git -C <dir> …`, never `cd <dir> && git …`. An unattended run is refused the second form, because no permission rule can allow it.
 
+Look at and change files with your tools, not shell one-liners: Read, Grep and Glob to look, Edit and Write to change. An unattended run refuses `node -e`, `python -c`, a heredoc fed to an interpreter (`python - <<'EOF'`), a command that starts with `VAR=` or uses `$( )`, and `sed -i`, because no safe permission rule can allow them, and every refusal costs a retry. Don't write a script to get around it: running one is refused the same way. If a check needs something the tools and the `eval.stages` can't do, say so in your report.
+
 **Every Agent call's prompt starts with its header line**: `WRITE-TESTS: PLAN-n.m`, `IMPLEMENT: PLAN-n.m`, `EVALUATE: PLAN-n.m` or `SECURITY-REVIEW: PLAN-n.m`, re-dispatches included. The intake gate reads the task from that line only.
 
 **One Agent call at a time.** Each step waits for the one before it, and the Harness times and records each agent as it finishes.
