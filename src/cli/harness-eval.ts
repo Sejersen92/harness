@@ -19,7 +19,7 @@ import { isAbsolute, join, relative, resolve } from "node:path";
 import { readCiStages } from "../lib/ci.ts";
 import { loadConfig, projectDir } from "../lib/config.ts";
 import {
-  clearMarker, hasStagedChanges, passMarker, runStages, stagedDiffSha256, stageProblems, unstaged, writeMarker,
+  clearMarker, hasStagedChanges, passMarker, runStages, stageApplies, stagedDiffSha256, stagedFiles, stageProblems, unstaged, writeMarker,
 } from "../lib/eval.ts";
 import { emitEvent } from "../lib/spool.ts";
 import type { Stage } from "../lib/types.ts";
@@ -29,6 +29,8 @@ const ci = args.includes("--ci");
 const taskIds = [...new Set(args.flatMap((a, i) => (args[i - 1] === "--task" ? a.split(",") : [])).map((t) => t.trim()).filter(Boolean))];
 
 const say = (line: string = ""): boolean => process.stdout.write(line + "\n");
+/** The stages a commit skips because no staged file is under their paths; filled once the staged files are known. */
+const outOfScope = new Set<string>();
 const refuse = (why: string, details: string[] = []): never => {
   say(`harness-eval: refused - ${why}`);
   for (const d of details.slice(0, 20)) say(`  ${d}`);
@@ -92,8 +94,16 @@ const emit = (type: string, data: Record<string, unknown>): void => {
 say(`harness-eval: ${config.stages.length} stage(s) for ${ci ? "the checkout (ci)" : `staged diff ${diffSha256.slice(0, 12)}`}${taskIds.length ? ` (${taskIds.join(", ")})` : ""}`);
 emit("eval.started", { task_ids: taskIds, diff_sha256: diffSha256, ci });
 
+// A commit runs only the stages whose paths a staged file matches (a stage without paths always runs):
+// a docs-only commit doesn't rebuild and retest the code it didn't touch. --ci runs every stage.
+const files = ci ? null : stagedFiles(config.dir);
+if (files) for (const s of config.stages) if (!stageApplies(s, files)) outOfScope.add(s.name);
+if (files && outOfScope.size === config.stages.length) {
+  say(`harness-eval: no stage's paths match the ${files!.length} staged file(s), so there is nothing to build or test for this commit`);
+}
+
 const logDir = join(config.metadataDir, "state", "eval");
-const outcome = runStages(config.dir, config.stages, logDir, { onStage: progress });
+const outcome = runStages(config.dir, config.stages, logDir, { onStage: progress, applies: (s) => !outOfScope.has(s.name) });
 
 emit("eval.completed", {
   result: outcome.result,
@@ -130,7 +140,8 @@ function progress(stage: Stage): void {
 /** Prints each stage's result and, on a failure, its last lines. Returns whether a stage failed. */
 function report(outcome: ReturnType<typeof runStages>, logDir: string, shown: (path: string) => string): boolean {
   for (const stage of outcome.stages) {
-    say(`  ${stage.status.padEnd(7)} ${stage.name.padEnd(24)} ${stage.status === "skipped" ? "" : `${(stage.duration_ms / 1000).toFixed(1)}s`}`);
+    const note = stage.status !== "skipped" ? `${(stage.duration_ms / 1000).toFixed(1)}s` : outOfScope.has(stage.name) ? "no staged file under its paths" : "";
+    say(`  ${stage.status.padEnd(7)} ${stage.name.padEnd(24)} ${note}`);
   }
   if (!outcome.failed) return false;
   const tail = outcome.failed.output.trimEnd().split(/\r?\n/).slice(-60);

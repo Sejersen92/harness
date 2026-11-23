@@ -260,6 +260,8 @@ Give two to four options when the question has them, each one a complete decisio
 
 Run git in another folder as `git -C <dir> …`, never `cd <dir> && git …`. An unattended run is refused the second form, because no permission rule can allow it. Read files in the home with Read and Grep rather than `cd <home> && …`.
 
+Look at and change files with your tools, not shell one-liners: Read, Grep and Glob to look, Edit and Write to change. An unattended run refuses `node -e`, `python -c`, a heredoc fed to an interpreter (`python - <<'EOF'`), a command that starts with `VAR=` or uses `$( )`, and `sed -i`, because no safe permission rule can allow them, and every refusal costs a retry. Don't write a script to get around it: running one is refused the same way. If a check needs something the tools and the `eval.stages` can't do, say so in your report.
+
 ## Recording events
 
 - `harness-emit` is the command the session context names (`node "<path>/bin/harness-emit.mjs"`). Run it exactly as given there.

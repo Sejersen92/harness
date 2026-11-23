@@ -108,6 +108,70 @@ test("a failing stage stops the run: later stages are skipped, AC ids are collec
   assert.equal(completed.data.attribution, "task");
 });
 
+test("a commit runs only the stages whose paths a staged file matches; a stage without paths always runs", () => {
+  const repo = makeRepo([
+    "    - { name: cli, run: 'node -e \"process.exit(0)\"', paths: ['cli/**', CHANGELOG.md] }",
+    "    - { name: web, run: 'node -e \"process.exit(1)\"', paths: ['web/**'] }",
+    pass("always"),
+  ]);
+  mkdirSync(join(repo.dir, "cli", "src"), { recursive: true });
+  stageChange(repo, "cli/src/a.cs");
+
+  const result = run(repo.dir);
+
+  // web would fail, so a pass proves it didn't run.
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /skipped +web +no staged file under its paths/);
+  assert.ok(existsSync(marker(repo.dir)));
+  const completed = events(repo.dir).find((e) => e.type === "eval.completed");
+  assertValid(completed);
+  assert.deepEqual(completed.data.stages.map((s: Line) => [s.name, s.status]), [["cli", "pass"], ["web", "skipped"], ["always", "pass"]]);
+});
+
+test("a docs-only commit that no stage's paths match passes without building, and says so", () => {
+  const repo = makeRepo(["    - { name: cli, run: 'node -e \"process.exit(1)\"', paths: ['cli/**'] }"]);
+  mkdirSync(join(repo.dir, "docs"), { recursive: true });
+  stageChange(repo, "docs/notes.md");
+
+  const result = run(repo.dir);
+
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /no stage's paths match the 1 staged file/);
+  assert.ok(existsSync(marker(repo.dir)));
+});
+
+test("--ci runs every stage, paths or not", () => {
+  const repo = makeRepo(["    - { name: web, run: 'node -e \"process.exit(1)\"', paths: ['web/**'] }"]);
+
+  const result = run(repo.dir, ["--ci"]);
+
+  assert.equal(result.status, 1, result.stdout + result.stderr);
+  assert.match(result.stdout, /FAIL at web/);
+});
+
+test("paths must be a non-empty list of globs", () => {
+  const repo = makeRepo(["    - { name: cli, run: 'node -e \"process.exit(0)\"', paths: 'cli/**' }"]);
+  stageChange(repo);
+
+  const result = run(repo.dir);
+
+  assert.equal(result.status, 2, result.stdout + result.stderr);
+  assert.match(result.stdout, /has paths that aren't a list of globs/);
+});
+
+test("globMatch: ** spans folders or none, * stays in one folder, the whole path must match", async () => {
+  const { globMatch } = await import("../src/lib/eval.ts");
+  assert.ok(globMatch("cli/**", "cli/a/b/c.cs"));
+  assert.ok(globMatch("**/*.md", "README.md"));
+  assert.ok(globMatch("**/*.md", "docs/a/README.md"));
+  assert.ok(globMatch("CHANGELOG.md", "CHANGELOG.md"));
+  assert.ok(!globMatch("CHANGELOG.md", "docs/CHANGELOG.md"));
+  assert.ok(!globMatch("cli/*", "cli/a/b.cs"));
+  assert.ok(!globMatch("cli/**", "clients/a.cs"));
+  assert.ok(globMatch("a?.txt", "ab.txt"));
+  assert.ok(!globMatch("a.txt", "abtxt"), "a dot is literal");
+});
+
 test("nothing staged is refused, not passed", () => {
   const repo = makeRepo([pass("build")]);
   const result = run(repo.dir);
