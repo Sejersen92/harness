@@ -272,7 +272,7 @@ test("LN1 C9: the gate refuses an agent for a programme plan with uncited criter
 
 // --- C10 -------------------------------------------------------------------------------------------------------
 
-test("LN1 C10: the plugin is 0.20.0 everywhere it says its version", () => {
-  for (const file of ["package.json", ".claude-plugin/plugin.json"]) assert.equal(JSON.parse(text(file)).version, "0.20.0", file);
-  assert.equal(JSON.parse(text("package-lock.json")).version, "0.20.0", "package-lock.json");
+test("LN1 C10: the plugin is 0.20.1 everywhere it says its version", () => {
+  for (const file of ["package.json", ".claude-plugin/plugin.json"]) assert.equal(JSON.parse(text(file)).version, "0.20.1", file);
+  assert.equal(JSON.parse(text("package-lock.json")).version, "0.20.1", "package-lock.json");
 });

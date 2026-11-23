@@ -165,12 +165,13 @@ export function stagesIn(routingYaml: string): StageCommand[] {
 }
 
 // What every session runs that is neither the Harness's own script nor an eval stage: git's reads and its
-// commit (the gate decides that one), and the read-only helpers S17's runs reached for.
+// commit (the gate decides that one), and the read-only helpers S17's runs reached for. mkdir -p and sed -n added
+// 2026-11-23 from pu harness denials on SERIES-13 (3 and 2 refusals): a folder and a line range, nothing that runs code.
 const ALWAYS_ALLOW: readonly string[] = [
   "Bash(git status*)", "Bash(git log*)", "Bash(git diff*)", "Bash(git show*)", "Bash(git branch*)", "Bash(git rev-parse*)",
   "Bash(git add *)", "Bash(git commit *)", "Bash(git -C *)",
   "Bash(cd *)", "Bash(ls*)", "Bash(cat *)", "Bash(grep *)", "Bash(head *)", "Bash(tail *)", "Bash(wc *)", "Bash(sort*)", "Bash(cut *)",
-  "Bash(echo*)", "Bash(printf *)", "Bash(pwd*)",
+  "Bash(echo*)", "Bash(printf *)", "Bash(pwd*)", "Bash(mkdir -p *)", "Bash(sed -n *)",
 ];
 
 const PACKAGE_MANAGERS = new Set(["npm", "pnpm", "yarn", "bun"]);
