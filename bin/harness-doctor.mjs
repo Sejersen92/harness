@@ -7826,8 +7826,12 @@ var ALWAYS_ALLOW = [
   "Bash(printf *)",
   "Bash(pwd*)",
   "Bash(mkdir -p *)",
-  "Bash(sed -n *)"
+  "Bash(sed -n *)",
+  // git rm added 2026-11-24 from SERIES-14 (a planned file removal refused as rm): it removes tracked files only,
+  // the deletion is in the diff the gate and the merge review see, and git can restore it. Plain rm stays refused.
+  "Bash(git rm *)"
 ];
+var RUN_SHORTCUTS = /* @__PURE__ */ new Set(["test", "start", "stop", "restart"]);
 var PACKAGE_MANAGERS = /* @__PURE__ */ new Set(["npm", "pnpm", "yarn", "bun"]);
 var SCRIPT_RUNNERS = {
   test: ["node --test", "npx vitest", "npx jest"],
@@ -7839,9 +7843,19 @@ function stageRules(stage) {
   const run = stage.run.trim();
   const env = Object.entries(stage.env ?? {}).map(([k, v]) => `${k}=${String(v)}`).join(" ");
   const forms = [run];
-  const [tool = "", verb = "", script = ""] = run.split(/\s+/);
-  if (PACKAGE_MANAGERS.has(tool) && verb === "run" && script) {
-    forms.push(`${tool} run ${script}`, `${tool} ${script}`, `${tool} --prefix * run ${script}`, `${tool} --prefix * ${script}`, ...SCRIPT_RUNNERS[script] ?? []);
+  const [tool = "", verb = "", named = ""] = run.split(/\s+/);
+  const script = verb === "run" ? named : RUN_SHORTCUTS.has(verb) ? verb : "";
+  if (PACKAGE_MANAGERS.has(tool) && script) {
+    const runners = SCRIPT_RUNNERS[script] ?? [];
+    forms.push(
+      `${tool} run ${script}`,
+      `${tool} ${script}`,
+      `${tool} --prefix * run ${script}`,
+      `${tool} --prefix * ${script}`,
+      `${tool} run --prefix * ${script}`,
+      ...runners,
+      ...runners.filter((r) => r.startsWith("npx ")).map((r) => `npx --prefix * ${r.slice(4)}`)
+    );
   } else if (tool === "dotnet" && verb && !verb.startsWith("-")) {
     forms.push(`dotnet ${verb}`, "dotnet restore");
   }

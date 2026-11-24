@@ -378,6 +378,32 @@ test("the checks U1's first acceptance run was refused are allowed; node -e and 
   assert.ok(!allowedBy(homeAllow("/p", [{ run: "bash scripts/check.sh" }]), "bash -c anything"), "an unknown stage stays exact");
 });
 
+test("SERIES-14's refused checks are allowed: npm test's other forms, its runner from another folder, and git rm; rm still is not", () => {
+  // PreviouslyUpcoming's web stages as written in its routing.yaml, and what PLAN-51 and PLAN-52 were refused (2026-11-23).
+  const allow = homeAllow("/p", [{ run: "npm run lint" }, { run: "npm test" }, { run: "npm run build", env: { ALLOW_LOCAL_UPSTREAM: 1 } }]);
+  const web = "C:/src/privateProjects/PreviouslyUpcoming/previouslyupcoming";
+  for (const command of [
+    `npm --prefix ${web} test`,
+    `npm --prefix ${web} run test`,
+    `npm run --prefix ${web} test`,
+    `npm --prefix ${web} test -- lib/text/text.test.ts`,
+    `npm --prefix ${web} test 2>&1 | tail -40`,
+    `npx --prefix ${web} vitest run --root ${web}`,
+    `cd ${web} && npx vitest run lib/text/text.test.ts 2>&1 | tail -40`,
+    `npx vitest run --root previouslyupcoming lib/text/text.test.ts`,
+    `npx --prefix ${web} tsc --noEmit -p ${web}`,
+    `npx --prefix ${web} eslint "${web}/app"`,
+    `git rm "${web}/app/programmes/[slug]/lineage/[prog]/Panel.tsx"`,
+  ]) assert.ok(allowedBy(allow, command), command);
+
+  for (const command of [
+    `rm "${web}/app/programmes/[slug]/lineage/probe-tmp.test.ts"`,
+    `env ALLOW_LOCAL_UPSTREAM=1 npm --prefix ${web} run build`,
+    "npm run deploy",
+    "npx --prefix /p some-tool",
+  ]) assert.ok(!allowedBy(allow, command), command);
+});
+
 test("a routing.yaml's stages are read for the allow-list, and an unreadable one gives none", () => {
   assert.deepEqual(stagesIn("eval:\n  stages:\n    - { name: test, run: npm test }\n    - { name: empty, run: '' }\n").map((s) => s.run), ["npm test"]);
   assert.deepEqual(stagesIn("eval: [unclosed"), []);

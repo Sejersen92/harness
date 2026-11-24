@@ -19,7 +19,7 @@ Check your work before you report, with the commands the evaluation will run: th
 
 Run git in another folder as `git -C <dir> …`, never `cd <dir> && git …`. An unattended run is refused the second form, because no permission rule can allow it.
 
-Look at and change files with your tools, not shell one-liners: Read, Grep and Glob to look, Edit and Write to change. An unattended run refuses `node -e`, `python -c`, a heredoc fed to an interpreter (`python - <<'EOF'`), a command that starts with `VAR=` or uses `$( )`, and `sed -i`, because no safe permission rule can allow them, and every refusal costs a retry. Don't write a script to get around it: running one is refused the same way. If a check needs something the tools and the `eval.stages` can't do, say so in your report.
+Look at and change files with your tools, not shell one-liners: Read, Grep and Glob to look, Edit and Write to change. An unattended run refuses `node -e`, `python -c`, a heredoc fed to an interpreter (`python - <<'EOF'`), a command that starts with `VAR=` or uses `$( )`, and `sed -i`, because no safe permission rule can allow them, and every refusal costs a retry. Don't write a script to get around it: running one is refused the same way. If a check needs something the tools and the `eval.stages` can't do, say so in your report. Don't leave scratch files in the repository, such as a probe test to try something out: `rm` is refused, so it stays behind. To delete a file the task removes, use `git rm`.
 
 Your final message starts with exactly one report header on its first line, naming the task id:
 
