@@ -175,6 +175,8 @@ const ALWAYS_ALLOW: readonly string[] = [
   // git rm added 2026-11-24 from SERIES-14 (a planned file removal refused as rm): it removes tracked files only,
   // the deletion is in the diff the gate and the merge review see, and git can restore it. Plain rm stays refused.
   "Bash(git rm *)",
+  // git grep added 2026-11-24 from SERIES-15 (its only read refused): it searches tracked files and runs nothing.
+  "Bash(git grep*)",
 ];
 
 // npm's own shortcuts for `npm run <script>`: a stage written `npm test` is the test script (SERIES-14, 2026-11-24:
