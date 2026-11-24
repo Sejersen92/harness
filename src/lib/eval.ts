@@ -82,7 +82,7 @@ export const clearMarker = (path: string): void => rmSync(path, { force: true })
 export function globMatch(glob: string, path: string): boolean {
   let pattern = "";
   for (let i = 0; i < glob.length; i++) {
-    const c = glob[i];
+    const c = glob.charAt(i);
     if (c === "*" && glob[i + 1] === "*") {
       i++;
       if (glob[i + 1] === "/") {

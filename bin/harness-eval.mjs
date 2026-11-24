@@ -7568,7 +7568,7 @@ var clearMarker = (path) => rmSync(path, { force: true });
 function globMatch(glob, path) {
   let pattern = "";
   for (let i = 0; i < glob.length; i++) {
-    const c = glob[i];
+    const c = glob.charAt(i);
     if (c === "*" && glob[i + 1] === "*") {
       i++;
       if (glob[i + 1] === "/") {

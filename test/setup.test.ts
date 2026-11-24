@@ -394,6 +394,8 @@ test("SERIES-14's refused checks are allowed: npm test's other forms, its runner
     `npx --prefix ${web} tsc --noEmit -p ${web}`,
     `npx --prefix ${web} eslint "${web}/app"`,
     `git rm "${web}/app/programmes/[slug]/lineage/[prog]/Panel.tsx"`,
+    // SERIES-15 (2026-11-24): its one refused read.
+    `cd ${web} && git grep -n "useEffect" -- app/components`,
   ]) assert.ok(allowedBy(allow, command), command);
 
   for (const command of [
