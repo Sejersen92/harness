@@ -152,7 +152,7 @@ export function homeDeny(home: string): string[] {
 export const OUTWARD_DENY: readonly string[] = ["Bash(gh *)", "Bash(az *)", "Bash(vercel *)"];
 
 /** What the allow-list needs of an eval stage: its command, and the env it runs with. */
-export type StageCommand = Pick<Stage, "run" | "env">;
+export type StageCommand = Pick<Stage, "run" | "env" | "cwd">;
 
 /** The eval stages in a routing.yaml's text; none when it can't be read. */
 export function stagesIn(routingYaml: string): StageCommand[] {
@@ -200,7 +200,7 @@ const SCRIPT_RUNNERS: Record<string, readonly string[]> = {
  * runner it calls; `dotnet build|test` for any target, with `restore`, which both need. Anything else
  * stays exactly as written: widening an unknown command to its first word could allow anything.
  */
-function stageRules(stage: StageCommand): string[] {
+function stageRules(stage: StageCommand, repoDir?: string): string[] {
   const run = stage.run.trim();
   const env = Object.entries(stage.env ?? {}).map(([k, v]) => `${k}=${String(v)}`).join(" ");
   const forms = [run];
@@ -214,11 +214,23 @@ function stageRules(stage: StageCommand): string[] {
       ...runners,
       // The same runner from another folder: npx --prefix <dir> vitest.
       ...runners.filter((r) => r.startsWith("npx ")).map((r) => `npx --prefix * ${r.slice(4)}`),
+      // The same runner by its path in node_modules/.bin, relative to the stage's folder and absolute in this
+      // clone (SERIES-16, 2026-11-25: 8 `node_modules/.bin/tsc --noEmit` calls refused, 3 of them absolute).
+      // Only the runners named above, in this repository's own node_modules: never a leading wildcard,
+      // which would match the same path after any command.
+      ...runners.filter((r) => r.startsWith("npx ")).flatMap((r) => binForms(r.slice(4), stage.cwd, repoDir)),
     );
   } else if (tool === "dotnet" && verb && !verb.startsWith("-")) {
     forms.push(`dotnet ${verb}`, "dotnet restore");
   }
   return forms.flatMap((form) => [`Bash(${form}*)`, ...(env ? [`Bash(${env} ${form}*)`] : [])]);
+}
+
+/** A runner's node_modules/.bin path: relative (the agent is in the stage's folder) and, when the clone is known, absolute. */
+function binForms(runner: string, cwd: string | undefined, repoDir: string | undefined): string[] {
+  const forms = [`node_modules/.bin/${runner}`];
+  if (repoDir) forms.push(`${forward(join(repoDir, cwd ?? ".", "node_modules", ".bin"))}/${runner}`);
+  return forms;
 }
 
 /**
@@ -229,8 +241,8 @@ function stageRules(stage: StageCommand): string[] {
  * A test runner runs code the agents wrote, and `git -C *` lets a push through the allow-list, so the
  * deny rules and the PreToolUse guards hold the fence, not this list.
  */
-export function homeAllow(pluginRoot: string, stages: readonly StageCommand[]): string[] {
-  return [...new Set([`Bash(node "${forward(join(pluginRoot, "bin"))}/*)`, ...stages.flatMap(stageRules), ...ALWAYS_ALLOW])];
+export function homeAllow(pluginRoot: string, stages: readonly StageCommand[], repoDir?: string): string[] {
+  return [...new Set([`Bash(node "${forward(join(pluginRoot, "bin"))}/*)`, ...stages.flatMap((s) => stageRules(s, repoDir)), ...ALWAYS_ALLOW])];
 }
 
 /**
@@ -253,9 +265,9 @@ export const FOREGROUND_ENV = { CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1" } as c
 
 /** <home>/settings.json as it should be. */
 export const homeSettings = (
-  home: string, pluginRoot: string, stages: readonly StageCommand[],
+  home: string, pluginRoot: string, stages: readonly StageCommand[], repoDir?: string,
 ): { permissions: { allow: string[]; deny: string[] }; env: Record<string, string>; worktree: { baseRef: string } } => ({
-  permissions: { allow: homeAllow(pluginRoot, stages), deny: homeDeny(home) },
+  permissions: { allow: homeAllow(pluginRoot, stages, repoDir), deny: homeDeny(home) },
   env: { ...aliasEnv(), ...FOREGROUND_ENV },
   // Worktree subagents start from the current branch, not the default one (S6).
   worktree: { baseRef: "head" },
@@ -379,7 +391,7 @@ export function enrolPlan(
     steps.push({ what: `write ${join(home, "repo.json")}`, apply: () => writeHome(home, "repo.json", JSON.stringify(record, null, 2) + "\n") });
   }
 
-  const wanted = homeSettings(home, pluginRoot, stagesIn(routing));
+  const wanted = homeSettings(home, pluginRoot, stagesIn(routing), dir);
   const settings = JSON.stringify(wanted, null, 2) + "\n";
   if (readSafely(join(home, "settings.json")) !== settings) {
     steps.push({ what: `write ${join(home, "settings.json")} (${wanted.permissions.allow.length} allow and ${wanted.permissions.deny.length} deny rules for Harness sessions, haiku/sonnet/opus pinned to 5.5, subagents in the foreground, worktrees from HEAD)`, apply: () => writeHome(home, "settings.json", settings) });

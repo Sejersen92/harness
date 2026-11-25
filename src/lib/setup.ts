@@ -177,7 +177,7 @@ function homeChecks(dir: string, home: string, add: Add, pluginRoot: string | nu
   if (!pluginRoot) add("allow-list", "warn", "the plugin's folder is unknown here, so the allow rules can't be checked");
   else {
     const allowed = new Set(settings.permissions?.allow ?? []);
-    const missingAllow = homeAllow(pluginRoot, stages).filter((rule) => !allowed.has(rule));
+    const missingAllow = homeAllow(pluginRoot, stages, dir).filter((rule) => !allowed.has(rule));
     add("allow-list", missingAllow.length ? "warn" : "pass",
       missingAllow.length
         ? `${missingAllow.length} allow rule(s) missing from ${join(home, "settings.json")}, e.g. ${missingAllow.slice(0, 2).join(", ")}: a headless run (pu harness run) is refused those calls (/harness:init writes them)`

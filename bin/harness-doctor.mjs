@@ -7841,7 +7841,7 @@ var SCRIPT_RUNNERS = {
   build: ["npx tsc"],
   typecheck: ["npx tsc"]
 };
-function stageRules(stage) {
+function stageRules(stage, repoDir) {
   const run = stage.run.trim();
   const env = Object.entries(stage.env ?? {}).map(([k, v]) => `${k}=${String(v)}`).join(" ");
   const forms = [run];
@@ -7856,15 +7856,21 @@ function stageRules(stage) {
       `${tool} --prefix * ${script}`,
       `${tool} run --prefix * ${script}`,
       ...runners,
-      ...runners.filter((r) => r.startsWith("npx ")).map((r) => `npx --prefix * ${r.slice(4)}`)
+      ...runners.filter((r) => r.startsWith("npx ")).map((r) => `npx --prefix * ${r.slice(4)}`),
+      ...runners.filter((r) => r.startsWith("npx ")).flatMap((r) => binForms(r.slice(4), stage.cwd, repoDir))
     );
   } else if (tool === "dotnet" && verb && !verb.startsWith("-")) {
     forms.push(`dotnet ${verb}`, "dotnet restore");
   }
   return forms.flatMap((form) => [`Bash(${form}*)`, ...env ? [`Bash(${env} ${form}*)`] : []]);
 }
-function homeAllow(pluginRoot2, stages) {
-  return [.../* @__PURE__ */ new Set([`Bash(node "${forward(join3(pluginRoot2, "bin"))}/*)`, ...stages.flatMap(stageRules), ...ALWAYS_ALLOW])];
+function binForms(runner, cwd, repoDir) {
+  const forms = [`node_modules/.bin/${runner}`];
+  if (repoDir) forms.push(`${forward(join3(repoDir, cwd ?? ".", "node_modules", ".bin"))}/${runner}`);
+  return forms;
+}
+function homeAllow(pluginRoot2, stages, repoDir) {
+  return [.../* @__PURE__ */ new Set([`Bash(node "${forward(join3(pluginRoot2, "bin"))}/*)`, ...stages.flatMap((s) => stageRules(s, repoDir)), ...ALWAYS_ALLOW])];
 }
 var ALIAS_MODELS = { haiku: "claude-haiku-5-5", sonnet: "claude-sonnet-5-5", opus: "claude-opus-5-5" };
 var aliasEnv = () => Object.fromEntries(Object.entries(ALIAS_MODELS).map(([alias, model]) => [`ANTHROPIC_DEFAULT_${alias.toUpperCase()}_MODEL`, model]));
@@ -8018,7 +8024,7 @@ function homeChecks(dir2, home, add, pluginRoot2, stages) {
   if (!pluginRoot2) add("allow-list", "warn", "the plugin's folder is unknown here, so the allow rules can't be checked");
   else {
     const allowed = new Set(settings.permissions?.allow ?? []);
-    const missingAllow = homeAllow(pluginRoot2, stages).filter((rule) => !allowed.has(rule));
+    const missingAllow = homeAllow(pluginRoot2, stages, dir2).filter((rule) => !allowed.has(rule));
     add(
       "allow-list",
       missingAllow.length ? "warn" : "pass",

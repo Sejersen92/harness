@@ -406,6 +406,39 @@ test("SERIES-14's refused checks are allowed: npm test's other forms, its runner
   ]) assert.ok(!allowedBy(allow, command), command);
 });
 
+test("SERIES-16's refused checks are allowed: a stage's runner by its node_modules/.bin path, relative and in this clone; other binaries are not", () => {
+  // PreviouslyUpcoming's web stages, cwd as in its routing.yaml, and what PLAN-55 to 58 were refused (2026-11-24).
+  const repo = "C:/src/privateProjects/PreviouslyUpcoming";
+  const web = `${repo}/previouslyupcoming`;
+  const stages = [
+    { run: "npm run lint", cwd: "previouslyupcoming" },
+    { run: "npm test", cwd: "previouslyupcoming" },
+    { run: "npm run build", cwd: "previouslyupcoming", env: { ALLOW_LOCAL_UPSTREAM: 1 } },
+  ];
+  const allow = homeAllow("/p", stages, repo);
+  for (const command of [
+    `cd ${web} && node_modules/.bin/tsc --noEmit -p . 2>&1 | head -30`,
+    `cd ${web} && node_modules/.bin/tsc --noEmit -p . 2>&1 | tail -20`,
+    `cd ${web} && node_modules/.bin/tsc --noEmit -p . 2>&1 | head -20; node_modules/.bin/eslint app/components/look-back-v2-components.test.ts 2>&1 | tail -15`,
+    `${web}/node_modules/.bin/tsc --noEmit -p ${web}`,
+    `${web}/node_modules/.bin/tsc --noEmit -p ${web}/tsconfig.json`,
+    `${web}/node_modules/.bin/vitest run lib/text/text.test.ts`,
+  ]) assert.ok(allowedBy(allow, command), command);
+
+  for (const command of [
+    `node ${web}/node_modules/typescript/bin/tsc --noEmit -p ${web}/tsconfig.json`,
+    "node_modules/.bin/some-tool --write",
+    `C:/elsewhere/node_modules/.bin/tsc --noEmit`,
+    `${web}/node_modules/.bin/next build`,
+    "bash -c node_modules/.bin/tsc",
+  ]) assert.ok(!allowedBy(allow, command), command);
+
+  // Without the clone's folder (the doctor in a test, an old caller) only the relative form is added.
+  const relative = homeAllow("/p", stages);
+  assert.ok(allowedBy(relative, "node_modules/.bin/tsc --noEmit -p ."));
+  assert.ok(!allowedBy(relative, `${web}/node_modules/.bin/tsc --noEmit`));
+});
+
 test("a routing.yaml's stages are read for the allow-list, and an unreadable one gives none", () => {
   assert.deepEqual(stagesIn("eval:\n  stages:\n    - { name: test, run: npm test }\n    - { name: empty, run: '' }\n").map((s) => s.run), ["npm test"]);
   assert.deepEqual(stagesIn("eval: [unclosed"), []);

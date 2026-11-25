@@ -7865,7 +7865,7 @@ var SCRIPT_RUNNERS = {
   build: ["npx tsc"],
   typecheck: ["npx tsc"]
 };
-function stageRules(stage) {
+function stageRules(stage, repoDir) {
   const run = stage.run.trim();
   const env = Object.entries(stage.env ?? {}).map(([k, v]) => `${k}=${String(v)}`).join(" ");
   const forms = [run];
@@ -7880,21 +7880,27 @@ function stageRules(stage) {
       `${tool} --prefix * ${script}`,
       `${tool} run --prefix * ${script}`,
       ...runners,
-      ...runners.filter((r) => r.startsWith("npx ")).map((r) => `npx --prefix * ${r.slice(4)}`)
+      ...runners.filter((r) => r.startsWith("npx ")).map((r) => `npx --prefix * ${r.slice(4)}`),
+      ...runners.filter((r) => r.startsWith("npx ")).flatMap((r) => binForms(r.slice(4), stage.cwd, repoDir))
     );
   } else if (tool === "dotnet" && verb && !verb.startsWith("-")) {
     forms.push(`dotnet ${verb}`, "dotnet restore");
   }
   return forms.flatMap((form) => [`Bash(${form}*)`, ...env ? [`Bash(${env} ${form}*)`] : []]);
 }
-function homeAllow(pluginRoot2, stages) {
-  return [.../* @__PURE__ */ new Set([`Bash(node "${forward(join5(pluginRoot2, "bin"))}/*)`, ...stages.flatMap(stageRules), ...ALWAYS_ALLOW])];
+function binForms(runner, cwd, repoDir) {
+  const forms = [`node_modules/.bin/${runner}`];
+  if (repoDir) forms.push(`${forward(join5(repoDir, cwd ?? ".", "node_modules", ".bin"))}/${runner}`);
+  return forms;
+}
+function homeAllow(pluginRoot2, stages, repoDir) {
+  return [.../* @__PURE__ */ new Set([`Bash(node "${forward(join5(pluginRoot2, "bin"))}/*)`, ...stages.flatMap((s) => stageRules(s, repoDir)), ...ALWAYS_ALLOW])];
 }
 var ALIAS_MODELS = { haiku: "claude-haiku-5-5", sonnet: "claude-sonnet-5-5", opus: "claude-opus-5-5" };
 var aliasEnv = () => Object.fromEntries(Object.entries(ALIAS_MODELS).map(([alias, model]) => [`ANTHROPIC_DEFAULT_${alias.toUpperCase()}_MODEL`, model]));
 var FOREGROUND_ENV = { CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1" };
-var homeSettings = (home2, pluginRoot2, stages) => ({
-  permissions: { allow: homeAllow(pluginRoot2, stages), deny: homeDeny(home2) },
+var homeSettings = (home2, pluginRoot2, stages, repoDir) => ({
+  permissions: { allow: homeAllow(pluginRoot2, stages, repoDir), deny: homeDeny(home2) },
   env: { ...aliasEnv(), ...FOREGROUND_ENV },
   // Worktree subagents start from the current branch, not the default one (S6).
   worktree: { baseRef: "head" }
@@ -7974,7 +7980,7 @@ function enrolPlan(dir2, pluginRoot2, { branch: branch2, now = /* @__PURE__ */ n
     const record = { schema: "harness.repo/v1", repo_dir: dir2, enrolled: utcNow(now) };
     steps2.push({ what: `write ${join5(home2, "repo.json")}`, apply: () => writeHome(home2, "repo.json", JSON.stringify(record, null, 2) + "\n") });
   }
-  const wanted = homeSettings(home2, pluginRoot2, stagesIn(routing));
+  const wanted = homeSettings(home2, pluginRoot2, stagesIn(routing), dir2);
   const settings = JSON.stringify(wanted, null, 2) + "\n";
   if (readSafely(join5(home2, "settings.json")) !== settings) {
     steps2.push({ what: `write ${join5(home2, "settings.json")} (${wanted.permissions.allow.length} allow and ${wanted.permissions.deny.length} deny rules for Harness sessions, haiku/sonnet/opus pinned to 5.5, subagents in the foreground, worktrees from HEAD)`, apply: () => writeHome(home2, "settings.json", settings) });
@@ -8153,7 +8159,7 @@ function homeChecks(dir2, home2, add, pluginRoot2, stages) {
   if (!pluginRoot2) add("allow-list", "warn", "the plugin's folder is unknown here, so the allow rules can't be checked");
   else {
     const allowed = new Set(settings.permissions?.allow ?? []);
-    const missingAllow = homeAllow(pluginRoot2, stages).filter((rule) => !allowed.has(rule));
+    const missingAllow = homeAllow(pluginRoot2, stages, dir2).filter((rule) => !allowed.has(rule));
     add(
       "allow-list",
       missingAllow.length ? "warn" : "pass",
